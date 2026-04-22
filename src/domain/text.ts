@@ -43,8 +43,11 @@ const THINKING_PREFIX = "🧠 _";
 const THINKING_CONTINUATION_PREFIX = "_";
 const THINKING_SUFFIX = "_";
 
+const escapeDiscordItalicsContent = (content: string): string =>
+  content.replaceAll(/([\\_])/g, "\\$1");
+
 export const formatThinkingStatus = (thinking: string): string =>
-  `${THINKING_PREFIX}${thinking}${THINKING_SUFFIX}`;
+  `${THINKING_PREFIX}${escapeDiscordItalicsContent(thinking)}${THINKING_SUFFIX}`;
 
 export const splitThinkingStatus = (
   thinking: string,

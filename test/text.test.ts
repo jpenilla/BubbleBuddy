@@ -38,6 +38,12 @@ describe("status formatting", () => {
     expect(formatThinkingStatus("Considering options")).toBe("🧠 _Considering options_");
   });
 
+  test("escapes underscores inside thinking output", () => {
+    expect(formatThinkingStatus("name_with_underscores and *stars*")).toBe(
+      "🧠 _name\\_with\\_underscores and *stars*_",
+    );
+  });
+
   test("splits thinking output into separately italicized chunks", () => {
     const chunks = splitThinkingStatus("alpha beta gamma delta", 16);
 
