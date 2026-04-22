@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.md
+!discord-context.md.example
+!profiles/
+!profiles/*.md
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+storage/
+.idea/
+.vscode/
+.DS_Store
