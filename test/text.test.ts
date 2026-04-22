@@ -36,20 +36,16 @@ describe("mention normalization", () => {
 });
 
 describe("status formatting", () => {
-  test("formats thinking output with emoji and italics", () => {
-    expect(formatThinkingStatus("Considering options")).toBe("🧠 _Considering options_");
-  });
-
-  test("escapes underscores inside thinking output", () => {
-    expect(formatThinkingStatus("name_with_underscores and *stars*")).toBe(
-      "🧠 _name\\_with\\_underscores and *stars*_",
+  test("formats thinking output with prefix and suffix", () => {
+    expect(formatThinkingStatus("Considering options")).toBe(
+      "🧠 _Thinking..._\n\nConsidering options\n\n-# ──",
     );
   });
 
-  test("splits thinking output into separately italicized chunks", () => {
-    const chunks = splitThinkingStatus("alpha beta gamma delta", 16);
+  test("adds the prefix only to the first thinking chunk and the suffix only to the last", () => {
+    const chunks = splitThinkingStatus("alpha beta gamma delta", 30);
 
-    expect(chunks).toEqual(["🧠 _alpha beta_", "_gamma delta_"]);
+    expect(chunks).toEqual(["🧠 _Thinking..._\n\nalpha beta ", "gamma delta\n\n-# ──"]);
   });
 
   test("formats tool status with generic progress emojis", () => {

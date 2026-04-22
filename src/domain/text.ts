@@ -40,38 +40,23 @@ export const extractAssistantText = (message: AssistantMessage): string =>
     .map((block) => block.text)
     .join("");
 
-const THINKING_PREFIX = "🧠 _";
-const THINKING_CONTINUATION_PREFIX = "_";
-const THINKING_SUFFIX = "_";
-
-const escapeDiscordItalicsContent = (content: string): string =>
-  content.replaceAll(/([\\_])/g, "\\$1");
+const THINKING_PREFIX = "🧠 _Thinking..._\n\n";
+const THINKING_SUFFIX = "\n\n-# ──";
 
 export const formatThinkingStatus = (thinking: string): string =>
-  `${THINKING_PREFIX}${escapeDiscordItalicsContent(thinking)}${THINKING_SUFFIX}`;
+  `${THINKING_PREFIX}${thinking}${THINKING_SUFFIX}`;
 
 export const splitThinkingStatus = (
   thinking: string,
   limit = DISCORD_SAFE_MESSAGE_LIMIT,
 ): string[] => {
-  const firstChunkLimit = Math.max(1, limit - THINKING_PREFIX.length - THINKING_SUFFIX.length);
-  const continuationChunkLimit = Math.max(
-    1,
-    limit - THINKING_CONTINUATION_PREFIX.length - THINKING_SUFFIX.length,
-  );
-  const chunks = splitDiscordMessage(thinking, firstChunkLimit);
+  const bodyLimit = Math.max(1, limit - Math.max(THINKING_PREFIX.length, THINKING_SUFFIX.length));
+  const chunks = splitDiscordMessage(thinking, bodyLimit);
 
   return chunks.map((chunk, index) => {
-    const prefix = index === 0 ? THINKING_PREFIX : THINKING_CONTINUATION_PREFIX;
-    const contentLimit = index === 0 ? firstChunkLimit : continuationChunkLimit;
-    const trimmedChunk = chunk.trim();
-
-    if (trimmedChunk.length + prefix.length + THINKING_SUFFIX.length <= limit) {
-      return `${prefix}${trimmedChunk}${THINKING_SUFFIX}`;
-    }
-
-    const shortenedChunk = trimmedChunk.slice(0, contentLimit).trimEnd();
-    return `${prefix}${shortenedChunk}${THINKING_SUFFIX}`;
+    const prefix = index === 0 ? THINKING_PREFIX : "";
+    const suffix = index === chunks.length - 1 ? THINKING_SUFFIX : "";
+    return `${prefix}${chunk}${suffix}`;
   });
 };
 
