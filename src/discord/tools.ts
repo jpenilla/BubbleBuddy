@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
 
