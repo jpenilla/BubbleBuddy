@@ -11,6 +11,7 @@ import {
 import { Effect } from "effect";
 
 import { loadAppConfig, type AppConfigShape } from "./config.ts";
+import { createToolStatusEmbed, type ToolStatusEmbed } from "./discord/tool-status-embed.ts";
 import { isActivationMessage } from "./domain/activation.ts";
 import {
   formatIncomingDiscordMessage,
@@ -128,8 +129,8 @@ const createSessionSink = (channel: GuildTextBasedChannel, config: AppConfigShap
         void channel.sendTyping().catch(() => undefined);
       }, config.typingIndicatorIntervalMs);
     },
-    onStatus: async (text: string) => {
-      await sendChunkedMessage(channel, text);
+    onStatus: async (status: ToolStatusEmbed) => {
+      await channel.send({ embeds: [createToolStatusEmbed(status)] });
     },
   };
 };

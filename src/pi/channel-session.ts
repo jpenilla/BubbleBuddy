@@ -9,10 +9,11 @@ import type { Message } from "discord.js";
 import { Effect, Queue } from "effect";
 import type { Api, AssistantMessage, Model, ToolResultMessage } from "@mariozechner/pi-ai";
 
-import { extractAssistantText, formatToolStatus } from "../domain/text.ts";
+import type { ToolStatusEmbed } from "../discord/tool-status-embed.ts";
+import { createDiscordTools } from "../discord/tools.ts";
+import { extractAssistantText } from "../domain/text.ts";
 import type { ThinkingLevel } from "../config.ts";
 import type { PromptTemplateContext } from "../domain/prompt.ts";
-import { createDiscordTools } from "../discord/tools.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
 
 export interface SessionSink {
@@ -20,7 +21,7 @@ export interface SessionSink {
   readonly onFinal: (text: string) => Promise<void>;
   readonly onRunEnd: () => Promise<void>;
   readonly onRunStart: () => Promise<void>;
-  readonly onStatus: (text: string) => Promise<void>;
+  readonly onStatus: (status: ToolStatusEmbed) => Promise<void>;
   readonly onThinking: (text: string) => Promise<void>;
 }
 
@@ -101,10 +102,20 @@ export class PiChannelSession {
           }
           break;
         case "tool_execution_end":
-          this.#enqueueOutput(() => this.#sink.onStatus(formatToolStatus(event.toolName, "end")));
+          this.#enqueueOutput(() =>
+            this.#sink.onStatus({
+              phase: "end",
+              toolName: event.toolName,
+            }),
+          );
           break;
         case "tool_execution_start":
-          this.#enqueueOutput(() => this.#sink.onStatus(formatToolStatus(event.toolName, "start")));
+          this.#enqueueOutput(() =>
+            this.#sink.onStatus({
+              phase: "start",
+              toolName: event.toolName,
+            }),
+          );
           break;
         case "turn_end":
           if (event.message.role === "assistant") {
