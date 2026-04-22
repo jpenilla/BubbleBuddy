@@ -2,11 +2,18 @@ import { Type } from "@sinclair/typebox";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
 
-import { formatCustomEmoji, listUsableCustomEmojis, listUsableStickers } from "./assets.ts";
+import {
+  formatCustomEmojiMessageSyntax,
+  formatCustomEmojiReactionSyntax,
+  listUsableCustomEmojis,
+  listUsableStickers,
+  normalizeReactionEmoji,
+} from "./assets.ts";
 
 const LIST_CUSTOM_EMOJIS_TOOL = "discord_list_custom_emojis";
 const LIST_STICKERS_TOOL = "discord_list_stickers";
 const SEND_STICKER_TOOL = "discord_send_sticker";
+const REACT_TOOL = "discord_react";
 
 const formatEmojiList = (message: Message<true>): string => {
   const emojis = listUsableCustomEmojis(message);
@@ -18,8 +25,8 @@ const formatEmojiList = (message: Message<true>): string => {
     "Custom emojis you can use here:",
     "In normal replies, use message=<...>. Plain :name: stays text.",
     ...emojis.map((emoji) => {
-      const messageSyntax = formatCustomEmoji(emoji);
-      const reactionSyntax = `${emoji.animated ? "a:" : ""}${emoji.name}:${emoji.id}`;
+      const messageSyntax = formatCustomEmojiMessageSyntax(emoji);
+      const reactionSyntax = formatCustomEmojiReactionSyntax(emoji);
       return `- :${emoji.name}: message=\`${messageSyntax}\` reaction=\`${reactionSyntax}\``;
     }),
   ].join("\n");
@@ -107,6 +114,78 @@ export const createDiscordTools = (originMessage: Message<true>): ToolDefinition
           {
             type: "text",
             text: `Sent sticker ${sticker.sticker.name} (${sticker.sticker.id}).`,
+          },
+        ],
+        details: {},
+      };
+    },
+  }),
+  defineTool({
+    name: REACT_TOOL,
+    label: "React",
+    description: "Add one reaction to a message in the current Discord channel.",
+    promptSnippet: "Add a reaction to a message in the current Discord channel",
+    promptGuidelines: [
+      "Use discord_react with a message ID from the conversation transcript. For custom emoji reactions, use the reaction syntax from discord_list_custom_emojis.",
+    ],
+    parameters: Type.Object({
+      emoji: Type.String({ description: "Emoji reaction to add." }),
+      messageId: Type.String({ description: "Discord message ID in the current channel." }),
+    }),
+    execute: async (_toolCallId, params) => {
+      if (
+        !("messages" in originMessage.channel) ||
+        typeof originMessage.channel.messages.fetch !== "function"
+      ) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "This Discord channel does not support fetching messages for reactions.",
+            },
+          ],
+          details: {},
+          isError: true,
+        };
+      }
+
+      const targetMessage = await originMessage.channel.messages
+        .fetch(params.messageId)
+        .catch(() => null);
+      if (targetMessage === null) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Message ${params.messageId} was not found in the current channel.`,
+            },
+          ],
+          details: {},
+          isError: true,
+        };
+      }
+
+      const emoji = normalizeReactionEmoji(originMessage, params.emoji);
+      if (emoji === null) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "That emoji is invalid or not available here.",
+            },
+          ],
+          details: {},
+          isError: true,
+        };
+      }
+
+      await targetMessage.react(emoji);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Added reaction ${emoji} to message ${targetMessage.id}.`,
           },
         ],
         details: {},

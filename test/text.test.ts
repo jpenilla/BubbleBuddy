@@ -24,13 +24,14 @@ describe("mention normalization", () => {
 
   test("includes the speaking user id in normalized incoming Discord messages", () => {
     const formatted = formatIncomingDiscordMessage(
+      "555",
       "jmp",
       "999",
       "<@123> what's my username?",
       new Map([["123", "bubblebuddy"]]),
     );
 
-    expect(formatted).toBe("Message from @jmp (999): @bubblebuddy (123) what's my username?");
+    expect(formatted).toBe("Message 555 from @jmp (999): @bubblebuddy (123) what's my username?");
   });
 });
 

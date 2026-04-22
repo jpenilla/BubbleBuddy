@@ -67,6 +67,7 @@ const isReplyToBot = async (message: Message<true>, botUserId: string): Promise<
 
 const normalizeMessageContent = (message: Message<true>): string =>
   formatIncomingDiscordMessage(
+    message.id,
     message.author.username,
     message.author.id,
     message.content,

@@ -21,6 +21,7 @@ export const normalizeIncomingUserMentions = (
 };
 
 export const formatIncomingDiscordMessage = (
+  messageId: string,
   authorUsername: string,
   authorId: string,
   content: string,
@@ -29,8 +30,8 @@ export const formatIncomingDiscordMessage = (
   const normalizedContent = normalizeIncomingUserMentions(content, usernamesById).trim();
   const authorReference = formatDiscordUserReference(authorUsername, authorId);
   return normalizedContent.length === 0
-    ? `Message from ${authorReference}`
-    : `Message from ${authorReference}: ${normalizedContent}`;
+    ? `Message ${messageId} from ${authorReference}`
+    : `Message ${messageId} from ${authorReference}: ${normalizedContent}`;
 };
 
 export const extractAssistantText = (message: AssistantMessage): string =>

@@ -1,6 +1,7 @@
 import {
   PermissionFlagsBits,
   StickerType,
+  parseEmoji,
   type GuildEmoji,
   type Message,
   type Sticker,
@@ -57,8 +58,11 @@ const canUseEmojiRoles = (emoji: GuildEmoji): boolean => {
   return emoji.roles.cache.some((role) => member.roles.cache.has(role.id));
 };
 
-export const formatCustomEmoji = (emoji: GuildEmoji): string =>
+export const formatCustomEmojiMessageSyntax = (emoji: GuildEmoji): string =>
   `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>`;
+
+export const formatCustomEmojiReactionSyntax = (emoji: GuildEmoji): string =>
+  `${emoji.animated ? "a:" : ""}${emoji.name}:${emoji.id}`;
 
 export const listUsableCustomEmojis = (message: Message<true>): GuildEmoji[] => {
   const allowExternal =
@@ -96,6 +100,39 @@ const sortUsableStickers = (items: ReadonlyArray<UsableSticker>, currentGuildId:
       left.sticker.id.localeCompare(right.sticker.id)
     );
   });
+
+export const normalizeReactionEmoji = (message: Message<true>, input: string): string | null => {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const customEmojiById = new Map(
+    listUsableCustomEmojis(message).map((emoji) => [emoji.id, emoji]),
+  );
+  const aliasMatch = trimmed.match(/^:([A-Za-z0-9_]{2,32}):$/);
+  if (aliasMatch) {
+    const alias = aliasMatch[1]!.toLowerCase();
+    const matches = [...customEmojiById.values()].filter(
+      (emoji) => emoji.name.toLowerCase() === alias,
+    );
+    if (matches.length !== 1) {
+      return null;
+    }
+    return formatCustomEmojiReactionSyntax(matches[0]!);
+  }
+
+  const parsed = parseEmoji(trimmed);
+  if (parsed?.id) {
+    const match = customEmojiById.get(parsed.id);
+    if (!match) {
+      return null;
+    }
+    return formatCustomEmojiReactionSyntax(match);
+  }
+
+  return trimmed;
+};
 
 export const listUsableStickers = async (message: Message<true>): Promise<UsableSticker[]> => {
   const allowExternal =
