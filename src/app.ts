@@ -96,12 +96,17 @@ const createSessionInput = (
 
 const createSessionSink = (channel: GuildTextBasedChannel, config: AppConfigShape) => {
   let typingTimer: ReturnType<typeof setInterval> | undefined;
+  let toolStatusMessages = new Map<string, Message<true>>();
 
   const stopTypingLoop = async (): Promise<void> => {
     if (typingTimer !== undefined) {
       clearInterval(typingTimer);
       typingTimer = undefined;
     }
+  };
+
+  const resetRunToolStatusMessages = (): void => {
+    toolStatusMessages = new Map<string, Message<true>>();
   };
 
   return {
@@ -117,9 +122,11 @@ const createSessionSink = (channel: GuildTextBasedChannel, config: AppConfigShap
       }
     },
     onRunEnd: async () => {
+      resetRunToolStatusMessages();
       await stopTypingLoop();
     },
     onRunStart: async () => {
+      resetRunToolStatusMessages();
       if (typingTimer !== undefined) {
         return;
       }
@@ -130,7 +137,20 @@ const createSessionSink = (channel: GuildTextBasedChannel, config: AppConfigShap
       }, config.typingIndicatorIntervalMs);
     },
     onStatus: async (status: ToolStatusEmbed) => {
-      await channel.send({ embeds: [createToolStatusEmbed(status)] });
+      const embed = createToolStatusEmbed(status);
+      const existing = toolStatusMessages.get(status.toolCallId);
+      if (existing !== undefined) {
+        await existing.edit({ embeds: [embed] });
+        if (status.phase === "end") {
+          toolStatusMessages.delete(status.toolCallId);
+        }
+        return;
+      }
+
+      const sent = await channel.send({ embeds: [embed] });
+      if (status.phase === "start") {
+        toolStatusMessages.set(status.toolCallId, sent);
+      }
     },
   };
 };

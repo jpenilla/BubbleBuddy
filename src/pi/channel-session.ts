@@ -105,6 +105,7 @@ export class PiChannelSession {
           this.#enqueueOutput(() =>
             this.#sink.onStatus({
               phase: "end",
+              toolCallId: event.toolCallId,
               toolName: event.toolName,
             }),
           );
@@ -113,6 +114,7 @@ export class PiChannelSession {
           this.#enqueueOutput(() =>
             this.#sink.onStatus({
               phase: "start",
+              toolCallId: event.toolCallId,
               toolName: event.toolName,
             }),
           );

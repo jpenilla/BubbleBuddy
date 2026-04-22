@@ -2,6 +2,7 @@ import { EmbedBuilder } from "discord.js";
 
 export interface ToolStatusEmbed {
   readonly phase: "start" | "end";
+  readonly toolCallId: string;
   readonly toolName: string;
 }
 
