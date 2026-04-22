@@ -11,26 +11,28 @@ const SEND_STICKER_TOOL = "discord_send_sticker";
 const formatEmojiList = (message: Message<true>): string => {
   const emojis = listUsableCustomEmojis(message);
   if (emojis.length === 0) {
-    return "No custom emojis are available in this Discord context.";
+    return "No custom emojis are available here.";
   }
 
   return [
-    "Custom emojis available in this Discord context:",
-    ...emojis.map(
-      (emoji) =>
-        `- ${formatCustomEmoji(emoji)} :${emoji.name}: id=${emoji.id} guild=${emoji.guild.name}`,
-    ),
+    "Custom emojis you can use here:",
+    "In normal replies, use message=<...>. Plain :name: stays text.",
+    ...emojis.map((emoji) => {
+      const messageSyntax = formatCustomEmoji(emoji);
+      const reactionSyntax = `${emoji.animated ? "a:" : ""}${emoji.name}:${emoji.id}`;
+      return `- :${emoji.name}: message=\`${messageSyntax}\` reaction=\`${reactionSyntax}\``;
+    }),
   ].join("\n");
 };
 
 const formatStickerList = async (message: Message<true>): Promise<string> => {
   const stickers = await listUsableStickers(message);
   if (stickers.length === 0) {
-    return "No stickers are available in this Discord context.";
+    return "No stickers are available here.";
   }
 
   return [
-    "Stickers available in this Discord context:",
+    "Stickers you can send here:",
     ...stickers.map(({ guildName, packName, sticker }) => {
       const source = guildName !== null ? `guild=${guildName}` : `pack=${packName ?? "unknown"}`;
       const tags = sticker.tags ? ` tags=${sticker.tags}` : "";
@@ -43,10 +45,10 @@ export const createDiscordTools = (originMessage: Message<true>): ToolDefinition
   defineTool({
     name: LIST_CUSTOM_EMOJIS_TOOL,
     label: "List Custom Emojis",
-    description: "List the custom emojis the bot can use in the current Discord context.",
-    promptSnippet: "List the custom emojis available in the current Discord context",
+    description: "List custom emojis usable here, including exact reply and reaction syntax.",
+    promptSnippet: "List custom emojis usable here, including exact reply and reaction syntax",
     promptGuidelines: [
-      "Use discord_list_custom_emojis when you need a valid custom emoji or emoji ID for this Discord server.",
+      "For custom emojis in text, use the exact <:name:id> or <a:name:id> syntax from discord_list_custom_emojis. Do not use plain :name:.",
     ],
     parameters: Type.Object({}),
     execute: async () => ({
@@ -57,11 +59,8 @@ export const createDiscordTools = (originMessage: Message<true>): ToolDefinition
   defineTool({
     name: LIST_STICKERS_TOOL,
     label: "List Stickers",
-    description: "List the stickers the bot can send in the current Discord context.",
-    promptSnippet: "List the stickers available in the current Discord context",
-    promptGuidelines: [
-      "Use discord_list_stickers before discord_send_sticker when you need to discover valid sticker IDs.",
-    ],
+    description: "List stickers the bot can send here.",
+    promptSnippet: "List stickers the bot can send here",
     parameters: Type.Object({}),
     execute: async () => ({
       content: [{ type: "text", text: await formatStickerList(originMessage) }],
@@ -71,14 +70,13 @@ export const createDiscordTools = (originMessage: Message<true>): ToolDefinition
   defineTool({
     name: SEND_STICKER_TOOL,
     label: "Send Sticker",
-    description: "Send a sticker that is available in the current Discord context by sticker ID.",
-    promptSnippet: "Send a sticker by sticker ID in the current Discord channel",
-    promptGuidelines: [
-      "Use discord_send_sticker only with sticker IDs that are valid in the current Discord context, usually after calling discord_list_stickers.",
-    ],
+    description: "Send one sticker by sticker ID.",
+    promptSnippet: "Send one sticker by sticker ID",
     parameters: Type.Object({
       caption: Type.Optional(
-        Type.String({ description: "Optional message text to send with the sticker." }),
+        Type.String({
+          description: "Optional message text to send with the sticker.",
+        }),
       ),
       stickerId: Type.String({ description: "Sticker ID to send." }),
     }),
@@ -91,7 +89,7 @@ export const createDiscordTools = (originMessage: Message<true>): ToolDefinition
           content: [
             {
               type: "text",
-              text: `Sticker ${params.stickerId} is not available in this Discord context.`,
+              text: `Sticker ${params.stickerId} is not available here.`,
             },
           ],
           details: {},
