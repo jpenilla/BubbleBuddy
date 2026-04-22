@@ -6,7 +6,6 @@ import {
   type Interaction,
   Message,
   SlashCommandBuilder,
-  type Guild,
   type GuildTextBasedChannel,
 } from "discord.js";
 import { Effect } from "effect";
@@ -14,10 +13,9 @@ import { Effect } from "effect";
 import { loadAppConfig, type AppConfigShape } from "./config.ts";
 import { isActivationMessage } from "./domain/activation.ts";
 import {
-  collectMentionedUsernames,
   formatIncomingDiscordMessage,
-  rewriteUsernamesToMentions,
   splitDiscordMessage,
+  splitThinkingStatus,
 } from "./domain/text.ts";
 import { resolvePiModel } from "./pi/model.ts";
 import {
@@ -43,43 +41,11 @@ const waitForReady = async (client: Client): Promise<Client<true>> =>
     client.once(Events.Error, reject);
   });
 
-const resolveOutgoingUserMentions = async (content: string, guild: Guild): Promise<string> => {
-  const usernames = collectMentionedUsernames(content);
-  if (usernames.length === 0) {
-    return content;
-  }
-
-  const userIdsByUsername = new Map<string, string>();
-
-  for (const username of usernames) {
-    try {
-      const members = await guild.members.search({
-        limit: 10,
-        query: username,
-      });
-      const exactMatches = members.filter(
-        (member) => member.user.username.toLowerCase() === username,
-      );
-
-      if (exactMatches.size === 1) {
-        const [member] = exactMatches.values();
-        userIdsByUsername.set(username, member.user.id);
-      }
-    } catch {
-      return content;
-    }
-  }
-
-  return rewriteUsernamesToMentions(content, userIdsByUsername);
-};
-
 const sendChunkedMessage = async (
   channel: GuildTextBasedChannel,
-  guild: Guild,
   content: string,
 ): Promise<void> => {
-  const rewritten = await resolveOutgoingUserMentions(content, guild);
-  const chunks = splitDiscordMessage(rewritten);
+  const chunks = splitDiscordMessage(content);
 
   for (const chunk of chunks) {
     await channel.send(chunk);
@@ -102,6 +68,7 @@ const isReplyToBot = async (message: Message<true>, botUserId: string): Promise<
 const normalizeMessageContent = (message: Message<true>): string =>
   formatIncomingDiscordMessage(
     message.author.username,
+    message.author.id,
     message.content,
     new Map([...message.mentions.users.values()].map((user) => [user.id, user.username])),
   );
@@ -121,14 +88,10 @@ const createSessionInput = (
     guildName: message.guild.name,
   },
   sessionId: `discord:${message.guildId}:${message.channelId}`,
-  sink: createSessionSink(message.channel, message.guild, config),
+  sink: createSessionSink(message.channel, config),
 });
 
-const createSessionSink = (
-  channel: GuildTextBasedChannel,
-  guild: Guild,
-  config: AppConfigShape,
-) => {
+const createSessionSink = (channel: GuildTextBasedChannel, config: AppConfigShape) => {
   let typingTimer: ReturnType<typeof setInterval> | undefined;
 
   const stopTypingLoop = async (): Promise<void> => {
@@ -140,10 +103,15 @@ const createSessionSink = (
 
   return {
     onError: async (text: string) => {
-      await sendChunkedMessage(channel, guild, text);
+      await sendChunkedMessage(channel, text);
     },
     onFinal: async (text: string) => {
-      await sendChunkedMessage(channel, guild, text);
+      await sendChunkedMessage(channel, text);
+    },
+    onThinking: async (text: string) => {
+      for (const chunk of splitThinkingStatus(text)) {
+        await channel.send(chunk);
+      }
     },
     onRunEnd: async () => {
       await stopTypingLoop();
@@ -159,7 +127,7 @@ const createSessionSink = (
       }, config.typingIndicatorIntervalMs);
     },
     onStatus: async (text: string) => {
-      await sendChunkedMessage(channel, guild, text);
+      await sendChunkedMessage(channel, text);
     },
   };
 };
@@ -227,10 +195,10 @@ const makeDiscordClient = (): Client =>
 
 export const program = Effect.gen(function* () {
   const config = yield* loadAppConfig;
-  const model = resolvePiModel(config.modelProvider, config.modelId);
   const agentDir = getAgentDir();
   const authStorage = AuthStorage.create();
   const modelRegistry = ModelRegistry.create(authStorage);
+  const model = resolvePiModel(modelRegistry, config.modelProvider, config.modelId);
   const sessions = createChannelSessions({
     agentDir,
     authStorage,

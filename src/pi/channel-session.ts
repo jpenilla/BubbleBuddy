@@ -7,7 +7,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { Api, AssistantMessage, Model, ToolResultMessage } from "@mariozechner/pi-ai";
 
-import { extractAssistantText, formatThinkingStatus, formatToolStatus } from "../domain/text.ts";
+import { extractAssistantText, formatToolStatus } from "../domain/text.ts";
 import type { ThinkingLevel } from "../config.ts";
 import type { PromptTemplateContext } from "../domain/prompt.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
@@ -18,6 +18,7 @@ export interface SessionSink {
   readonly onRunEnd: () => Promise<void>;
   readonly onRunStart: () => Promise<void>;
   readonly onStatus: (text: string) => Promise<void>;
+  readonly onThinking: (text: string) => Promise<void>;
 }
 
 export type SessionActivationResult = "started" | "steered";
@@ -71,19 +72,22 @@ export class PiChannelSession {
           break;
         case "agent_end": {
           const lastMessage = event.messages.at(-1);
-          await this.#flushFinalOutput(
-            lastMessage?.role === "assistant" || lastMessage?.role === "toolResult"
-              ? lastMessage
-              : undefined,
-          );
-          await this.#sink.onRunEnd();
+          try {
+            await this.#flushFinalOutput(
+              lastMessage?.role === "assistant" || lastMessage?.role === "toolResult"
+                ? lastMessage
+                : undefined,
+            );
+          } finally {
+            await this.#sink.onRunEnd();
+          }
           break;
         }
         case "message_update":
           if (event.assistantMessageEvent.type === "thinking_end") {
             const thinking = event.assistantMessageEvent.content.trim();
             if (thinking.length > 0) {
-              await this.#sink.onStatus(formatThinkingStatus(thinking));
+              await this.#sink.onThinking(thinking);
             }
           }
           break;

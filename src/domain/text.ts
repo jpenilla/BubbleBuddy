@@ -2,6 +2,9 @@ import type { AssistantMessage } from "@mariozechner/pi-ai";
 
 export const DISCORD_SAFE_MESSAGE_LIMIT = 1_900;
 
+export const formatDiscordUserReference = (username: string, userId: string): string =>
+  `@${username} (${userId})`;
+
 export const normalizeIncomingUserMentions = (
   content: string,
   usernamesById: ReadonlyMap<string, string>,
@@ -9,8 +12,9 @@ export const normalizeIncomingUserMentions = (
   let normalized = content;
 
   for (const [id, username] of usernamesById.entries()) {
-    normalized = normalized.replaceAll(`<@${id}>`, `@${username}`);
-    normalized = normalized.replaceAll(`<@!${id}>`, `@${username}`);
+    const reference = formatDiscordUserReference(username, id);
+    normalized = normalized.replaceAll(`<@${id}>`, reference);
+    normalized = normalized.replaceAll(`<@!${id}>`, reference);
   }
 
   return normalized;
@@ -18,35 +22,15 @@ export const normalizeIncomingUserMentions = (
 
 export const formatIncomingDiscordMessage = (
   authorUsername: string,
+  authorId: string,
   content: string,
   usernamesById: ReadonlyMap<string, string>,
 ): string => {
   const normalizedContent = normalizeIncomingUserMentions(content, usernamesById).trim();
+  const authorReference = formatDiscordUserReference(authorUsername, authorId);
   return normalizedContent.length === 0
-    ? `Message from @${authorUsername}`
-    : `Message from @${authorUsername}: ${normalizedContent}`;
-};
-
-const USERNAME_PING_PATTERN = /(^|[^\w<])@([a-z0-9._]{2,32})/gim;
-
-export const rewriteUsernamesToMentions = (
-  content: string,
-  userIdsByUsername: ReadonlyMap<string, string>,
-): string =>
-  content.replaceAll(USERNAME_PING_PATTERN, (match, prefix, username) => {
-    const userId = userIdsByUsername.get(String(username).toLowerCase());
-    return userId === undefined ? match : `${String(prefix)}<@${userId}>`;
-  });
-
-export const collectMentionedUsernames = (content: string): string[] => {
-  const matches = content.matchAll(USERNAME_PING_PATTERN);
-  const usernames = new Set<string>();
-
-  for (const match of matches) {
-    usernames.add(match[2]!.toLowerCase());
-  }
-
-  return [...usernames];
+    ? `Message from ${authorReference}`
+    : `Message from ${authorReference}: ${normalizedContent}`;
 };
 
 export const extractAssistantText = (message: AssistantMessage): string =>
@@ -55,7 +39,37 @@ export const extractAssistantText = (message: AssistantMessage): string =>
     .map((block) => block.text)
     .join("");
 
-export const formatThinkingStatus = (thinking: string): string => `Thinking:\n${thinking}`;
+const THINKING_PREFIX = "🧠 _";
+const THINKING_CONTINUATION_PREFIX = "_";
+const THINKING_SUFFIX = "_";
+
+export const formatThinkingStatus = (thinking: string): string =>
+  `${THINKING_PREFIX}${thinking}${THINKING_SUFFIX}`;
+
+export const splitThinkingStatus = (
+  thinking: string,
+  limit = DISCORD_SAFE_MESSAGE_LIMIT,
+): string[] => {
+  const firstChunkLimit = Math.max(1, limit - THINKING_PREFIX.length - THINKING_SUFFIX.length);
+  const continuationChunkLimit = Math.max(
+    1,
+    limit - THINKING_CONTINUATION_PREFIX.length - THINKING_SUFFIX.length,
+  );
+  const chunks = splitDiscordMessage(thinking, firstChunkLimit);
+
+  return chunks.map((chunk, index) => {
+    const prefix = index === 0 ? THINKING_PREFIX : THINKING_CONTINUATION_PREFIX;
+    const contentLimit = index === 0 ? firstChunkLimit : continuationChunkLimit;
+    const trimmedChunk = chunk.trim();
+
+    if (trimmedChunk.length + prefix.length + THINKING_SUFFIX.length <= limit) {
+      return `${prefix}${trimmedChunk}${THINKING_SUFFIX}`;
+    }
+
+    const shortenedChunk = trimmedChunk.slice(0, contentLimit).trimEnd();
+    return `${prefix}${shortenedChunk}${THINKING_SUFFIX}`;
+  });
+};
 
 export const formatToolStatus = (toolName: string, phase: "start" | "end"): string =>
   phase === "start" ? `Using tool: ${toolName}` : `Finished tool: ${toolName}`;

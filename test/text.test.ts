@@ -2,13 +2,14 @@ import { describe, expect, test } from "bun:test";
 
 import {
   formatIncomingDiscordMessage,
+  formatThinkingStatus,
   normalizeIncomingUserMentions,
-  rewriteUsernamesToMentions,
   splitDiscordMessage,
+  splitThinkingStatus,
 } from "../src/domain/text.ts";
 
 describe("mention normalization", () => {
-  test("normalizes Discord user mention ids to usernames", () => {
+  test("normalizes Discord user mention ids to username and id references", () => {
     const normalized = normalizeIncomingUserMentions(
       "hey <@123> and <@!456>",
       new Map([
@@ -17,26 +18,30 @@ describe("mention normalization", () => {
       ]),
     );
 
-    expect(normalized).toBe("hey @alice and @bob");
+    expect(normalized).toBe("hey @alice (123) and @bob (456)");
   });
 
-  test("rewrites plain usernames to Discord mentions when uniquely known", () => {
-    const rewritten = rewriteUsernamesToMentions(
-      "Talk to @alice but leave @unknown alone.",
-      new Map([["alice", "123"]]),
-    );
-
-    expect(rewritten).toBe("Talk to <@123> but leave @unknown alone.");
-  });
-
-  test("includes the speaking user in normalized incoming Discord messages", () => {
+  test("includes the speaking user id in normalized incoming Discord messages", () => {
     const formatted = formatIncomingDiscordMessage(
       "jmp",
+      "999",
       "<@123> what's my username?",
       new Map([["123", "bubblebuddy"]]),
     );
 
-    expect(formatted).toBe("Message from @jmp: @bubblebuddy what's my username?");
+    expect(formatted).toBe("Message from @jmp (999): @bubblebuddy (123) what's my username?");
+  });
+});
+
+describe("status formatting", () => {
+  test("formats thinking output with emoji and italics", () => {
+    expect(formatThinkingStatus("Considering options")).toBe("🧠 _Considering options_");
+  });
+
+  test("splits thinking output into separately italicized chunks", () => {
+    const chunks = splitThinkingStatus("alpha beta gamma delta", 16);
+
+    expect(chunks).toEqual(["🧠 _alpha beta_", "_gamma delta_"]);
   });
 });
 
