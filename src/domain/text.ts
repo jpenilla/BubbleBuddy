@@ -75,7 +75,7 @@ export const splitThinkingStatus = (
 };
 
 export const formatToolStatus = (toolName: string, phase: "start" | "end"): string =>
-  phase === "start" ? `Using tool: ${toolName}` : `Finished tool: ${toolName}`;
+  phase === "start" ? `🛠️ Running \`${toolName}\`` : `✅ Completed \`${toolName}\``;
 
 interface FenceState {
   readonly language?: string;

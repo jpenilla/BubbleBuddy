@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   formatIncomingDiscordMessage,
   formatThinkingStatus,
+  formatToolStatus,
   normalizeIncomingUserMentions,
   splitDiscordMessage,
   splitThinkingStatus,
@@ -48,6 +49,15 @@ describe("status formatting", () => {
     const chunks = splitThinkingStatus("alpha beta gamma delta", 16);
 
     expect(chunks).toEqual(["🧠 _alpha beta_", "_gamma delta_"]);
+  });
+
+  test("formats tool status with generic progress emojis", () => {
+    expect(formatToolStatus("discord_list_stickers", "start")).toBe(
+      "🛠️ Running `discord_list_stickers`",
+    );
+    expect(formatToolStatus("discord_list_stickers", "end")).toBe(
+      "✅ Completed `discord_list_stickers`",
+    );
   });
 });
 
