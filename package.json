@@ -17,6 +17,7 @@
     "@effect/platform-bun": "^4.0.0-beta.35",
     "@mariozechner/pi-ai": "0.68.1",
     "@mariozechner/pi-coding-agent": "0.68.1",
+    "@sinclair/typebox": "^0.34.49",
     "discord.js": "^14.25.1",
     "effect": "^4.0.0-beta.35"
   },

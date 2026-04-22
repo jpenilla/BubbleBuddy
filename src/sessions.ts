@@ -1,4 +1,5 @@
 import type { AuthStorage, ModelRegistry } from "@mariozechner/pi-coding-agent";
+import type { Message } from "discord.js";
 import type { Api, Model } from "@mariozechner/pi-ai";
 
 import type { AppConfigShape } from "./config.ts";
@@ -11,6 +12,7 @@ import {
 
 export interface SessionFactoryInput {
   readonly channelId: string;
+  readonly originMessage: Message<true>;
   readonly promptContext: PromptTemplateContext;
   readonly sessionId: string;
   readonly sink: SessionSink;
@@ -110,6 +112,7 @@ class ChannelSessionsLiveImpl implements ChannelSessions {
       enableAgenticWorkspace: this.#config.enableAgenticWorkspace,
       model: this.#model,
       modelRegistry: this.#modelRegistry,
+      originMessage: input.originMessage,
       promptContext: input.promptContext,
       sessionId: input.sessionId,
       sink: input.sink,

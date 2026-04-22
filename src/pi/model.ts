@@ -1,35 +1,18 @@
-import {
-  getModels,
-  getProviders,
-  registerBuiltInApiProviders,
-  type Api,
-  type KnownProvider,
-  type Model,
-} from "@mariozechner/pi-ai";
+import type { ModelRegistry } from "@mariozechner/pi-coding-agent";
+import type { Api, Model } from "@mariozechner/pi-ai";
 
-let providersRegistered = false;
-
-export const ensurePiProvidersRegistered = (): void => {
-  if (!providersRegistered) {
-    registerBuiltInApiProviders();
-    providersRegistered = true;
-  }
-};
-
-export const resolvePiModel = (providerId: string, modelId: string): Model<Api> => {
-  ensurePiProvidersRegistered();
-
-  if (!getProviders().includes(providerId as KnownProvider)) {
-    throw new Error(`Unsupported PI_PROVIDER "${providerId}".`);
-  }
-
-  const model = getModels(providerId as KnownProvider).find(
-    (candidate) => candidate.id === modelId,
-  );
+export const resolvePiModel = (
+  modelRegistry: ModelRegistry,
+  providerId: string,
+  modelId: string,
+): Model<Api> => {
+  const model = modelRegistry.find(providerId, modelId);
 
   if (model === undefined) {
-    throw new Error(`Unknown PI_MODEL "${modelId}" for provider "${providerId}".`);
+    const registryError = modelRegistry.getError();
+    const suffix = registryError === undefined ? "" : ` Model registry error: ${registryError}`;
+    throw new Error(`Unknown PI_MODEL "${modelId}" for provider "${providerId}".${suffix}`);
   }
 
-  return model as Model<Api>;
+  return model;
 };

@@ -5,11 +5,13 @@ import {
   ModelRegistry,
   SessionManager,
 } from "@mariozechner/pi-coding-agent";
+import type { Message } from "discord.js";
 import type { Api, AssistantMessage, Model, ToolResultMessage } from "@mariozechner/pi-ai";
 
 import { extractAssistantText, formatToolStatus } from "../domain/text.ts";
 import type { ThinkingLevel } from "../config.ts";
 import type { PromptTemplateContext } from "../domain/prompt.ts";
+import { createDiscordTools } from "../discord/tools.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
 
 export interface SessionSink {
@@ -45,6 +47,7 @@ export interface PiChannelSessionOptions {
   readonly enableAgenticWorkspace: boolean;
   readonly model: Model<Api>;
   readonly modelRegistry: ModelRegistry;
+  readonly originMessage: Message<true>;
   readonly promptContext: PromptTemplateContext;
   readonly sessionId: string;
   readonly sink: SessionSink;
@@ -130,20 +133,21 @@ export class PiChannelSession {
     });
     await resourceLoader.reload();
 
+    const discordTools = createDiscordTools(options.originMessage);
     const { session } = await createAgentSession({
       agentDir: options.agentDir,
       authStorage: options.authStorage,
+      customTools: discordTools,
       cwd: options.cwd,
       model: options.model,
       modelRegistry: options.modelRegistry,
       resourceLoader,
       sessionManager: SessionManager.inMemory(),
       thinkingLevel: options.thinkingLevel,
-      tools: options.enableAgenticWorkspace ? undefined : [],
     });
 
     if (!options.enableAgenticWorkspace) {
-      session.setActiveToolsByName([]);
+      session.setActiveToolsByName(discordTools.map((tool) => tool.name));
     }
 
     return new PiChannelSession(session, options.sink);

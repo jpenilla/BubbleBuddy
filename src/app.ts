@@ -79,6 +79,7 @@ const createSessionInput = (
   config: AppConfigShape,
 ): SessionFactoryInput => ({
   channelId: message.channelId,
+  originMessage: message,
   promptContext: {
     botName: client.user.username,
     channelName:

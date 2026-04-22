@@ -5,7 +5,8 @@ node_modules/
 *.md
 !discord-context.md.example
 !profiles/
-!profiles/*.md
+!profiles/coding-agent.md
+!profiles/friendly.md
 dist/
 coverage/
 *.log
