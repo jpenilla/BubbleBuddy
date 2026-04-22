@@ -6,6 +6,7 @@ import {
   SessionManager,
 } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
+import { Effect, Queue } from "effect";
 import type { Api, AssistantMessage, Model, ToolResultMessage } from "@mariozechner/pi-ai";
 
 import { extractAssistantText, formatToolStatus } from "../domain/text.ts";
@@ -55,9 +56,11 @@ export interface PiChannelSessionOptions {
 }
 
 type AgentSessionInstance = Awaited<ReturnType<typeof createAgentSession>>["session"];
+type SinkAction = () => Promise<void>;
 
 export class PiChannelSession {
   readonly #executor = new SerialExecutor();
+  readonly #outputQueue: Queue.Queue<SinkAction>;
   readonly #session: AgentSessionInstance;
   readonly #sink: SessionSink;
   readonly #unsubscribe: () => void;
@@ -65,40 +68,43 @@ export class PiChannelSession {
   #latestAssistantText?: string;
 
   private constructor(session: AgentSessionInstance, sink: SessionSink) {
+    this.#outputQueue = Effect.runSync(Queue.unbounded<SinkAction>());
     this.#session = session;
     this.#sink = sink;
-    this.#unsubscribe = this.#session.subscribe(async (event) => {
+    this.#unsubscribe = this.#session.subscribe((event) => {
       switch (event.type) {
         case "agent_start":
           this.#latestAssistantText = undefined;
-          await this.#sink.onRunStart();
+          this.#enqueueOutput(() => this.#sink.onRunStart());
           break;
         case "agent_end": {
           const lastMessage = event.messages.at(-1);
-          try {
-            await this.#flushFinalOutput(
-              lastMessage?.role === "assistant" || lastMessage?.role === "toolResult"
-                ? lastMessage
-                : undefined,
-            );
-          } finally {
-            await this.#sink.onRunEnd();
-          }
+          this.#enqueueOutput(async () => {
+            try {
+              await this.#flushFinalOutput(
+                lastMessage?.role === "assistant" || lastMessage?.role === "toolResult"
+                  ? lastMessage
+                  : undefined,
+              );
+            } finally {
+              await this.#sink.onRunEnd();
+            }
+          });
           break;
         }
         case "message_update":
           if (event.assistantMessageEvent.type === "thinking_end") {
             const thinking = event.assistantMessageEvent.content.trim();
             if (thinking.length > 0) {
-              await this.#sink.onThinking(thinking);
+              this.#enqueueOutput(() => this.#sink.onThinking(thinking));
             }
           }
           break;
         case "tool_execution_end":
-          await this.#sink.onStatus(formatToolStatus(event.toolName, "end"));
+          this.#enqueueOutput(() => this.#sink.onStatus(formatToolStatus(event.toolName, "end")));
           break;
         case "tool_execution_start":
-          await this.#sink.onStatus(formatToolStatus(event.toolName, "start"));
+          this.#enqueueOutput(() => this.#sink.onStatus(formatToolStatus(event.toolName, "start")));
           break;
         case "turn_end":
           if (event.message.role === "assistant") {
@@ -109,6 +115,7 @@ export class PiChannelSession {
           break;
       }
     });
+    void Effect.runFork(this.#runOutputWorker());
   }
 
   static async create(options: PiChannelSessionOptions): Promise<PiChannelSession> {
@@ -164,8 +171,8 @@ export class PiChannelSession {
         return "steered";
       }
 
-      const run = this.#session.prompt(input).catch(async (error) => {
-        await this.#sink.onError(this.#formatUnexpectedError(error));
+      const run = this.#session.prompt(input).catch((error) => {
+        this.#enqueueOutput(() => this.#sink.onError(this.#formatUnexpectedError(error)));
       });
       this.#activeRun = run.finally(() => {
         if (this.#activeRun === run) {
@@ -191,12 +198,37 @@ export class PiChannelSession {
 
   dispose(): void {
     this.#unsubscribe();
+    Effect.runSync(Queue.shutdown(this.#outputQueue));
     this.#session.dispose();
   }
 
   async waitForIdle(): Promise<void> {
     await this.#activeRun;
     await this.#session.agent.waitForIdle();
+    await this.#drainOutputQueue();
+  }
+
+  #enqueueOutput(action: SinkAction): void {
+    void Effect.runSync(Queue.offer(this.#outputQueue, action));
+  }
+
+  async #drainOutputQueue(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      this.#enqueueOutput(async () => {
+        resolve();
+      });
+    });
+  }
+
+  #runOutputWorker(): Effect.Effect<never, never, never> {
+    return Effect.forever(
+      Effect.flatMap(Queue.take(this.#outputQueue), (action) =>
+        Effect.catchCause(
+          Effect.tryPromise(() => action()),
+          () => Effect.void,
+        ),
+      ),
+    );
   }
 
   async #flushFinalOutput(lastMessage?: AssistantMessage | ToolResultMessage): Promise<void> {
