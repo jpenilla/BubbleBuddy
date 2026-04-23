@@ -12,6 +12,7 @@ export interface AppConfigShape {
   readonly enableAgenticWorkspace: boolean;
   readonly modelProvider: string;
   readonly modelId: string;
+  readonly storageDirectory: string;
   readonly thinkingLevel: ThinkingLevel;
   readonly typingIndicatorIntervalMs: number;
 }
@@ -71,6 +72,7 @@ const AppConfigSpec = Config.all({
   ),
   modelProvider: Config.string("PI_PROVIDER"),
   modelId: Config.string("PI_MODEL"),
+  storageDirectory: Config.string("STORAGE_DIRECTORY"),
   thinkingLevel: Config.string("PI_THINKING_LEVEL").pipe(Config.withDefault("minimal")),
   typingIndicatorIntervalMs: Config.number("DISCORD_TYPING_INTERVAL_MS").pipe(
     Config.withDefault(8_000),
@@ -96,6 +98,11 @@ export const loadAppConfig = Effect.gen(function* () {
     values.discordContextTemplateFile.trim() || "discord-context.md",
     "Copy discord-context.md.example to discord-context.md or set DISCORD_CONTEXT_TEMPLATE_FILE.",
   );
+  const storageDirectory = values.storageDirectory.trim();
+
+  if (storageDirectory.length === 0) {
+    throw new Error("STORAGE_DIRECTORY must not be empty.");
+  }
 
   return {
     botProfile,
@@ -104,6 +111,7 @@ export const loadAppConfig = Effect.gen(function* () {
     enableAgenticWorkspace,
     modelId: values.modelId,
     modelProvider: values.modelProvider,
+    storageDirectory: resolve(storageDirectory),
     thinkingLevel: parseThinkingLevel(values.thinkingLevel),
     typingIndicatorIntervalMs: values.typingIndicatorIntervalMs,
   } satisfies AppConfigShape;

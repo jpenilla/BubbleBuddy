@@ -51,7 +51,7 @@ export interface PiChannelSessionOptions {
   readonly modelRegistry: ModelRegistry;
   readonly originMessage: Message<true>;
   readonly promptContext: PromptTemplateContext;
-  readonly sessionId: string;
+  readonly sessionManager: SessionManager;
   readonly sink: SessionSink;
   readonly thinkingLevel: ThinkingLevel;
 }
@@ -190,7 +190,7 @@ export class PiChannelSession {
       model: options.model,
       modelRegistry: options.modelRegistry,
       resourceLoader,
-      sessionManager: SessionManager.inMemory(),
+      sessionManager: options.sessionManager,
       thinkingLevel: options.thinkingLevel,
     });
 

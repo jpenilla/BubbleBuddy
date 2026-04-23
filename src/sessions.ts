@@ -1,4 +1,11 @@
-import type { AuthStorage, ModelRegistry } from "@mariozechner/pi-coding-agent";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
+
+import {
+  SessionManager,
+  type AuthStorage,
+  type ModelRegistry,
+} from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
 import type { Api, Model } from "@mariozechner/pi-ai";
 
@@ -10,11 +17,12 @@ import {
   type SessionSink,
 } from "./pi/channel-session.ts";
 
+const ACTIVE_SESSION_FILE_NAME = "active_session";
+
 export interface SessionFactoryInput {
   readonly channelId: string;
   readonly originMessage: Message<true>;
   readonly promptContext: PromptTemplateContext;
-  readonly sessionId: string;
   readonly sink: SessionSink;
 }
 
@@ -81,6 +89,7 @@ class ChannelSessionsLiveImpl implements ChannelSessions {
     return this.#lockFor(channelId).run(async () => {
       const session = this.#sessions.get(channelId);
       if (session === undefined) {
+        await this.#clearActiveSessionReference(channelId);
         return "discarded";
       }
 
@@ -90,6 +99,7 @@ class ChannelSessionsLiveImpl implements ChannelSessions {
 
       session.dispose();
       this.#sessions.delete(channelId);
+      await this.#clearActiveSessionReference(channelId);
       return "discarded";
     });
   }
@@ -103,6 +113,7 @@ class ChannelSessionsLiveImpl implements ChannelSessions {
   }
 
   async #createSession(input: SessionFactoryInput): Promise<PiChannelSession> {
+    const sessionManager = await this.#loadSessionManager(input.channelId);
     const session = await PiChannelSession.create({
       agentDir: this.#agentDir,
       authStorage: this.#authStorage,
@@ -114,12 +125,83 @@ class ChannelSessionsLiveImpl implements ChannelSessions {
       modelRegistry: this.#modelRegistry,
       originMessage: input.originMessage,
       promptContext: input.promptContext,
-      sessionId: input.sessionId,
+      sessionManager,
       sink: input.sink,
       thinkingLevel: this.#config.thinkingLevel,
     });
+
+    await this.#writeActiveSessionReference(input.channelId, sessionManager);
     this.#sessions.set(input.channelId, session);
     return session;
+  }
+
+  async #loadSessionManager(channelId: string): Promise<SessionManager> {
+    const sessionsDir = this.#sessionsDir(channelId);
+    await mkdir(sessionsDir, { recursive: true });
+
+    const activeSessionReference = await this.#readActiveSessionReference(channelId);
+    if (activeSessionReference !== undefined) {
+      try {
+        return SessionManager.open(
+          join(sessionsDir, activeSessionReference),
+          sessionsDir,
+          this.#cwd,
+        );
+      } catch (error) {
+        console.warn(
+          `Failed to resume session for channel ${channelId} from ${activeSessionReference}. Starting a new session.`,
+          error,
+        );
+      }
+    }
+
+    return SessionManager.create(this.#cwd, sessionsDir);
+  }
+
+  async #readActiveSessionReference(channelId: string): Promise<string | undefined> {
+    try {
+      const activeSessionReference = await readFile(
+        this.#activeSessionReferencePath(channelId),
+        "utf8",
+      );
+      const trimmed = activeSessionReference.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async #writeActiveSessionReference(
+    channelId: string,
+    sessionManager: SessionManager,
+  ): Promise<void> {
+    const sessionFile = sessionManager.getSessionFile();
+    if (sessionFile === undefined) {
+      throw new Error(`Persistent session file was not created for channel ${channelId}.`);
+    }
+
+    await mkdir(this.#channelStorageDirectory(channelId), { recursive: true });
+    await writeFile(
+      this.#activeSessionReferencePath(channelId),
+      `${basename(sessionFile)}\n`,
+      "utf8",
+    );
+  }
+
+  async #clearActiveSessionReference(channelId: string): Promise<void> {
+    await rm(this.#activeSessionReferencePath(channelId), { force: true });
+  }
+
+  #channelStorageDirectory(channelId: string): string {
+    return join(this.#config.storageDirectory, "channel", channelId);
+  }
+
+  #sessionsDir(channelId: string): string {
+    return join(this.#channelStorageDirectory(channelId), "sessions");
+  }
+
+  #activeSessionReferencePath(channelId: string): string {
+    return join(this.#channelStorageDirectory(channelId), ACTIVE_SESSION_FILE_NAME);
   }
 
   #lockFor(channelId: string): SerialExecutor {

@@ -102,7 +102,6 @@ const createSessionInput = (
         : "unknown-channel",
     guildName: message.guild.name,
   },
-  sessionId: `discord:${message.guildId}:${message.channelId}`,
   sink: createSessionSink(message.channel, config),
 });
 
