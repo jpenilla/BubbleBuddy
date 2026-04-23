@@ -93,12 +93,16 @@ export class PiChannelSession {
           break;
         case "agent_end": {
           const lastMessage = event.messages.at(-1);
+          const latestAssistantText = this.#latestAssistantText;
+          const replyToMessageId = this.#replyToMessageId;
           this.#enqueueStatusAction(async () => {
             try {
               await this.#flushFinalOutput(
                 lastMessage?.role === "assistant" || lastMessage?.role === "toolResult"
                   ? lastMessage
                   : undefined,
+                latestAssistantText,
+                replyToMessageId,
               );
             } finally {
               await this.#sink.onRunEnd();
@@ -294,7 +298,11 @@ export class PiChannelSession {
     return loop();
   }
 
-  async #flushFinalOutput(lastMessage?: AssistantMessage | ToolResultMessage): Promise<void> {
+  async #flushFinalOutput(
+    lastMessage: AssistantMessage | ToolResultMessage | undefined,
+    latestAssistantText: string | undefined,
+    replyToMessageId: string,
+  ): Promise<void> {
     if (
       lastMessage?.role === "assistant" &&
       (lastMessage.stopReason === "aborted" || lastMessage.stopReason === "error")
@@ -303,9 +311,8 @@ export class PiChannelSession {
       return;
     }
 
-    if (this.#latestAssistantText !== undefined) {
-      await this.#sink.onFinal(this.#latestAssistantText, this.#replyToMessageId);
-      this.#latestAssistantText = undefined;
+    if (latestAssistantText !== undefined) {
+      await this.#sink.onFinal(latestAssistantText, replyToMessageId);
     }
   }
 
