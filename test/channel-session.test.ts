@@ -59,7 +59,8 @@ describe("channel session Discord output ordering", () => {
       sink: SessionSink,
       statusQueue: Queue.Queue<DiscordAction>,
       mutationQueue: Queue.Queue<DiscordAction>,
-    ) => PiChannelSession)(fakeSession, sink, statusQueue, mutationQueue);
+      initialReplyToMessageId: string,
+    ) => PiChannelSession)(fakeSession, sink, statusQueue, mutationQueue, "message-1");
 
     const emit = (event: SessionEvent): void => {
       subscriber?.(event);

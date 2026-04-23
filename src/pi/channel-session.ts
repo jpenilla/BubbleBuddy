@@ -18,7 +18,7 @@ import { createPromptComposerExtension } from "./prompt-extension.ts";
 
 export interface SessionSink {
   readonly onError: (text: string) => Promise<void>;
-  readonly onFinal: (text: string) => Promise<void>;
+  readonly onFinal: (text: string, replyToMessageId: string) => Promise<void>;
   readonly onRunEnd: () => Promise<void>;
   readonly onRunStart: () => Promise<void>;
   readonly onStatus: (status: ToolStatusEmbed) => Promise<void>;
@@ -70,17 +70,20 @@ export class PiChannelSession {
   readonly #unsubscribe: () => void;
   #activeRun?: Promise<void>;
   #latestAssistantText?: string;
+  #replyToMessageId: string;
 
   private constructor(
     session: AgentSessionInstance,
     sink: SessionSink,
     statusQueue: Queue.Queue<DiscordAction>,
     mutationQueue: Queue.Queue<DiscordAction>,
+    initialReplyToMessageId: string,
   ) {
     this.#statusQueue = statusQueue;
     this.#mutationQueue = mutationQueue;
     this.#discordWorker = Effect.runFork(this.#runDiscordWorker());
     this.#session = session;
+    this.#replyToMessageId = initialReplyToMessageId;
     this.#sink = sink;
     this.#unsubscribe = this.#session.subscribe((event) => {
       switch (event.type) {
@@ -191,15 +194,23 @@ export class PiChannelSession {
       session.setActiveToolsByName(discordTools.map((tool) => tool.name));
     }
 
-    return new PiChannelSession(session, options.sink, statusQueue, mutationQueue);
+    return new PiChannelSession(
+      session,
+      options.sink,
+      statusQueue,
+      mutationQueue,
+      options.originMessage.id,
+    );
   }
 
   get isBusy(): boolean {
     return this.#session.isStreaming;
   }
 
-  activate(input: string): Promise<SessionActivationResult> {
+  activate(input: string, replyToMessageId: string): Promise<SessionActivationResult> {
     return this.#executor.run(async () => {
+      this.#replyToMessageId = replyToMessageId;
+
       if (this.#session.isStreaming) {
         await this.#session.steer(input);
         return "steered";
@@ -293,7 +304,7 @@ export class PiChannelSession {
     }
 
     if (this.#latestAssistantText !== undefined) {
-      await this.#sink.onFinal(this.#latestAssistantText);
+      await this.#sink.onFinal(this.#latestAssistantText, this.#replyToMessageId);
       this.#latestAssistantText = undefined;
     }
   }

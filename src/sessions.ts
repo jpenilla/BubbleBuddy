@@ -73,7 +73,7 @@ class ChannelSessionsLiveImpl implements ChannelSessions {
     return this.#lockFor(input.channelId).run(async () => {
       const session = this.#sessions.get(input.channelId) ?? (await this.#createSession(input));
 
-      return session.activate(messageText);
+      return session.activate(messageText, input.originMessage.id);
     });
   }
 

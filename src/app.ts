@@ -45,10 +45,22 @@ const waitForReady = async (client: Client): Promise<Client<true>> =>
 const sendChunkedMessage = async (
   channel: GuildTextBasedChannel,
   content: string,
+  replyToMessageId?: string,
 ): Promise<void> => {
   const chunks = splitDiscordMessage(content);
 
-  for (const chunk of chunks) {
+  for (const [index, chunk] of chunks.entries()) {
+    if (index === 0 && replyToMessageId !== undefined) {
+      await channel.send({
+        content: chunk,
+        reply: {
+          failIfNotExists: false,
+          messageReference: replyToMessageId,
+        },
+      });
+      continue;
+    }
+
     await channel.send(chunk);
   }
 };
@@ -113,8 +125,8 @@ const createSessionSink = (channel: GuildTextBasedChannel, config: AppConfigShap
     onError: async (text: string) => {
       await sendChunkedMessage(channel, text);
     },
-    onFinal: async (text: string) => {
-      await sendChunkedMessage(channel, text);
+    onFinal: async (text: string, replyToMessageId: string) => {
+      await sendChunkedMessage(channel, text, replyToMessageId);
     },
     onThinking: async (text: string) => {
       for (const chunk of splitThinkingStatus(text)) {
