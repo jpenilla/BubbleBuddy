@@ -254,7 +254,7 @@ export const program = Effect.gen(function* () {
     }),
     (client) =>
       Effect.tryPromise(async () => {
-        await sessions.waitForIdle();
+        await sessions.waitForSettled();
         client.destroy();
       }),
   );

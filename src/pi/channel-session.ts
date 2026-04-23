@@ -6,7 +6,7 @@ import {
   SessionManager,
 } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
-import { Effect, Queue } from "effect";
+import { Cause, Effect, Fiber, Option, Queue } from "effect";
 import type { Api, AssistantMessage, Model, ToolResultMessage } from "@mariozechner/pi-ai";
 
 import type { ToolStatusEmbed } from "../discord/tool-status-embed.ts";
@@ -57,30 +57,40 @@ export interface PiChannelSessionOptions {
 }
 
 type AgentSessionInstance = Awaited<ReturnType<typeof createAgentSession>>["session"];
-type SinkAction = () => Promise<void>;
+type DiscordAction = () => Promise<void>;
+type RunDiscordAction = <T>(operation: () => Promise<T>) => Promise<T>;
 
 export class PiChannelSession {
   readonly #executor = new SerialExecutor();
-  readonly #outputQueue: Queue.Queue<SinkAction>;
+  readonly #statusQueue: Queue.Queue<DiscordAction>;
+  readonly #mutationQueue: Queue.Queue<DiscordAction>;
+  readonly #discordWorker: Fiber.Fiber<void, never>;
   readonly #session: AgentSessionInstance;
   readonly #sink: SessionSink;
   readonly #unsubscribe: () => void;
   #activeRun?: Promise<void>;
   #latestAssistantText?: string;
 
-  private constructor(session: AgentSessionInstance, sink: SessionSink) {
-    this.#outputQueue = Effect.runSync(Queue.unbounded<SinkAction>());
+  private constructor(
+    session: AgentSessionInstance,
+    sink: SessionSink,
+    statusQueue: Queue.Queue<DiscordAction>,
+    mutationQueue: Queue.Queue<DiscordAction>,
+  ) {
+    this.#statusQueue = statusQueue;
+    this.#mutationQueue = mutationQueue;
+    this.#discordWorker = Effect.runFork(this.#runDiscordWorker());
     this.#session = session;
     this.#sink = sink;
     this.#unsubscribe = this.#session.subscribe((event) => {
       switch (event.type) {
         case "agent_start":
           this.#latestAssistantText = undefined;
-          this.#enqueueOutput(() => this.#sink.onRunStart());
+          this.#enqueueStatusAction(() => this.#sink.onRunStart());
           break;
         case "agent_end": {
           const lastMessage = event.messages.at(-1);
-          this.#enqueueOutput(async () => {
+          this.#enqueueStatusAction(async () => {
             try {
               await this.#flushFinalOutput(
                 lastMessage?.role === "assistant" || lastMessage?.role === "toolResult"
@@ -97,23 +107,15 @@ export class PiChannelSession {
           if (event.assistantMessageEvent.type === "thinking_end") {
             const thinking = event.assistantMessageEvent.content.trim();
             if (thinking.length > 0) {
-              this.#enqueueOutput(() => this.#sink.onThinking(thinking));
+              this.#enqueueStatusAction(() => this.#sink.onThinking(thinking));
             }
           }
           break;
         case "tool_execution_end":
-          this.#enqueueOutput(() =>
-            this.#sink.onStatus({
-              phase: "end",
-              toolCallId: event.toolCallId,
-              toolName: event.toolName,
-            }),
-          );
-          break;
         case "tool_execution_start":
-          this.#enqueueOutput(() =>
+          this.#enqueueStatusAction(() =>
             this.#sink.onStatus({
-              phase: "start",
+              phase: event.type === "tool_execution_start" ? "start" : "end",
               toolCallId: event.toolCallId,
               toolName: event.toolName,
             }),
@@ -128,7 +130,6 @@ export class PiChannelSession {
           break;
       }
     });
-    void Effect.runFork(this.#runOutputWorker());
   }
 
   static async create(options: PiChannelSessionOptions): Promise<PiChannelSession> {
@@ -153,7 +154,27 @@ export class PiChannelSession {
     });
     await resourceLoader.reload();
 
-    const discordTools = createDiscordTools(options.originMessage);
+    const statusQueue = Effect.runSync(Queue.unbounded<DiscordAction>());
+    const mutationQueue = Effect.runSync(Queue.unbounded<DiscordAction>());
+
+    const runDiscordAction: RunDiscordAction = <T>(operation: () => Promise<T>): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const enqueued = Effect.runSync(
+          Queue.offer(mutationQueue, async () => {
+            try {
+              resolve(await operation());
+            } catch (error) {
+              reject(error);
+            }
+          }),
+        );
+
+        if (!enqueued) {
+          reject(new Error("Discord action queue is unavailable."));
+        }
+      });
+
+    const discordTools = createDiscordTools(options.originMessage, runDiscordAction);
     const { session } = await createAgentSession({
       agentDir: options.agentDir,
       authStorage: options.authStorage,
@@ -170,7 +191,7 @@ export class PiChannelSession {
       session.setActiveToolsByName(discordTools.map((tool) => tool.name));
     }
 
-    return new PiChannelSession(session, options.sink);
+    return new PiChannelSession(session, options.sink, statusQueue, mutationQueue);
   }
 
   get isBusy(): boolean {
@@ -185,7 +206,7 @@ export class PiChannelSession {
       }
 
       const run = this.#session.prompt(input).catch((error) => {
-        this.#enqueueOutput(() => this.#sink.onError(this.#formatUnexpectedError(error)));
+        this.#enqueueStatusAction(() => this.#sink.onError(this.#formatUnexpectedError(error)));
       });
       this.#activeRun = run.finally(() => {
         if (this.#activeRun === run) {
@@ -211,37 +232,55 @@ export class PiChannelSession {
 
   dispose(): void {
     this.#unsubscribe();
-    Effect.runSync(Queue.shutdown(this.#outputQueue));
+    Effect.runSync(Queue.shutdown(this.#statusQueue));
+    Effect.runSync(Queue.shutdown(this.#mutationQueue));
+    void Effect.runFork(Fiber.interrupt(this.#discordWorker));
     this.#session.dispose();
   }
 
-  async waitForIdle(): Promise<void> {
+  async waitForSettled(): Promise<void> {
     await this.#activeRun;
     await this.#session.agent.waitForIdle();
-    await this.#drainOutputQueue();
-  }
-
-  #enqueueOutput(action: SinkAction): void {
-    void Effect.runSync(Queue.offer(this.#outputQueue, action));
-  }
-
-  async #drainOutputQueue(): Promise<void> {
     await new Promise<void>((resolve) => {
-      this.#enqueueOutput(async () => {
+      this.#enqueueStatusAction(async () => {
         resolve();
       });
     });
   }
 
-  #runOutputWorker(): Effect.Effect<never, never, never> {
-    return Effect.forever(
-      Effect.flatMap(Queue.take(this.#outputQueue), (action) =>
-        Effect.catchCause(
+  #enqueueStatusAction(action: DiscordAction): void {
+    void Effect.runSync(Queue.offer(this.#statusQueue, action));
+  }
+
+  #runDiscordWorker(): Effect.Effect<void> {
+    const statusQueue = this.#statusQueue;
+    const mutationQueue = this.#mutationQueue;
+
+    const loop = (): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        let action = yield* Queue.poll(statusQueue).pipe(Effect.map(Option.getOrNull));
+        if (action === null) {
+          action = yield* Queue.poll(mutationQueue).pipe(Effect.map(Option.getOrNull));
+        }
+        if (action === null) {
+          action = yield* Effect.raceFirst(Queue.take(statusQueue), Queue.take(mutationQueue)).pipe(
+            Effect.catchIf(Cause.isDone, () => Effect.succeed(null)),
+          );
+          if (action === null) {
+            return;
+          }
+        }
+
+        // Discard Discord sink/action errors so one failed send/edit doesn't stop the worker.
+        yield* Effect.catchCause(
           Effect.tryPromise(() => action()),
           () => Effect.void,
-        ),
-      ),
-    );
+        );
+
+        yield* Effect.suspend(loop);
+      });
+
+    return loop();
   }
 
   async #flushFinalOutput(lastMessage?: AssistantMessage | ToolResultMessage): Promise<void> {

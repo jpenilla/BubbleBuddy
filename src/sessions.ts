@@ -25,7 +25,7 @@ export interface ChannelSessions {
   ) => Promise<SessionActivationResult>;
   readonly discard: (channelId: string) => Promise<"discarded" | "rejected-busy">;
   readonly isBusy: (channelId: string) => boolean;
-  readonly waitForIdle: () => Promise<void>;
+  readonly waitForSettled: () => Promise<void>;
 }
 
 export interface ChannelSessionsOptions {
@@ -98,8 +98,8 @@ class ChannelSessionsLiveImpl implements ChannelSessions {
     return this.#sessions.get(channelId)?.isBusy ?? false;
   }
 
-  async waitForIdle(): Promise<void> {
-    await Promise.all([...this.#sessions.values()].map((session) => session.waitForIdle()));
+  async waitForSettled(): Promise<void> {
+    await Promise.all([...this.#sessions.values()].map((session) => session.waitForSettled()));
   }
 
   async #createSession(input: SessionFactoryInput): Promise<PiChannelSession> {

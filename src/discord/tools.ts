@@ -48,7 +48,10 @@ const formatStickerList = async (message: Message<true>): Promise<string> => {
   ].join("\n");
 };
 
-export const createDiscordTools = (originMessage: Message<true>): ToolDefinition[] => [
+export const createDiscordTools = (
+  originMessage: Message<true>,
+  runDiscordAction: <T>(operation: () => Promise<T>) => Promise<T>,
+): ToolDefinition[] => [
   defineTool({
     name: LIST_CUSTOM_EMOJIS_TOOL,
     label: "List Custom Emojis",
@@ -104,10 +107,12 @@ export const createDiscordTools = (originMessage: Message<true>): ToolDefinition
         };
       }
 
-      await originMessage.channel.send({
-        content: params.caption,
-        stickers: [sticker.sticker.id],
-      });
+      await runDiscordAction(() =>
+        originMessage.channel.send({
+          content: params.caption,
+          stickers: [sticker.sticker.id],
+        }),
+      );
 
       return {
         content: [
@@ -179,7 +184,7 @@ export const createDiscordTools = (originMessage: Message<true>): ToolDefinition
         };
       }
 
-      await targetMessage.react(emoji);
+      await runDiscordAction(() => targetMessage.react(emoji));
 
       return {
         content: [
