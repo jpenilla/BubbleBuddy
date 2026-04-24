@@ -75,12 +75,13 @@ describe("discord upload tool", () => {
       path: "/workspace/hello.txt",
     })) as any;
 
-    expect(runDiscordActionCalls).toBe(2);
+    expect(runDiscordActionCalls).toBe(3);
     expect(result.isError).toBe(true);
     expect(result.content[0]?.type).toBe("text");
     expect(result.content[0]?.text).toContain("Discord rejected file upload hello.txt");
     expect(result.content[0]?.text).toContain("path attempt failed:");
     expect(result.content[0]?.text).toContain("buffer attempt failed:");
+    expect(result.content[0]?.text).toContain("stream attempt failed:");
     expect(result.content[0]?.text).toContain("Request entity too large");
   });
 

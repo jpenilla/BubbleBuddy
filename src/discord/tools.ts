@@ -1,9 +1,10 @@
+import { createReadStream } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { basename, relative, resolve } from "node:path";
 
 import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
-import type { Message } from "discord.js";
+import { AttachmentBuilder, type Message } from "discord.js";
 
 import {
   formatCustomEmojiMessageSyntax,
@@ -361,6 +362,27 @@ export const createDiscordTools = (
                 sent = true;
               } catch (bufferError) {
                 failures.push(`buffer attempt failed: ${formatToolError(bufferError)}`);
+              }
+            }
+
+            if (!sent) {
+              try {
+                await runDiscordAction(async () => {
+                  const stream = createReadStream(resolved.hostPath);
+                  try {
+                    await originMessage.channel.send({
+                      content: params.caption,
+                      files: [new AttachmentBuilder(stream, { name: fileName })],
+                    });
+                  } finally {
+                    if (!stream.destroyed) {
+                      stream.destroy();
+                    }
+                  }
+                });
+                sent = true;
+              } catch (streamError) {
+                failures.push(`stream attempt failed: ${formatToolError(streamError)}`);
               }
             }
           }
