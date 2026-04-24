@@ -86,10 +86,6 @@ export const loadAppConfig = Effect.gen(function* () {
     values.enableAgenticWorkspace,
   );
 
-  if (enableAgenticWorkspace) {
-    throw new Error("ENABLE_AGENTIC_WORKSPACE=true is not implemented yet.");
-  }
-
   const botProfile = yield* readTextFile(
     values.botProfileFile.trim() || "profiles/friendly.md",
     "Use BOT_PROFILE_FILE to point at a committed profile such as profiles/friendly.md.",

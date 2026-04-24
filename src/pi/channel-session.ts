@@ -1,9 +1,10 @@
 import {
   AuthStorage,
   createAgentSession,
-  DefaultResourceLoader,
   ModelRegistry,
   SessionManager,
+  SettingsManager,
+  type ExtensionFactory,
 } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
 import { Cause, Effect, Fiber, Option, Queue } from "effect";
@@ -14,7 +15,10 @@ import { createDiscordTools } from "../discord/tools.ts";
 import { extractAssistantText } from "../domain/text.ts";
 import type { ThinkingLevel } from "../config.ts";
 import type { PromptTemplateContext } from "../domain/prompt.ts";
+import { createChannelWorkspaceResourceLoader } from "./channel-workspace-resource-loader.ts";
+import { createGondolinExtension } from "./gondolin-extension.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
+import { WORKSPACE_CWD } from "./workspace.ts";
 
 export interface SessionSink {
   readonly onError: (text: string) => Promise<void>;
@@ -24,8 +28,6 @@ export interface SessionSink {
   readonly onStatus: (status: ToolStatusEmbed) => Promise<void>;
   readonly onThinking: (text: string) => Promise<void>;
 }
-
-export type SessionActivationResult = "started" | "steered";
 
 class SerialExecutor {
   #tail = Promise.resolve();
@@ -44,8 +46,8 @@ export interface PiChannelSessionOptions {
   readonly agentDir: string;
   readonly authStorage: AuthStorage;
   readonly botProfile: string;
-  readonly cwd: string;
   readonly discordContextTemplate: string;
+  readonly hostWorkspaceDir: string;
   readonly enableAgenticWorkspace: boolean;
   readonly model: Model<Api>;
   readonly modelRegistry: ModelRegistry;
@@ -60,6 +62,8 @@ type AgentSessionInstance = Awaited<ReturnType<typeof createAgentSession>>["sess
 type DiscordAction = () => Promise<void>;
 type RunDiscordAction = <T>(operation: () => Promise<T>) => Promise<T>;
 
+const SHUTDOWN_ABORT_TIMEOUT = "8 seconds";
+
 export class PiChannelSession {
   readonly #executor = new SerialExecutor();
   readonly #statusQueue: Queue.Queue<DiscordAction>;
@@ -68,7 +72,11 @@ export class PiChannelSession {
   readonly #session: AgentSessionInstance;
   readonly #sink: SessionSink;
   readonly #unsubscribe: () => void;
-  #activeRun?: Promise<void>;
+  readonly #workspaceDispose?: () => Promise<void>;
+  #disposePromise?: Promise<void>;
+  #isDisposed = false;
+  #isShuttingDown = false;
+  #runInProgress = false;
   #latestAssistantText?: string;
   #replyToMessageId: string;
 
@@ -78,6 +86,7 @@ export class PiChannelSession {
     statusQueue: Queue.Queue<DiscordAction>,
     mutationQueue: Queue.Queue<DiscordAction>,
     initialReplyToMessageId: string,
+    workspaceDispose?: () => Promise<void>,
   ) {
     this.#statusQueue = statusQueue;
     this.#mutationQueue = mutationQueue;
@@ -85,13 +94,16 @@ export class PiChannelSession {
     this.#session = session;
     this.#replyToMessageId = initialReplyToMessageId;
     this.#sink = sink;
+    this.#workspaceDispose = workspaceDispose;
     this.#unsubscribe = this.#session.subscribe((event) => {
       switch (event.type) {
         case "agent_start":
+          this.#runInProgress = true;
           this.#latestAssistantText = undefined;
           this.#enqueueStatusAction(() => this.#sink.onRunStart());
           break;
         case "agent_end": {
+          this.#runInProgress = false;
           const lastMessage = event.messages.at(-1);
           const latestAssistantText = this.#latestAssistantText;
           const replyToMessageId = this.#replyToMessageId;
@@ -140,24 +152,34 @@ export class PiChannelSession {
   }
 
   static async create(options: PiChannelSessionOptions): Promise<PiChannelSession> {
-    const resourceLoader = new DefaultResourceLoader({
+    const settingsManager = SettingsManager.create(options.hostWorkspaceDir, options.agentDir);
+    const extensionFactories: ExtensionFactory[] = [
+      createPromptComposerExtension({
+        botProfile: options.botProfile,
+        discordContextTemplate: options.discordContextTemplate,
+        enableAgenticWorkspace: options.enableAgenticWorkspace,
+        promptContext: options.promptContext,
+      }),
+    ];
+
+    let workspaceDispose: (() => Promise<void>) | undefined;
+    if (options.enableAgenticWorkspace) {
+      const gondolin = createGondolinExtension({
+        channelId: options.originMessage.channelId,
+        sessionCwd: WORKSPACE_CWD,
+        sessionLabel: `bubblebuddy:${options.originMessage.channelId}`,
+        workspaceDir: options.hostWorkspaceDir,
+      });
+      extensionFactories.push(gondolin.extensionFactory);
+      workspaceDispose = gondolin.dispose;
+    }
+
+    const resourceLoader = createChannelWorkspaceResourceLoader({
       agentDir: options.agentDir,
-      appendSystemPromptOverride: () => [],
-      cwd: options.cwd,
-      extensionFactories: [
-        createPromptComposerExtension({
-          botProfile: options.botProfile,
-          discordContextTemplate: options.discordContextTemplate,
-          enableAgenticWorkspace: options.enableAgenticWorkspace,
-          promptContext: options.promptContext,
-        }),
-      ],
-      noContextFiles: !options.enableAgenticWorkspace,
-      noExtensions: true,
-      noPromptTemplates: true,
-      noSkills: !options.enableAgenticWorkspace,
-      noThemes: true,
-      systemPromptOverride: () => undefined,
+      enableAgenticWorkspace: options.enableAgenticWorkspace,
+      extensionFactories,
+      settingsManager,
+      workspaceDir: options.hostWorkspaceDir,
     });
     await resourceLoader.reload();
 
@@ -186,11 +208,12 @@ export class PiChannelSession {
       agentDir: options.agentDir,
       authStorage: options.authStorage,
       customTools: discordTools,
-      cwd: options.cwd,
+      cwd: WORKSPACE_CWD,
       model: options.model,
       modelRegistry: options.modelRegistry,
       resourceLoader,
       sessionManager: options.sessionManager,
+      settingsManager,
       thinkingLevel: options.thinkingLevel,
     });
 
@@ -204,6 +227,7 @@ export class PiChannelSession {
       statusQueue,
       mutationQueue,
       options.originMessage.id,
+      workspaceDispose,
     );
   }
 
@@ -211,26 +235,20 @@ export class PiChannelSession {
     return this.#session.isStreaming;
   }
 
-  activate(input: string, replyToMessageId: string): Promise<SessionActivationResult> {
+  activate(input: string, replyToMessageId: string): Promise<void> {
     return this.#executor.run(async () => {
       this.#replyToMessageId = replyToMessageId;
 
       if (this.#session.isStreaming) {
         await this.#session.steer(input);
-        return "steered";
+        return;
       }
 
-      const run = this.#session.prompt(input).catch((error) => {
-        this.#enqueueStatusAction(() => this.#sink.onError(this.#formatUnexpectedError(error)));
-      });
-      this.#activeRun = run.finally(() => {
-        if (this.#activeRun === run) {
-          this.#activeRun = undefined;
+      void this.#session.prompt(input).catch((error) => {
+        if (!this.#isShuttingDown) {
+          this.#enqueueStatusAction(() => this.#sink.onError(this.#formatUnexpectedError(error)));
         }
       });
-      void this.#activeRun;
-
-      return "started";
     });
   }
 
@@ -245,26 +263,80 @@ export class PiChannelSession {
     });
   }
 
-  dispose(): void {
+  async shutdown(): Promise<void> {
+    if (this.#isDisposed) {
+      return;
+    }
+
+    this.#isShuttingDown = true;
+
+    await this.#drainDiscordActions();
+    const abortCompleted = await this.#abortForShutdown();
+    if (!abortCompleted || this.#runInProgress) {
+      this.#runInProgress = false;
+      this.#enqueueStatusAction(() => this.#sink.onRunEnd());
+    }
+    await this.#drainDiscordActions();
+    await this.dispose();
+  }
+
+  dispose(): Promise<void> {
+    this.#disposePromise ??= this.#dispose();
+    return this.#disposePromise;
+  }
+
+  async #abortForShutdown(): Promise<boolean> {
+    return await Effect.runPromise(
+      Effect.tryPromise(() => this.#session.abort()).pipe(
+        Effect.as(true),
+        Effect.timeoutOrElse({
+          duration: SHUTDOWN_ABORT_TIMEOUT,
+          orElse: () => Effect.succeed(false),
+        }),
+        Effect.catch(() => Effect.succeed(true)),
+      ),
+    );
+  }
+
+  async #dispose(): Promise<void> {
+    if (this.#isDisposed) {
+      return;
+    }
+
+    this.#isDisposed = true;
     this.#unsubscribe();
     Effect.runSync(Queue.shutdown(this.#statusQueue));
     Effect.runSync(Queue.shutdown(this.#mutationQueue));
-    void Effect.runFork(Fiber.interrupt(this.#discordWorker));
+    await Effect.runPromise(Fiber.interrupt(this.#discordWorker)).catch(() => undefined);
     this.#session.dispose();
+    await this.#workspaceDispose?.().catch(() => undefined);
   }
 
-  async waitForSettled(): Promise<void> {
-    await this.#activeRun;
-    await this.#session.agent.waitForIdle();
-    await new Promise<void>((resolve) => {
-      this.#enqueueStatusAction(async () => {
-        resolve();
-      });
-    });
+  async #drainDiscordActions(): Promise<void> {
+    await Promise.all([
+      new Promise<void>((resolve) => {
+        if (!this.#offerDiscordAction(this.#statusQueue, async () => resolve())) {
+          resolve();
+        }
+      }),
+      new Promise<void>((resolve) => {
+        if (!this.#offerDiscordAction(this.#mutationQueue, async () => resolve())) {
+          resolve();
+        }
+      }),
+    ]);
   }
 
   #enqueueStatusAction(action: DiscordAction): void {
-    void Effect.runSync(Queue.offer(this.#statusQueue, action));
+    this.#offerDiscordAction(this.#statusQueue, action);
+  }
+
+  #offerDiscordAction(queue: Queue.Queue<DiscordAction>, action: DiscordAction): boolean {
+    try {
+      return Effect.runSync(Queue.offer(queue, action));
+    } catch {
+      return false;
+    }
   }
 
   #runDiscordWorker(): Effect.Effect<void> {
@@ -307,7 +379,11 @@ export class PiChannelSession {
       lastMessage?.role === "assistant" &&
       (lastMessage.stopReason === "aborted" || lastMessage.stopReason === "error")
     ) {
-      await this.#sink.onError(lastMessage.errorMessage ?? "The model request failed.");
+      if (!this.#isShuttingDown) {
+        await this.#sink.onError(lastMessage.errorMessage ?? "The model request failed.");
+      } else if (latestAssistantText !== undefined) {
+        await this.#sink.onFinal(latestAssistantText, replyToMessageId);
+      }
       return;
     }
 

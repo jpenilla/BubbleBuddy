@@ -6,6 +6,10 @@ import { PiChannelSession, type SessionSink } from "../src/pi/channel-session.ts
 type DiscordAction = () => Promise<void>;
 type SessionEvent =
   | {
+      readonly type: "agent_end";
+      readonly messages: readonly [{ readonly role: "assistant"; readonly stopReason: "aborted" }];
+    }
+  | {
       readonly type: "tool_execution_end" | "tool_execution_start";
       readonly toolCallId: string;
       readonly toolName: string;
@@ -132,7 +136,77 @@ describe("channel session Discord output ordering", () => {
         "end:tool-3",
       ]);
     } finally {
-      session.dispose();
+      await session.dispose();
     }
+  });
+
+  test("shutdown flushes queued status and suppresses abort errors", async () => {
+    const observed: string[] = [];
+    const sink: SessionSink = {
+      onError: async (text) => {
+        observed.push(`error:${text}`);
+      },
+      onFinal: async (text) => {
+        observed.push(`final:${text}`);
+      },
+      onRunEnd: async () => {
+        observed.push("run-end");
+      },
+      onRunStart: async () => {
+        observed.push("run-start");
+      },
+      onStatus: async (status) => {
+        observed.push(`${status.phase}:${status.toolCallId}`);
+      },
+      onThinking: async (text) => {
+        observed.push(`thinking:${text}`);
+      },
+    };
+
+    let subscriber: ((event: SessionEvent) => void) | undefined;
+    let disposed = false;
+    const fakeSession = {
+      abort: async () => {
+        subscriber?.({
+          type: "agent_end",
+          messages: [{ role: "assistant", stopReason: "aborted" }],
+        });
+      },
+      agent: {
+        reset: () => undefined,
+        waitForIdle: async () => undefined,
+      },
+      dispose: () => {
+        disposed = true;
+      },
+      isStreaming: true,
+      subscribe: (callback: (event: SessionEvent) => void) => {
+        subscriber = callback;
+        return () => {
+          subscriber = undefined;
+        };
+      },
+    };
+
+    const statusQueue = Effect.runSync(Queue.unbounded<DiscordAction>());
+    const mutationQueue = Effect.runSync(Queue.unbounded<DiscordAction>());
+    const session = new (PiChannelSession as unknown as new (
+      agentSession: typeof fakeSession,
+      sink: SessionSink,
+      statusQueue: Queue.Queue<DiscordAction>,
+      mutationQueue: Queue.Queue<DiscordAction>,
+      initialReplyToMessageId: string,
+    ) => PiChannelSession)(fakeSession, sink, statusQueue, mutationQueue, "message-1");
+
+    subscriber?.({
+      type: "tool_execution_start",
+      toolCallId: "tool-1",
+      toolName: "bash",
+    });
+
+    await session.shutdown();
+
+    expect(observed).toEqual(["start:tool-1", "run-end"]);
+    expect(disposed).toBe(true);
   });
 });

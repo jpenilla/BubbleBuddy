@@ -1,6 +1,6 @@
-import { BunRuntime } from "@effect/platform-bun";
+import { NodeRuntime } from "@effect/platform-node";
 import { Effect } from "effect";
 
 import { program } from "./app.ts";
 
-BunRuntime.runMain(Effect.scoped(program));
+NodeRuntime.runMain(Effect.scoped(program));

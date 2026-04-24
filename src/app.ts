@@ -228,7 +228,9 @@ const makeDiscordClient = (): Client =>
   });
 
 export const program = Effect.gen(function* () {
+  yield* Effect.logInfo("Starting BubbleBuddy.");
   const config = yield* loadAppConfig;
+  yield* Effect.logInfo("Configuration loaded.");
   const agentDir = getAgentDir();
   const authStorage = AuthStorage.create();
   const modelRegistry = ModelRegistry.create(authStorage);
@@ -237,39 +239,58 @@ export const program = Effect.gen(function* () {
     agentDir,
     authStorage,
     config,
-    cwd: process.cwd(),
     model,
     modelRegistry,
   });
 
-  const client = yield* Effect.acquireRelease(
-    Effect.tryPromise(async () => {
-      const discordClient = makeDiscordClient();
+  yield* Effect.logInfo("Pi model initialized.");
 
-      discordClient.on(Events.MessageCreate, (message) => {
-        if (!message.inGuild()) {
-          return;
-        }
+  const client = yield* Effect.acquireRelease(Effect.sync(makeDiscordClient), (client) =>
+    Effect.gen(function* () {
+      yield* Effect.logInfo("Shutdown requested. Stopping Discord intake.");
+      client.removeAllListeners(Events.MessageCreate);
+      client.removeAllListeners(Events.InteractionCreate);
 
-        void handleGuildMessage(discordClient as Client<true>, config, sessions, message);
-      });
+      yield* Effect.logInfo("Shutting down channel sessions.");
+      yield* Effect.tryPromise(() => sessions.shutdown()).pipe(
+        Effect.timeoutOrElse({
+          duration: "10 seconds",
+          orElse: () => Effect.logWarning("Timed out waiting for sessions to shut down."),
+        }),
+        Effect.catch((error: unknown) =>
+          Effect.logWarning(`Session shutdown failed: ${String(error)}`),
+        ),
+      );
 
-      discordClient.on(Events.InteractionCreate, (interaction) => {
-        void handleInteraction(sessions, interaction);
-      });
-
-      await discordClient.login(config.discordToken);
-      const readyClient = await waitForReady(discordClient);
-      await registerSlashCommands(readyClient);
-      return readyClient;
+      yield* Effect.logInfo("Destroying Discord client.");
+      client.destroy();
+      yield* Effect.logInfo("Shutdown cleanup complete.");
     }),
-    (client) =>
-      Effect.tryPromise(async () => {
-        await sessions.waitForSettled();
-        client.destroy();
-      }),
   );
 
-  yield* Effect.log(`Connected to Discord as ${client.user.tag}`);
+  client.on(Events.MessageCreate, (message) => {
+    if (!message.inGuild()) {
+      return;
+    }
+
+    void handleGuildMessage(client as Client<true>, config, sessions, message);
+  });
+
+  client.on(Events.InteractionCreate, (interaction) => {
+    void handleInteraction(sessions, interaction);
+  });
+
+  yield* Effect.logInfo("Logging into Discord.");
+  const readyClient = yield* Effect.tryPromise(async () => {
+    const ready = waitForReady(client);
+    await client.login(config.discordToken);
+    return await ready;
+  });
+
+  yield* Effect.logInfo("Registering Discord slash commands.");
+  yield* Effect.tryPromise(() => registerSlashCommands(readyClient));
+  yield* Effect.logInfo("Discord slash commands registered.");
+
+  yield* Effect.logInfo(`Connected to Discord as ${readyClient.user.tag}`);
   yield* Effect.never;
 });

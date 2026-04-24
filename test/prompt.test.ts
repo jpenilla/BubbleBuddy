@@ -40,4 +40,17 @@ describe("prompt rendering", () => {
     expect(prompt).toContain("Current date: ");
     expect(prompt).not.toContain("Current working directory:");
   });
+
+  test("includes the working directory when requested", () => {
+    const prompt = composeSystemPrompt({
+      botProfile: "Profile section",
+      discordContext: "Discord section",
+      includeWorkingDirectory: true,
+      systemPromptOptions: {
+        cwd: "/workspace",
+      },
+    });
+
+    expect(prompt).toContain("Current working directory: /workspace");
+  });
 });
