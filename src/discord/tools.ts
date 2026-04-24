@@ -1,3 +1,6 @@
+import { realpath, stat } from "node:fs/promises";
+import { basename, relative, resolve } from "node:path";
+
 import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
@@ -9,10 +12,12 @@ import {
   listUsableStickers,
   normalizeReactionEmoji,
 } from "./assets.ts";
+import { WORKSPACE_CWD } from "../pi/workspace.ts";
 
 const LIST_CUSTOM_EMOJIS_TOOL = "discord_list_custom_emojis";
 const LIST_STICKERS_TOOL = "discord_list_stickers";
 const SEND_STICKER_TOOL = "discord_send_sticker";
+const UPLOAD_FILE_TOOL = "discord_upload_file";
 const REACT_TOOL = "discord_react";
 
 const formatEmojiList = (message: Message<true>): string => {
@@ -48,9 +53,81 @@ const formatStickerList = async (message: Message<true>): Promise<string> => {
   ].join("\n");
 };
 
+const resolveWorkspaceFile = async (
+  workspaceDir: string,
+  inputPath: string,
+): Promise<{ hostPath: string; size: number; workspacePath: string }> => {
+  const rawPath = inputPath.trim();
+  if (rawPath.length === 0) {
+    throw new Error("Path must not be empty.");
+  }
+
+  let workspaceRelativePath: string;
+  if (rawPath.startsWith(`${WORKSPACE_CWD}/`)) {
+    workspaceRelativePath = rawPath.slice(`${WORKSPACE_CWD}/`.length);
+  } else if (rawPath === WORKSPACE_CWD) {
+    throw new Error(`${WORKSPACE_CWD} is a directory. Provide a file path.`);
+  } else if (rawPath.startsWith("/")) {
+    throw new Error(`Absolute paths outside ${WORKSPACE_CWD} are not allowed.`);
+  } else {
+    workspaceRelativePath = rawPath;
+  }
+
+  const workspaceRoot = resolve(workspaceDir);
+  const candidatePath = resolve(workspaceRoot, workspaceRelativePath);
+
+  let realWorkspaceRoot: string;
+  try {
+    realWorkspaceRoot = await realpath(workspaceRoot);
+  } catch {
+    realWorkspaceRoot = workspaceRoot;
+  }
+
+  let realCandidatePath: string;
+  try {
+    realCandidatePath = await realpath(candidatePath);
+  } catch {
+    throw new Error(`File not found in ${WORKSPACE_CWD}: ${inputPath}`);
+  }
+
+  const rel = relative(realWorkspaceRoot, realCandidatePath);
+  if (rel === ".." || rel.startsWith(`../`) || rel.startsWith(`..\\`)) {
+    throw new Error(`File resolves outside ${WORKSPACE_CWD}: ${inputPath}`);
+  }
+
+  const fileStat = await stat(realCandidatePath).catch(() => null);
+  if (fileStat === null || !fileStat.isFile()) {
+    throw new Error(`Path is not a regular file: ${inputPath}`);
+  }
+
+  const normalizedRelative = relative(realWorkspaceRoot, realCandidatePath).replaceAll("\\", "/");
+  return {
+    hostPath: realCandidatePath,
+    size: fileStat.size,
+    workspacePath: `${WORKSPACE_CWD}/${normalizedRelative}`,
+  };
+};
+
+const getGuildUploadLimit = (message: Message<true>): number => {
+  switch (message.guild.premiumTier) {
+    case 3:
+      return 100 * 1000 * 1000;
+    case 2:
+      return 50 * 1000 * 1000;
+    default:
+      return 10 * 1024 * 1024;
+  }
+};
+
+export interface DiscordToolOptions {
+  readonly enableAgenticWorkspace: boolean;
+  readonly workspaceDir: string;
+}
+
 export const createDiscordTools = (
   originMessage: Message<true>,
   runDiscordAction: <T>(operation: () => Promise<T>) => Promise<T>,
+  options: DiscordToolOptions,
 ): ToolDefinition[] => {
   const tools: ToolDefinition[] = [
     defineTool({
@@ -199,6 +276,63 @@ export const createDiscordTools = (
       },
     }),
   ];
+
+  if (options.enableAgenticWorkspace) {
+    tools.push(
+      defineTool({
+        name: UPLOAD_FILE_TOOL,
+        label: "Upload File",
+        description: "Upload one file from /workspace to the current Discord channel.",
+        promptSnippet: "Upload a file from /workspace to the current Discord channel",
+        promptGuidelines: [
+          "Use discord_upload_file when the user asks for a file/download/attachment.",
+          "Only provide paths inside /workspace.",
+          "If needed, use read/bash tools first to inspect or generate the file in /workspace.",
+        ],
+        parameters: Type.Object({
+          caption: Type.Optional(
+            Type.String({
+              description: "Optional message text to send with the uploaded file.",
+            }),
+          ),
+          fileName: Type.Optional(
+            Type.String({ description: "Optional attachment file name override." }),
+          ),
+          path: Type.String({
+            description: `Path to a file in ${WORKSPACE_CWD} (absolute or relative to ${WORKSPACE_CWD}).`,
+          }),
+        }),
+        execute: async (_toolCallId, params) => {
+          const resolved = await resolveWorkspaceFile(options.workspaceDir, params.path);
+
+          const limit = getGuildUploadLimit(originMessage);
+          if (resolved.size > limit) {
+            throw new Error(
+              `File size ${resolved.size} exceeds this server's upload limit of ${limit} bytes.`,
+            );
+          }
+
+          const fileName = params.fileName?.trim() || basename(resolved.hostPath);
+          await runDiscordAction(() =>
+            originMessage.channel.send({
+              content: params.caption,
+              files: [{ attachment: resolved.hostPath, name: fileName }],
+            }),
+          );
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Uploaded file ${fileName} from ${resolved.workspacePath} (${resolved.size} bytes).`,
+              },
+            ],
+            details: {},
+          };
+        },
+      }),
+    );
+  }
 
   return tools;
 };
