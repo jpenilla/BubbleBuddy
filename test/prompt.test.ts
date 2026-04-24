@@ -5,15 +5,16 @@ import { composeSystemPrompt, renderPromptTemplate } from "../src/domain/prompt.
 describe("prompt rendering", () => {
   test("renders the supported placeholders", () => {
     const rendered = renderPromptTemplate(
-      "Bot={{botName}} Guild={{guildName}} Channel={{channelName}}",
+      "Bot={{botName}} Guild={{guildName}} Channel={{channelName}} Status={{channelStatusText}}",
       {
         botName: "bubblebuddy",
         channelName: "general",
+        channelStatusText: "Open for coding",
         guildName: "Example",
       },
     );
 
-    expect(rendered).toBe("Bot=bubblebuddy Guild=Example Channel=general");
+    expect(rendered).toBe("Bot=bubblebuddy Guild=Example Channel=general Status=Open for coding");
   });
 
   test("composes a system prompt from profile, discord context, and tool metadata", () => {

@@ -100,6 +100,12 @@ const createSessionInput = (
       "name" in message.channel && typeof message.channel.name === "string"
         ? message.channel.name
         : "unknown-channel",
+    channelStatusText:
+      "topic" in message.channel && typeof message.channel.topic === "string"
+        ? message.channel.topic.trim().length > 0
+          ? message.channel.topic.trim()
+          : "none"
+        : "none",
     guildName: message.guild.name,
   },
   sink: createSessionSink(message.channel, config),

@@ -6,6 +6,7 @@ import {
 export interface PromptTemplateContext {
   readonly botName: string;
   readonly channelName: string;
+  readonly channelStatusText: string;
   readonly guildName: string;
 }
 
@@ -16,7 +17,7 @@ export interface ComposeSystemPromptInput {
   readonly systemPromptOptions: BuildSystemPromptOptions;
 }
 
-const PLACEHOLDER_PATTERN = /\{\{\s*(botName|channelName|guildName)\s*\}\}/g;
+const PLACEHOLDER_PATTERN = /\{\{\s*(botName|channelName|channelStatusText|guildName)\s*\}\}/g;
 
 const normalizeSection = (value: string): string | undefined => {
   const normalized = value.trim();
