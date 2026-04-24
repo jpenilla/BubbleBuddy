@@ -203,7 +203,10 @@ export class PiChannelSession {
         }
       });
 
-    const discordTools = createDiscordTools(options.originMessage, runDiscordAction);
+    const discordTools = createDiscordTools(options.originMessage, runDiscordAction, {
+      enableAgenticWorkspace: options.enableAgenticWorkspace,
+      workspaceDir: options.hostWorkspaceDir,
+    });
     const { session } = await createAgentSession({
       agentDir: options.agentDir,
       authStorage: options.authStorage,
