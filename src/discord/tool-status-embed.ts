@@ -16,7 +16,14 @@ const TOOL_STATUS_LABEL = {
   start: "Running",
 } as const;
 
+const TOOL_STATUS_COLOR = {
+  end: 0x2ecc71,
+  start: 0xf1c40f,
+} as const;
+
 export const createToolStatusEmbed = (status: ToolStatusEmbed): EmbedBuilder =>
-  new EmbedBuilder().setDescription(
-    `${TOOL_STATUS_EMOJI[status.phase]} ${TOOL_STATUS_LABEL[status.phase]} \`${status.toolName}\``,
-  );
+  new EmbedBuilder()
+    .setColor(TOOL_STATUS_COLOR[status.phase])
+    .setDescription(
+      `${TOOL_STATUS_EMOJI[status.phase]} ${TOOL_STATUS_LABEL[status.phase]} \`${status.toolName}\``,
+    );
