@@ -1,9 +1,9 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { basename, relative, resolve } from "node:path";
 
 import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
-import type { Message } from "discord.js";
+import { AttachmentBuilder, type Message } from "discord.js";
 
 import {
   formatCustomEmojiMessageSyntax,
@@ -54,8 +54,29 @@ const formatStickerList = async (message: Message<true>): Promise<string> => {
 
 const WORKSPACE_ROOT = "/workspace";
 
-const formatToolError = (error: unknown): string =>
-  error instanceof Error && error.message.length > 0 ? error.message : String(error);
+const formatToolError = (error: unknown): string => {
+  if (error instanceof Error) {
+    const parts = [error.message];
+
+    const code = Reflect.get(error, "code");
+    if (typeof code === "string" || typeof code === "number") {
+      parts.push(`code=${String(code)}`);
+    }
+
+    const status = Reflect.get(error, "status");
+    if (typeof status === "number" && Number.isFinite(status)) {
+      parts.push(`status=${status}`);
+    }
+
+    if (error.cause instanceof Error && error.cause.message.length > 0) {
+      parts.push(`cause=${error.cause.message}`);
+    }
+
+    return parts.filter((part) => part.length > 0).join("; ");
+  }
+
+  return String(error);
+};
 
 const isPathWithinRoot = (rootPath: string, candidatePath: string): boolean => {
   const rel = relative(rootPath, candidatePath);
@@ -65,7 +86,7 @@ const isPathWithinRoot = (rootPath: string, candidatePath: string): boolean => {
 const resolveWorkspaceFile = async (
   workspaceDir: string,
   inputPath: string,
-): Promise<{ hostPath: string; workspacePath: string } | string> => {
+): Promise<{ hostPath: string; size: number; workspacePath: string } | string> => {
   const rawPath = inputPath.trim();
   if (rawPath.length === 0) {
     return "Path must not be empty.";
@@ -111,6 +132,7 @@ const resolveWorkspaceFile = async (
   const normalizedRelative = relative(realWorkspaceRoot, realCandidatePath).replaceAll("\\", "/");
   return {
     hostPath: realCandidatePath,
+    size: fileStat.size,
     workspacePath: `${WORKSPACE_ROOT}/${normalizedRelative}`,
   };
 };
@@ -308,26 +330,12 @@ export const createDiscordTools = (
             };
           }
 
-          const attachment = await readFile(resolved.hostPath).catch(() => null);
-          if (attachment === null) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Failed to read ${resolved.workspacePath}.`,
-                },
-              ],
-              details: {},
-              isError: true,
-            };
-          }
-
           const fileName = params.fileName?.trim() || basename(resolved.hostPath);
           try {
             await runDiscordAction(() =>
               originMessage.channel.send({
                 content: params.caption,
-                files: [{ attachment, name: fileName }],
+                files: [new AttachmentBuilder(resolved.hostPath, { name: fileName })],
               }),
             );
           } catch (error) {
@@ -347,7 +355,7 @@ export const createDiscordTools = (
             content: [
               {
                 type: "text",
-                text: `Uploaded file ${fileName} from ${resolved.workspacePath} (${attachment.length} bytes).`,
+                text: `Uploaded file ${fileName} from ${resolved.workspacePath} (${resolved.size} bytes).`,
               },
             ],
             details: {},

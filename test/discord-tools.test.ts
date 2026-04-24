@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import type { Message } from "discord.js";
+import { AttachmentBuilder, type Message } from "discord.js";
 
 import { createDiscordTools } from "../src/discord/tools.ts";
 
@@ -121,17 +121,17 @@ describe("discord upload tool", () => {
 
   test("uploads a file from workspace", async () => {
     let runDiscordActionCalls = 0;
-    let sentName: string | undefined;
-    let sentSize = 0;
+    let sentName: string | null | undefined;
+    let sentAttachment: unknown;
     const workspaceDir = await mkdtemp(join(tmpdir(), "bubblebuddy-upload-"));
     const filePath = join(workspaceDir, "report.txt");
     await writeFile(filePath, "hello world");
 
     const originMessage = {
       channel: {
-        send: async (payload: { files: Array<{ attachment: Buffer; name: string }> }) => {
+        send: async (payload: { files: AttachmentBuilder[] }) => {
           sentName = payload.files[0]?.name;
-          sentSize = payload.files[0]?.attachment.length ?? 0;
+          sentAttachment = payload.files[0]?.attachment;
           return undefined;
         },
       },
@@ -160,11 +160,11 @@ describe("discord upload tool", () => {
 
     expect(runDiscordActionCalls).toBe(1);
     expect(sentName).toBe("report.txt");
-    expect(sentSize).toBe(Buffer.byteLength("hello world"));
+    expect(sentAttachment).toBe(filePath);
     expect(result.isError).toBeUndefined();
     expect(result.content[0]?.type).toBe("text");
     expect(result.content[0]?.text).toContain(
-      "Uploaded file report.txt from /workspace/report.txt",
+      `Uploaded file report.txt from /workspace/report.txt (${Buffer.byteLength("hello world")} bytes).`,
     );
   });
 });
