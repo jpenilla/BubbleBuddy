@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { AttachmentBuilder, type Message } from "discord.js";
+import type { Message } from "discord.js";
 
 import { createDiscordTools } from "../src/discord/tools.ts";
 
@@ -75,10 +75,12 @@ describe("discord upload tool", () => {
       path: "/workspace/hello.txt",
     })) as any;
 
-    expect(runDiscordActionCalls).toBe(1);
+    expect(runDiscordActionCalls).toBe(2);
     expect(result.isError).toBe(true);
     expect(result.content[0]?.type).toBe("text");
     expect(result.content[0]?.text).toContain("Discord rejected file upload hello.txt");
+    expect(result.content[0]?.text).toContain("path attempt failed:");
+    expect(result.content[0]?.text).toContain("buffer attempt failed:");
     expect(result.content[0]?.text).toContain("Request entity too large");
   });
 
@@ -129,7 +131,7 @@ describe("discord upload tool", () => {
 
     const originMessage = {
       channel: {
-        send: async (payload: { files: AttachmentBuilder[] }) => {
+        send: async (payload: { files: Array<{ attachment: string; name: string }> }) => {
           sentName = payload.files[0]?.name;
           sentAttachment = payload.files[0]?.attachment;
           return undefined;

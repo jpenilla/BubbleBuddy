@@ -1,9 +1,9 @@
-import { realpath, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { basename, relative, resolve } from "node:path";
 
 import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { AttachmentBuilder, type Message } from "discord.js";
+import type { Message } from "discord.js";
 
 import {
   formatCustomEmojiMessageSyntax,
@@ -56,7 +56,9 @@ const WORKSPACE_ROOT = "/workspace";
 
 const formatToolError = (error: unknown): string => {
   if (error instanceof Error) {
-    const parts = [error.message];
+    const parts = [
+      error.name.length > 0 ? `${error.name}: ${error.message}` : error.message,
+    ].filter((part) => part.length > 0);
 
     const code = Reflect.get(error, "code");
     if (typeof code === "string" || typeof code === "number") {
@@ -72,7 +74,7 @@ const formatToolError = (error: unknown): string => {
       parts.push(`cause=${error.cause.message}`);
     }
 
-    return parts.filter((part) => part.length > 0).join("; ");
+    return parts.join("; ");
   }
 
   return String(error);
@@ -331,19 +333,44 @@ export const createDiscordTools = (
           }
 
           const fileName = params.fileName?.trim() || basename(resolved.hostPath);
+          const failures: string[] = [];
+          let sent = false;
+
           try {
             await runDiscordAction(() =>
               originMessage.channel.send({
                 content: params.caption,
-                files: [new AttachmentBuilder(resolved.hostPath, { name: fileName })],
+                files: [{ attachment: resolved.hostPath, name: fileName }],
               }),
             );
+            sent = true;
           } catch (error) {
+            failures.push(`path attempt failed: ${formatToolError(error)}`);
+
+            const attachmentBuffer = await readFile(resolved.hostPath).catch(() => null);
+            if (attachmentBuffer === null) {
+              failures.push(`buffer attempt skipped: failed to read ${resolved.workspacePath}`);
+            } else {
+              try {
+                await runDiscordAction(() =>
+                  originMessage.channel.send({
+                    content: params.caption,
+                    files: [{ attachment: attachmentBuffer, name: fileName }],
+                  }),
+                );
+                sent = true;
+              } catch (bufferError) {
+                failures.push(`buffer attempt failed: ${formatToolError(bufferError)}`);
+              }
+            }
+          }
+
+          if (!sent) {
             return {
               content: [
                 {
                   type: "text",
-                  text: `Discord rejected file upload ${fileName}: ${formatToolError(error)}`,
+                  text: `Discord rejected file upload ${fileName}. ${failures.join(" | ")}`,
                 },
               ],
               details: {},
