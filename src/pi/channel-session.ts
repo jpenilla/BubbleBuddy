@@ -54,6 +54,15 @@ type RunDiscordAction = <T>(operation: () => Promise<T>) => Promise<T>;
 
 const SHUTDOWN_ABORT_TIMEOUT = "8 seconds";
 
+const SUPPRESSED_TOOL_STATUS = new Set([
+  "discord_list_custom_emojis",
+  "discord_list_stickers",
+  "discord_fetch_message",
+  "discord_react",
+  "discord_send_sticker",
+  "discord_upload_file",
+]);
+
 export class PiChannelSession {
   readonly #executor = new SerialExecutor();
   readonly #statusQueue: Queue.Queue<DiscordAction>;
@@ -124,18 +133,20 @@ export class PiChannelSession {
           break;
         case "tool_execution_end":
         case "tool_execution_start":
-          this.#enqueueStatusAction(() =>
-            this.#sink.onStatus({
-              phase:
-                event.type === "tool_execution_start"
-                  ? "start"
-                  : event.isError
-                    ? "error"
-                    : "success",
-              toolCallId: event.toolCallId,
-              toolName: event.toolName,
-            }),
-          );
+          if (!SUPPRESSED_TOOL_STATUS.has(event.toolName)) {
+            this.#enqueueStatusAction(() =>
+              this.#sink.onStatus({
+                phase:
+                  event.type === "tool_execution_start"
+                    ? "start"
+                    : event.isError
+                      ? "error"
+                      : "success",
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+              }),
+            );
+          }
           break;
         case "turn_end":
           if (event.message.role === "assistant") {
