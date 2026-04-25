@@ -93,7 +93,7 @@ describe("channel session Discord output ordering", () => {
         emit({
           type: "tool_execution_start",
           toolCallId,
-          toolName: "discord_send_sticker",
+          toolName: "bash",
         });
       }
 
@@ -106,7 +106,7 @@ describe("channel session Discord output ordering", () => {
             emit({
               type: "tool_execution_end",
               toolCallId,
-              toolName: "discord_send_sticker",
+              toolName: "bash",
             });
           })(),
         ),
