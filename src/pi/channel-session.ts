@@ -160,7 +160,10 @@ export class PiChannelSession {
   }
 
   static async create(options: PiChannelSessionOptions): Promise<PiChannelSession> {
-    const settingsManager = SettingsManager.create(options.hostWorkspaceDir, options.agentDir);
+    const settingsManager = SettingsManager.inMemory({
+      steeringMode: "all",
+      followUpMode: "all",
+    });
     const extensionFactories: ExtensionFactory[] = [
       createPromptComposerExtension({
         botProfile: options.botProfile,
