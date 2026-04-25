@@ -1,24 +1,27 @@
 import { EmbedBuilder } from "discord.js";
 
 export interface ToolStatusEmbed {
-  readonly phase: "start" | "end";
+  readonly phase: "start" | "success" | "error";
   readonly toolCallId: string;
   readonly toolName: string;
 }
 
 const TOOL_STATUS_EMOJI = {
-  end: "✅",
   start: "🛠️",
+  success: "✅",
+  error: "❌",
 } as const;
 
 const TOOL_STATUS_LABEL = {
-  end: "Completed",
   start: "Running",
+  success: "Completed",
+  error: "Failed",
 } as const;
 
 const TOOL_STATUS_COLOR = {
-  end: 0x2ecc71,
   start: 0xf1c40f,
+  success: 0x2ecc71,
+  error: 0xe74c3c,
 } as const;
 
 export const createToolStatusEmbed = (status: ToolStatusEmbed): EmbedBuilder =>

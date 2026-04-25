@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import {
@@ -6,32 +6,38 @@ import {
   type AuthStorage,
   type ModelRegistry,
 } from "@mariozechner/pi-coding-agent";
-import type { Message } from "discord.js";
-import { Effect } from "effect";
+import type { GuildTextBasedChannel, Message } from "discord.js";
+import { Effect, Fiber, Schedule } from "effect";
 import type { Api, Model } from "@mariozechner/pi-ai";
 
+import { FileSystemChannelRepository, type ChannelRepository } from "./channel-repository.ts";
 import type { AppConfigShape } from "./config.ts";
+import { createSessionSink } from "./discord/session-sink.ts";
 import type { PromptTemplateContext } from "./domain/prompt.ts";
-import { PiChannelSession, type SessionSink } from "./pi/channel-session.ts";
+import { PiChannelSession } from "./pi/channel-session.ts";
 import { WORKSPACE_CWD } from "./pi/workspace.ts";
+import { SerialExecutor } from "./util/serial-executor.ts";
+import { ChannelState } from "./channel-state.ts";
 
-const ACTIVE_SESSION_FILE_NAME = "active_session";
+const SWEEP_INTERVAL = "30 seconds";
 
 export interface SessionFactoryInput {
-  readonly channelId: string;
+  readonly channel: GuildTextBasedChannel;
   readonly originMessage: Message<true>;
   readonly promptContext: PromptTemplateContext;
-  readonly sink: SessionSink;
 }
 
-export interface ChannelSessions {
+export interface ChannelSessionManager {
   readonly activate: (input: SessionFactoryInput, messageText: string) => Promise<void>;
   readonly discard: (channelId: string) => Promise<"discarded" | "rejected-busy">;
-  readonly isBusy: (channelId: string) => boolean;
+  readonly withChannel: <T>(
+    channelId: string,
+    fn: (channel: ChannelState) => Promise<T>,
+  ) => Promise<T>;
   readonly shutdown: () => Promise<void>;
 }
 
-export interface ChannelSessionsOptions {
+export interface ChannelSessionManagerOptions {
   readonly agentDir: string;
   readonly authStorage: AuthStorage;
   readonly config: AppConfigShape;
@@ -39,53 +45,65 @@ export interface ChannelSessionsOptions {
   readonly modelRegistry: ModelRegistry;
 }
 
-class SerialExecutor {
-  #tail = Promise.resolve();
-
-  run<T>(operation: () => Promise<T>): Promise<T> {
-    const next = this.#tail.then(operation, operation);
-    this.#tail = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    return next;
-  }
-}
-
-class ChannelSessionsLiveImpl implements ChannelSessions {
+export class ChannelSessionManagerImpl implements ChannelSessionManager {
   readonly #agentDir: string;
   readonly #authStorage: AuthStorage;
   readonly #config: AppConfigShape;
   readonly #model: Model<Api>;
   readonly #modelRegistry: ModelRegistry;
-  readonly #sessions = new Map<string, PiChannelSession>();
+  readonly #channels = new Map<string, ChannelState>();
   readonly #locks = new Map<string, SerialExecutor>();
   readonly #activeOperations = new Set<Promise<unknown>>();
+  readonly #repository: ChannelRepository;
+  readonly #idleTimeoutMs: number;
+  readonly #sweeper: Fiber.Fiber<void, never>;
   #isShuttingDown = false;
 
-  constructor(options: ChannelSessionsOptions) {
+  constructor(options: ChannelSessionManagerOptions) {
     this.#agentDir = options.agentDir;
     this.#authStorage = options.authStorage;
     this.#config = options.config;
     this.#model = options.model;
     this.#modelRegistry = options.modelRegistry;
+    this.#repository = new FileSystemChannelRepository(options.config.storageDirectory);
+    this.#idleTimeoutMs = options.config.channelIdleTimeoutMs;
+    this.#sweeper = Effect.runFork(this.#runSweeper());
   }
 
   activate(input: SessionFactoryInput, messageText: string): Promise<void> {
     return this.#trackOperation(
-      this.#lockFor(input.channelId).run(async () => {
+      this.#lockFor(input.channel.id).run(async () => {
         if (this.#isShuttingDown) {
           return;
         }
 
-        const session = this.#sessions.get(input.channelId) ?? (await this.#createSession(input));
+        const channel = await this.#getOrLoadChannel(input.channel.id);
         if (this.#isShuttingDown) {
-          this.#sessions.delete(input.channelId);
-          await session.shutdown();
+          await this.#closeChannel(input.channel.id, "shutdown");
           return;
         }
 
-        await session.activate(messageText, input.originMessage.id);
+        if (!channel.hasSession) {
+          const { pi, sessionManager } = await this.#createPiSession(input, channel);
+          channel.attachSession(pi);
+
+          const sessionFile = sessionManager.getSessionFile();
+          if (sessionFile !== undefined) {
+            const newActiveSession = basename(sessionFile);
+            if (channel.activeSession !== newActiveSession) {
+              channel.setActiveSession(newActiveSession);
+            }
+          }
+
+          await channel.persistIfDirty();
+        }
+
+        if (this.#isShuttingDown) {
+          await this.#closeChannel(input.channel.id, "shutdown");
+          return;
+        }
+
+        await channel.activateSession(messageText, input.originMessage.id);
       }),
     );
   }
@@ -93,89 +111,104 @@ class ChannelSessionsLiveImpl implements ChannelSessions {
   discard(channelId: string): Promise<"discarded" | "rejected-busy"> {
     return this.#trackOperation(
       this.#lockFor(channelId).run(async () => {
-        const session = this.#sessions.get(channelId);
-        if (session === undefined) {
-          await this.#clearActiveSessionReference(channelId);
-          return "discarded";
-        }
+        const channel = await this.#getOrLoadChannel(channelId);
 
-        if (!(await session.discardIfIdle())) {
+        if (channel.isRunning) {
           void Effect.runFork(
             Effect.logInfo(`Session discard rejected for channel ${channelId}: session is busy.`),
           );
           return "rejected-busy";
         }
 
-        this.#sessions.delete(channelId);
-        await this.#clearActiveSessionReference(channelId);
-        await session.dispose();
+        await this.#closeChannel(channelId, "dispose");
         return "discarded";
       }),
     );
   }
 
-  isBusy(channelId: string): boolean {
-    return this.#sessions.get(channelId)?.isBusy ?? false;
+  withChannel<T>(channelId: string, fn: (channel: ChannelState) => Promise<T>): Promise<T> {
+    return this.#trackOperation(
+      this.#lockFor(channelId).run(async () => {
+        const channel = await this.#getOrLoadChannel(channelId);
+        const result = await fn(channel);
+        await channel.persistIfDirty();
+        return result;
+      }),
+    );
   }
 
   async shutdown(): Promise<void> {
     this.#isShuttingDown = true;
     void Effect.runFork(Effect.logInfo("Channel session shutdown started."));
+    await Effect.runPromise(Fiber.interrupt(this.#sweeper)).catch(() => undefined);
     await Promise.allSettled(this.#activeOperations);
 
-    const sessions = [...this.#sessions.values()];
-    this.#sessions.clear();
+    const channelIds = [...this.#channels.keys()];
+    await Promise.allSettled(
+      channelIds.map((id) =>
+        this.#trackOperation(this.#lockFor(id).run(() => this.#closeChannel(id, "shutdown"))),
+      ),
+    );
 
-    await Promise.allSettled(sessions.map((session) => session.shutdown()));
-    await Promise.allSettled(this.#activeOperations);
     void Effect.runFork(Effect.logInfo("Channel session shutdown complete."));
   }
 
-  async #createSession(input: SessionFactoryInput): Promise<PiChannelSession> {
-    void Effect.runFork(
-      Effect.logInfo(
-        `Creating ${this.#config.enableAgenticWorkspace ? "agentic workspace" : "Discord-only"} session for channel ${input.channelId}.`,
-      ),
-    );
-    await mkdir(this.#workspaceDir(input.channelId), { recursive: true });
-    const sessionManager = await this.#loadSessionManager(input.channelId);
-    const session = await PiChannelSession.create({
+  get channelCount(): number {
+    return this.#channels.size;
+  }
+
+  async #getOrLoadChannel(channelId: string): Promise<ChannelState> {
+    const existing = this.#channels.get(channelId);
+    if (existing !== undefined) {
+      existing.touchActivity();
+      return existing;
+    }
+
+    const channel = await ChannelState.load(channelId, this.#repository);
+    this.#channels.set(channelId, channel);
+    return channel;
+  }
+
+  async #createPiSession(
+    input: SessionFactoryInput,
+    channel: ChannelState,
+  ): Promise<{ pi: PiChannelSession; sessionManager: SessionManager }> {
+    await mkdir(this.#workspaceDir(input.channel.id), { recursive: true });
+    const sessionManager = await this.#loadSessionManager(input.channel.id, channel.activeSession);
+
+    const sink = createSessionSink(input.channel, this.#config, channel);
+
+    const pi = await PiChannelSession.create({
       agentDir: this.#agentDir,
       authStorage: this.#authStorage,
       botProfile: this.#config.botProfile,
       discordContextTemplate: this.#config.discordContextTemplate,
       enableAgenticWorkspace: this.#config.enableAgenticWorkspace,
-      hostWorkspaceDir: this.#workspaceDir(input.channelId),
+      getChannelSettings: () => channel.settings,
+      hostWorkspaceDir: this.#workspaceDir(input.channel.id),
       model: this.#model,
       modelRegistry: this.#modelRegistry,
       originMessage: input.originMessage,
       promptContext: input.promptContext,
       sessionManager,
-      sink: input.sink,
+      sink,
       thinkingLevel: this.#config.thinkingLevel,
     });
 
-    await this.#writeActiveSessionReference(input.channelId, sessionManager);
-    this.#sessions.set(input.channelId, session);
-    return session;
+    return { pi, sessionManager };
   }
 
-  async #loadSessionManager(channelId: string): Promise<SessionManager> {
+  async #loadSessionManager(channelId: string, activeSession?: string): Promise<SessionManager> {
     const sessionsDir = this.#sessionsDir(channelId);
     await mkdir(sessionsDir, { recursive: true });
 
-    const activeSessionReference = await this.#readActiveSessionReference(channelId);
-    if (activeSessionReference !== undefined) {
+    if (activeSession !== undefined) {
       try {
-        return SessionManager.open(
-          join(sessionsDir, activeSessionReference),
-          sessionsDir,
-          WORKSPACE_CWD,
-        );
+        return SessionManager.open(join(sessionsDir, activeSession), sessionsDir, WORKSPACE_CWD);
       } catch (error) {
         void Effect.runFork(
           Effect.logWarning(
-            `Failed to resume session for channel ${channelId} from ${activeSessionReference}. Starting a new session.`,
+            `Failed to resume session for channel ${channelId} from ${activeSession}. Starting a new session.`,
             error,
           ),
         );
@@ -185,38 +218,53 @@ class ChannelSessionsLiveImpl implements ChannelSessions {
     return SessionManager.create(WORKSPACE_CWD, sessionsDir);
   }
 
-  async #readActiveSessionReference(channelId: string): Promise<string | undefined> {
-    try {
-      const activeSessionReference = await readFile(
-        this.#activeSessionReferencePath(channelId),
-        "utf8",
-      );
-      const trimmed = activeSessionReference.trim();
-      return trimmed.length > 0 ? trimmed : undefined;
-    } catch {
-      return undefined;
+  async #closeChannel(channelId: string, mode: "dispose" | "shutdown"): Promise<void> {
+    const channel = this.#channels.get(channelId);
+    if (channel === undefined) {
+      return;
+    }
+
+    if (mode === "dispose") {
+      await channel.detachAndClearSession();
+    } else {
+      await channel.shutdownSession();
+    }
+
+    await channel.persistIfDirty();
+    this.#channels.delete(channelId);
+    this.#locks.delete(channelId);
+  }
+
+  // Visible for testing
+  async _sweepChannel(channelId: string, now: number): Promise<void> {
+    const channel = this.#channels.get(channelId);
+    if (channel === undefined) return;
+
+    await channel.persistIfDirty();
+
+    if (now - channel.lastActivity > this.#idleTimeoutMs && !channel.isRunning) {
+      await this.#closeChannel(channelId, "shutdown");
     }
   }
 
-  async #writeActiveSessionReference(
-    channelId: string,
-    sessionManager: SessionManager,
-  ): Promise<void> {
-    const sessionFile = sessionManager.getSessionFile();
-    if (sessionFile === undefined) {
-      throw new Error(`Persistent session file was not created for channel ${channelId}.`);
-    }
-
-    await mkdir(this.#channelStorageDirectory(channelId), { recursive: true });
-    await writeFile(
-      this.#activeSessionReferencePath(channelId),
-      `${basename(sessionFile)}\n`,
-      "utf8",
+  #runSweeper(): Effect.Effect<void> {
+    return Effect.repeat(
+      Effect.catch(
+        Effect.gen({ self: this }, function* () {
+          const now = Date.now();
+          const channelIds = [...this.#channels.keys()];
+          for (const channelId of channelIds) {
+            yield* Effect.tryPromise(() =>
+              this.#trackOperation(
+                this.#lockFor(channelId).run(() => this._sweepChannel(channelId, now)),
+              ),
+            );
+          }
+        }),
+        (error) => Effect.logWarning(`Channel sweeper iteration failed: ${String(error)}`),
+      ),
+      Schedule.spaced(SWEEP_INTERVAL).pipe(Schedule.while(() => !this.#isShuttingDown)),
     );
-  }
-
-  async #clearActiveSessionReference(channelId: string): Promise<void> {
-    await rm(this.#activeSessionReferencePath(channelId), { force: true });
   }
 
   #channelStorageDirectory(channelId: string): string {
@@ -231,10 +279,6 @@ class ChannelSessionsLiveImpl implements ChannelSessions {
     return join(this.#channelStorageDirectory(channelId), "sessions");
   }
 
-  #activeSessionReferencePath(channelId: string): string {
-    return join(this.#channelStorageDirectory(channelId), ACTIVE_SESSION_FILE_NAME);
-  }
-
   #trackOperation<T>(operation: Promise<T>): Promise<T> {
     const tracked = operation.finally(() => {
       this.#activeOperations.delete(tracked);
@@ -244,16 +288,15 @@ class ChannelSessionsLiveImpl implements ChannelSessions {
   }
 
   #lockFor(channelId: string): SerialExecutor {
-    const existing = this.#locks.get(channelId);
-    if (existing !== undefined) {
-      return existing;
+    let lock = this.#locks.get(channelId);
+    if (lock === undefined) {
+      lock = new SerialExecutor();
+      this.#locks.set(channelId, lock);
     }
-
-    const created = new SerialExecutor();
-    this.#locks.set(channelId, created);
-    return created;
+    return lock;
   }
 }
 
-export const createChannelSessions = (options: ChannelSessionsOptions): ChannelSessions =>
-  new ChannelSessionsLiveImpl(options);
+export const createChannelSessionManager = (
+  options: ChannelSessionManagerOptions,
+): ChannelSessionManager => new ChannelSessionManagerImpl(options);

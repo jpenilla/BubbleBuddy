@@ -129,11 +129,11 @@ describe("channel session Discord output ordering", () => {
         "start:tool-2",
         "start:tool-3",
         "mutate:tool-1",
-        "end:tool-1",
+        "success:tool-1",
         "mutate:tool-2",
-        "end:tool-2",
+        "success:tool-2",
         "mutate:tool-3",
-        "end:tool-3",
+        "success:tool-3",
       ]);
     } finally {
       await session.dispose();
@@ -165,12 +165,14 @@ describe("channel session Discord output ordering", () => {
 
     let subscriber: ((event: SessionEvent) => void) | undefined;
     let disposed = false;
+    let isStreaming = true;
     const fakeSession = {
       abort: async () => {
         subscriber?.({
           type: "agent_end",
           messages: [{ role: "assistant", stopReason: "aborted" }],
         });
+        isStreaming = false;
       },
       agent: {
         reset: () => undefined,
@@ -179,7 +181,9 @@ describe("channel session Discord output ordering", () => {
       dispose: () => {
         disposed = true;
       },
-      isStreaming: true,
+      get isStreaming() {
+        return isStreaming;
+      },
       subscribe: (callback: (event: SessionEvent) => void) => {
         subscriber = callback;
         return () => {

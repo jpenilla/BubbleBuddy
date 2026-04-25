@@ -13,6 +13,8 @@ import type { Api, AssistantMessage, Model, ToolResultMessage } from "@mariozech
 import type { ToolStatusEmbed } from "../discord/tool-status-embed.ts";
 import { createDiscordTools } from "../discord/tools.ts";
 import { extractAssistantText } from "../domain/text.ts";
+import { SHOW_THINKING_DEFAULT, type ChannelSettings } from "../channel-repository.ts";
+import { SerialExecutor } from "../util/serial-executor.ts";
 import type { ThinkingLevel } from "../config.ts";
 import type { PromptTemplateContext } from "../domain/prompt.ts";
 import { createChannelWorkspaceResourceLoader } from "./channel-workspace-resource-loader.ts";
@@ -29,24 +31,12 @@ export interface SessionSink {
   readonly onThinking: (text: string) => Promise<void>;
 }
 
-class SerialExecutor {
-  #tail = Promise.resolve();
-
-  run<T>(operation: () => Promise<T>): Promise<T> {
-    const next = this.#tail.then(operation, operation);
-    this.#tail = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    return next;
-  }
-}
-
 export interface PiChannelSessionOptions {
   readonly agentDir: string;
   readonly authStorage: AuthStorage;
   readonly botProfile: string;
   readonly discordContextTemplate: string;
+  readonly getChannelSettings: () => Readonly<ChannelSettings>;
   readonly hostWorkspaceDir: string;
   readonly enableAgenticWorkspace: boolean;
   readonly model: Model<Api>;
@@ -72,11 +62,11 @@ export class PiChannelSession {
   readonly #session: AgentSessionInstance;
   readonly #sink: SessionSink;
   readonly #unsubscribe: () => void;
+  readonly #getChannelSettings: () => Readonly<ChannelSettings>;
   readonly #workspaceDispose?: () => Promise<void>;
   #disposePromise?: Promise<void>;
   #isDisposed = false;
   #isShuttingDown = false;
-  #runInProgress = false;
   #latestAssistantText?: string;
   #replyToMessageId: string;
 
@@ -86,6 +76,7 @@ export class PiChannelSession {
     statusQueue: Queue.Queue<DiscordAction>,
     mutationQueue: Queue.Queue<DiscordAction>,
     initialReplyToMessageId: string,
+    getChannelSettings: () => Readonly<ChannelSettings>,
     workspaceDispose?: () => Promise<void>,
   ) {
     this.#statusQueue = statusQueue;
@@ -94,16 +85,15 @@ export class PiChannelSession {
     this.#session = session;
     this.#replyToMessageId = initialReplyToMessageId;
     this.#sink = sink;
+    this.#getChannelSettings = getChannelSettings;
     this.#workspaceDispose = workspaceDispose;
     this.#unsubscribe = this.#session.subscribe((event) => {
       switch (event.type) {
         case "agent_start":
-          this.#runInProgress = true;
           this.#latestAssistantText = undefined;
           this.#enqueueStatusAction(() => this.#sink.onRunStart());
           break;
         case "agent_end": {
-          this.#runInProgress = false;
           const lastMessage = event.messages.at(-1);
           const latestAssistantText = this.#latestAssistantText;
           const replyToMessageId = this.#replyToMessageId;
@@ -124,9 +114,11 @@ export class PiChannelSession {
         }
         case "message_update":
           if (event.assistantMessageEvent.type === "thinking_end") {
-            const thinking = event.assistantMessageEvent.content.trim();
-            if (thinking.length > 0) {
-              this.#enqueueStatusAction(() => this.#sink.onThinking(thinking));
+            if (this.#getChannelSettings().showThinking ?? SHOW_THINKING_DEFAULT) {
+              const thinking = event.assistantMessageEvent.content.trim();
+              if (thinking.length > 0) {
+                this.#enqueueStatusAction(() => this.#sink.onThinking(thinking));
+              }
             }
           }
           break;
@@ -134,7 +126,12 @@ export class PiChannelSession {
         case "tool_execution_start":
           this.#enqueueStatusAction(() =>
             this.#sink.onStatus({
-              phase: event.type === "tool_execution_start" ? "start" : "end",
+              phase:
+                event.type === "tool_execution_start"
+                  ? "start"
+                  : event.isError
+                    ? "error"
+                    : "success",
               toolCallId: event.toolCallId,
               toolName: event.toolName,
             }),
@@ -230,11 +227,12 @@ export class PiChannelSession {
       statusQueue,
       mutationQueue,
       options.originMessage.id,
+      options.getChannelSettings,
       workspaceDispose,
     );
   }
 
-  get isBusy(): boolean {
+  get isRunning(): boolean {
     return this.#session.isStreaming;
   }
 
@@ -255,17 +253,6 @@ export class PiChannelSession {
     });
   }
 
-  discardIfIdle(): Promise<boolean> {
-    return this.#executor.run(async () => {
-      if (this.#session.isStreaming) {
-        return false;
-      }
-
-      this.#session.agent.reset();
-      return true;
-    });
-  }
-
   async shutdown(): Promise<void> {
     if (this.#isDisposed) {
       return;
@@ -273,10 +260,8 @@ export class PiChannelSession {
 
     this.#isShuttingDown = true;
 
-    await this.#drainDiscordActions();
-    const abortCompleted = await this.#abortForShutdown();
-    if (!abortCompleted || this.#runInProgress) {
-      this.#runInProgress = false;
+    await this.#abortForShutdown();
+    if (this.#session.isStreaming) {
       this.#enqueueStatusAction(() => this.#sink.onRunEnd());
     }
     await this.#drainDiscordActions();
@@ -288,15 +273,11 @@ export class PiChannelSession {
     return this.#disposePromise;
   }
 
-  async #abortForShutdown(): Promise<boolean> {
-    return await Effect.runPromise(
+  async #abortForShutdown(): Promise<void> {
+    await Effect.runPromise(
       Effect.tryPromise(() => this.#session.abort()).pipe(
-        Effect.as(true),
-        Effect.timeoutOrElse({
-          duration: SHUTDOWN_ABORT_TIMEOUT,
-          orElse: () => Effect.succeed(false),
-        }),
-        Effect.catch(() => Effect.succeed(true)),
+        Effect.timeout(SHUTDOWN_ABORT_TIMEOUT),
+        Effect.catch(() => Effect.void),
       ),
     );
   }

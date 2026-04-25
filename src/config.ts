@@ -7,6 +7,7 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 
 export interface AppConfigShape {
   readonly botProfile: string;
+  readonly channelIdleTimeoutMs: number;
   readonly discordContextTemplate: string;
   readonly discordToken: string;
   readonly enableAgenticWorkspace: boolean;
@@ -77,6 +78,9 @@ const AppConfigSpec = Config.all({
   typingIndicatorIntervalMs: Config.number("DISCORD_TYPING_INTERVAL_MS").pipe(
     Config.withDefault(8_000),
   ),
+  channelIdleTimeoutMs: Config.number("CHANNEL_IDLE_TIMEOUT_MS").pipe(
+    Config.withDefault(30 * 60 * 1000),
+  ),
 });
 
 export const loadAppConfig = Effect.gen(function* () {
@@ -110,5 +114,6 @@ export const loadAppConfig = Effect.gen(function* () {
     storageDirectory: resolve(storageDirectory),
     thinkingLevel: parseThinkingLevel(values.thinkingLevel),
     typingIndicatorIntervalMs: values.typingIndicatorIntervalMs,
+    channelIdleTimeoutMs: values.channelIdleTimeoutMs,
   } satisfies AppConfigShape;
 });

@@ -11,26 +11,25 @@ import {
 import { Effect } from "effect";
 
 import { loadAppConfig, type AppConfigShape } from "./config.ts";
-import { createToolStatusEmbed, type ToolStatusEmbed } from "./discord/tool-status-embed.ts";
 import { isActivationMessage } from "./domain/activation.ts";
 import { formatMessageForPrompt } from "./discord/message-formatting.ts";
-import { splitDiscordMessage, splitThinkingStatus } from "./domain/text.ts";
+import { SHOW_THINKING_DEFAULT } from "./channel-repository.ts";
 import { resolvePiModel } from "./pi/model.ts";
-import {
-  createChannelSessions,
-  type ChannelSessions,
-  type SessionFactoryInput,
-} from "./sessions.ts";
+import { createChannelSessionManager, type ChannelSessionManager } from "./sessions.ts";
 
 const NEW_COMMAND = new SlashCommandBuilder()
   .setName("new")
   .setDescription("Discard this channel's current pi session.");
 
+const THINKING_COMMAND = new SlashCommandBuilder()
+  .setName("thinking")
+  .setDescription("Toggle thinking messages in this channel.");
+
 const isGuildTextChannel = (channel: Message<true>["channel"]): channel is GuildTextBasedChannel =>
   channel.isSendable();
 
 const registerSlashCommands = async (client: Client<true>): Promise<void> => {
-  await client.application.commands.set([NEW_COMMAND.toJSON()]);
+  await client.application.commands.set([NEW_COMMAND.toJSON(), THINKING_COMMAND.toJSON()]);
 };
 
 const waitForReady = async (client: Client): Promise<Client<true>> =>
@@ -38,29 +37,6 @@ const waitForReady = async (client: Client): Promise<Client<true>> =>
     client.once(Events.ClientReady, (readyClient) => resolve(readyClient));
     client.once(Events.Error, reject);
   });
-
-const sendChunkedMessage = async (
-  channel: GuildTextBasedChannel,
-  content: string,
-  replyToMessageId?: string,
-): Promise<void> => {
-  const chunks = splitDiscordMessage(content);
-
-  for (const [index, chunk] of chunks.entries()) {
-    if (index === 0 && replyToMessageId !== undefined) {
-      await channel.send({
-        content: chunk,
-        reply: {
-          failIfNotExists: false,
-          messageReference: replyToMessageId,
-        },
-      });
-      continue;
-    }
-
-    await channel.send(chunk);
-  }
-};
 
 const isReplyToBot = async (message: Message<true>, botUserId: string): Promise<boolean> => {
   if (message.reference?.messageId === undefined) {
@@ -75,95 +51,10 @@ const isReplyToBot = async (message: Message<true>, botUserId: string): Promise<
   }
 };
 
-const createSessionInput = (
-  message: Message<true>,
-  client: Client<true>,
-  config: AppConfigShape,
-): SessionFactoryInput => ({
-  channelId: message.channelId,
-  originMessage: message,
-  promptContext: {
-    botName: client.user.username,
-    channelName:
-      "name" in message.channel && typeof message.channel.name === "string"
-        ? message.channel.name
-        : "unknown-channel",
-    channelStatusText:
-      "topic" in message.channel && typeof message.channel.topic === "string"
-        ? message.channel.topic.trim().length > 0
-          ? message.channel.topic.trim()
-          : "none"
-        : "none",
-    guildName: message.guild.name,
-  },
-  sink: createSessionSink(message.channel, config),
-});
-
-const createSessionSink = (channel: GuildTextBasedChannel, config: AppConfigShape) => {
-  let typingTimer: ReturnType<typeof setInterval> | undefined;
-  let toolStatusMessages = new Map<string, Message<true>>();
-
-  const stopTypingLoop = async (): Promise<void> => {
-    if (typingTimer !== undefined) {
-      clearInterval(typingTimer);
-      typingTimer = undefined;
-    }
-  };
-
-  const resetRunToolStatusMessages = (): void => {
-    toolStatusMessages = new Map<string, Message<true>>();
-  };
-
-  return {
-    onError: async (text: string) => {
-      await sendChunkedMessage(channel, text);
-    },
-    onFinal: async (text: string, replyToMessageId: string) => {
-      await sendChunkedMessage(channel, text, replyToMessageId);
-    },
-    onThinking: async (text: string) => {
-      for (const chunk of splitThinkingStatus(text)) {
-        await channel.send(chunk);
-      }
-    },
-    onRunEnd: async () => {
-      resetRunToolStatusMessages();
-      await stopTypingLoop();
-    },
-    onRunStart: async () => {
-      resetRunToolStatusMessages();
-      if (typingTimer !== undefined) {
-        return;
-      }
-
-      await channel.sendTyping();
-      typingTimer = setInterval(() => {
-        void channel.sendTyping().catch(() => undefined);
-      }, config.typingIndicatorIntervalMs);
-    },
-    onStatus: async (status: ToolStatusEmbed) => {
-      const embed = createToolStatusEmbed(status);
-      const existing = toolStatusMessages.get(status.toolCallId);
-      if (existing !== undefined) {
-        await existing.edit({ embeds: [embed] });
-        if (status.phase === "end") {
-          toolStatusMessages.delete(status.toolCallId);
-        }
-        return;
-      }
-
-      const sent = await channel.send({ embeds: [embed] });
-      if (status.phase === "start") {
-        toolStatusMessages.set(status.toolCallId, sent);
-      }
-    },
-  };
-};
-
 const handleGuildMessage = (
   client: Client<true>,
   config: AppConfigShape,
-  sessions: ChannelSessions,
+  sessions: ChannelSessionManager,
   message: Message<true>,
 ): Promise<void> =>
   Effect.runPromise(
@@ -183,14 +74,34 @@ const handleGuildMessage = (
       }
 
       const normalizedContent = formatMessageForPrompt(message);
-      await sessions.activate(createSessionInput(message, client, config), normalizedContent);
+      await sessions.activate(
+        {
+          channel: message.channel,
+          originMessage: message,
+          promptContext: {
+            botName: client.user.username,
+            channelName:
+              "name" in message.channel && typeof message.channel.name === "string"
+                ? message.channel.name
+                : "unknown-channel",
+            channelStatusText:
+              "topic" in message.channel && typeof message.channel.topic === "string"
+                ? message.channel.topic.trim().length > 0
+                  ? message.channel.topic.trim()
+                  : "none"
+                : "none",
+            guildName: message.guild.name,
+          },
+        },
+        normalizedContent,
+      );
     }),
   );
 
-const handleInteraction = (sessions: ChannelSessions, interaction: Interaction) =>
+const handleInteraction = (sessions: ChannelSessionManager, interaction: Interaction) =>
   Effect.runPromise(
     Effect.tryPromise(async () => {
-      if (!interaction.isChatInputCommand() || interaction.commandName !== "new") {
+      if (!interaction.isChatInputCommand()) {
         return;
       }
 
@@ -202,13 +113,35 @@ const handleInteraction = (sessions: ChannelSessions, interaction: Interaction) 
         return;
       }
 
-      const result = await sessions.discard(interaction.channelId);
-      if (result === "rejected-busy") {
-        await interaction.reply("A response is already in progress for this channel.");
+      if (interaction.commandName === "new") {
+        const result = await sessions.discard(interaction.channelId);
+        if (result === "rejected-busy") {
+          await interaction.reply("A response is already in progress for this channel.");
+          return;
+        }
+
+        await interaction.reply("The next bot interaction in this channel will use a new session.");
         return;
       }
 
-      await interaction.reply("The next bot interaction in this channel will use a new session.");
+      if (interaction.commandName === "thinking") {
+        let reply: string;
+        try {
+          const newValue = await sessions.withChannel(interaction.channelId, async (channel) => {
+            const value = !(channel.settings.showThinking ?? SHOW_THINKING_DEFAULT);
+            channel.modifySettings((settings) => {
+              settings.showThinking = value === SHOW_THINKING_DEFAULT ? undefined : value;
+            });
+            return value;
+          });
+          reply = `Thinking messages are now ${newValue ? "enabled" : "disabled"} in this channel.`;
+        } catch (error) {
+          void Effect.runFork(Effect.logWarning("Failed to update thinking setting", error));
+          reply = "Failed to update the thinking setting. Please try again later.";
+        }
+        await interaction.reply(reply);
+        return;
+      }
     }),
   );
 
@@ -229,7 +162,7 @@ export const program = Effect.gen(function* () {
   const authStorage = AuthStorage.create();
   const modelRegistry = ModelRegistry.create(authStorage);
   const model = resolvePiModel(modelRegistry, config.modelProvider, config.modelId);
-  const sessions = createChannelSessions({
+  const sessions = createChannelSessionManager({
     agentDir,
     authStorage,
     config,
