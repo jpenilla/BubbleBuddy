@@ -26,12 +26,15 @@ export const formatIncomingDiscordMessage = (
   authorId: string,
   content: string,
   usernamesById: ReadonlyMap<string, string>,
+  inReplyToMessageId?: string,
 ): string => {
   const normalizedContent = normalizeIncomingUserMentions(content, usernamesById).trim();
   const authorReference = formatDiscordUserReference(authorUsername, authorId);
+  const replyReference =
+    inReplyToMessageId !== undefined ? `, reply to message ${inReplyToMessageId}` : "";
   return normalizedContent.length === 0
-    ? `Message ${messageId} from ${authorReference}`
-    : `Message ${messageId} from ${authorReference}: ${normalizedContent}`;
+    ? `Message ${messageId} from ${authorReference}${replyReference}`
+    : `Message ${messageId} from ${authorReference}${replyReference}: ${normalizedContent}`;
 };
 
 export const extractAssistantText = (message: AssistantMessage): string =>

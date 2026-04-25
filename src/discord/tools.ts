@@ -12,6 +12,7 @@ import {
   listUsableStickers,
   normalizeReactionEmoji,
 } from "./assets.ts";
+import { formatMessageForPrompt } from "./message-formatting.ts";
 import { WORKSPACE_CWD } from "../pi/workspace.ts";
 
 const LIST_CUSTOM_EMOJIS_TOOL = "discord_list_custom_emojis";
@@ -19,6 +20,7 @@ const LIST_STICKERS_TOOL = "discord_list_stickers";
 const SEND_STICKER_TOOL = "discord_send_sticker";
 const UPLOAD_FILE_TOOL = "discord_upload_file";
 const REACT_TOOL = "discord_react";
+const FETCH_MESSAGE_TOOL = "discord_fetch_message";
 
 const formatEmojiList = (message: Message<true>): string => {
   const emojis = listUsableCustomEmojis(message);
@@ -173,16 +175,7 @@ export const createDiscordTools = (
         const sticker = stickers.find((candidate) => candidate.sticker.id === params.stickerId);
 
         if (sticker === undefined) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Sticker ${params.stickerId} is not available here.`,
-              },
-            ],
-            details: {},
-            isError: true,
-          };
+          throw new Error(`Sticker ${params.stickerId} is not available here.`);
         }
 
         await runDiscordAction(() =>
@@ -220,46 +213,14 @@ export const createDiscordTools = (
           !("messages" in originMessage.channel) ||
           typeof originMessage.channel.messages.fetch !== "function"
         ) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: "This Discord channel does not support fetching messages for reactions.",
-              },
-            ],
-            details: {},
-            isError: true,
-          };
+          throw new Error("This Discord channel does not support fetching messages for reactions.");
         }
 
-        const targetMessage = await originMessage.channel.messages
-          .fetch(params.messageId)
-          .catch(() => null);
-        if (targetMessage === null) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Message ${params.messageId} was not found in the current channel.`,
-              },
-            ],
-            details: {},
-            isError: true,
-          };
-        }
+        const targetMessage = await originMessage.channel.messages.fetch(params.messageId);
 
         const emoji = normalizeReactionEmoji(originMessage, params.emoji);
         if (emoji === null) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: "That emoji is invalid or not available here.",
-              },
-            ],
-            details: {},
-            isError: true,
-          };
+          throw new Error("That emoji is invalid or not available here.");
         }
 
         await runDiscordAction(() => targetMessage.react(emoji));
@@ -271,6 +232,33 @@ export const createDiscordTools = (
               text: `Added reaction ${emoji} to message ${targetMessage.id}.`,
             },
           ],
+          details: {},
+        };
+      },
+    }),
+    defineTool({
+      name: FETCH_MESSAGE_TOOL,
+      label: "Fetch Message",
+      description: "Fetch the content of a message in the current Discord channel by message ID.",
+      promptSnippet: "Fetch a message from the current Discord channel by ID",
+      promptGuidelines: [
+        "When a message replies to or otherwise references a message ID you do not recognize, this tool can fetch the message.",
+      ],
+      parameters: Type.Object({
+        messageId: Type.String({ description: "Discord message ID in the current channel." }),
+      }),
+      execute: async (_toolCallId, params) => {
+        if (
+          !("messages" in originMessage.channel) ||
+          typeof originMessage.channel.messages.fetch !== "function"
+        ) {
+          throw new Error("This Discord channel does not support fetching messages.");
+        }
+
+        const fetchedMessage = await originMessage.channel.messages.fetch(params.messageId);
+
+        return {
+          content: [{ type: "text", text: formatMessageForPrompt(fetchedMessage) }],
           details: {},
         };
       },

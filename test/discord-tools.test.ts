@@ -3,11 +3,15 @@ import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
 
 import { createDiscordTools } from "../src/discord/tools.ts";
 
+const mockCtx = {} as unknown as ExtensionContext;
+
 const UPLOAD_FILE_TOOL = "discord_upload_file";
+const FETCH_MESSAGE_TOOL = "discord_fetch_message";
 
 type DiscordTool = ReturnType<typeof createDiscordTools>[number];
 
@@ -29,6 +33,57 @@ const makeOriginMessage = (
     guild: { premiumTier },
   }) as unknown as Message<true>;
 
+const makeOriginMessageWithFetch = (fetch: (id: string) => Promise<unknown>): Message<true> =>
+  ({
+    channel: {
+      messages: { fetch },
+    },
+  }) as unknown as Message<true>;
+
+const makeFetchedMessage = (options: {
+  id: string;
+  authorUsername: string;
+  authorId: string;
+  content: string;
+  channelId: string;
+  mentions?: Map<string, { id: string; username: string }>;
+  reference?: { messageId: string; channelId: string } | null;
+}): unknown => ({
+  id: options.id,
+  author: { username: options.authorUsername, id: options.authorId },
+  content: options.content,
+  mentions: { users: options.mentions ?? new Map() },
+  reference: options.reference ?? null,
+  channelId: options.channelId,
+});
+
+type FetchToolResult = {
+  content: Array<{ type: string; text: string }>;
+  details: Record<string, unknown>;
+  isError?: boolean;
+};
+
+const findFetchTool = (tools: readonly DiscordTool[]): DiscordTool => {
+  const tool = tools.find((candidate) => candidate.name === FETCH_MESSAGE_TOOL);
+  if (tool === undefined) {
+    throw new Error("fetch tool missing");
+  }
+  return tool;
+};
+
+const executeFetchTool = async (
+  tool: DiscordTool,
+  params: { messageId: string },
+): Promise<FetchToolResult> => {
+  return (await tool.execute(
+    "tool-call",
+    params,
+    undefined,
+    undefined,
+    mockCtx,
+  )) as FetchToolResult;
+};
+
 const findUploadTool = (tools: readonly DiscordTool[]): DiscordTool => {
   const tool = tools.find((candidate) => candidate.name === UPLOAD_FILE_TOOL);
   if (tool === undefined) {
@@ -47,7 +102,7 @@ const executeUploadTool = async (
       params,
       undefined,
       undefined,
-      undefined,
+      mockCtx,
     )) as UploadToolResult;
   } catch (error) {
     return {
@@ -76,7 +131,9 @@ const makeWorkspace = async (): Promise<string> => {
 };
 
 afterEach(async () => {
-  await Promise.all(tempWorkspaces.splice(0).map((dir) => rm(dir, { force: true, recursive: true })));
+  await Promise.all(
+    tempWorkspaces.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
+  );
 });
 
 describe("discord upload tool", () => {
@@ -222,5 +279,82 @@ describe("discord upload tool", () => {
 
     expect(result.isError).toBeUndefined();
     expect(sent).toBe(true);
+  });
+});
+
+describe("discord fetch message tool", () => {
+  test("throws when channel does not support fetching", async () => {
+    const originMessage = makeOriginMessage(0);
+    const tools = createDiscordTools(originMessage, passthroughDiscordAction, {
+      enableAgenticWorkspace: false,
+      workspaceDir: "/tmp",
+    });
+    const tool = findFetchTool(tools);
+
+    await expect(executeFetchTool(tool, { messageId: "123" })).rejects.toThrow(
+      "This Discord channel does not support fetching messages.",
+    );
+  });
+
+  test("throws when message is not found", async () => {
+    const notFoundError = new Error("DiscordAPIError[10008]: Unknown Message");
+
+    const originMessage = makeOriginMessageWithFetch(async () => {
+      throw notFoundError;
+    });
+    const tools = createDiscordTools(originMessage, passthroughDiscordAction, {
+      enableAgenticWorkspace: false,
+      workspaceDir: "/tmp",
+    });
+    const tool = findFetchTool(tools);
+
+    await expect(executeFetchTool(tool, { messageId: "123" })).rejects.toBe(notFoundError);
+  });
+
+  test("returns formatted message content", async () => {
+    const fetchedMessage = makeFetchedMessage({
+      id: "456",
+      authorUsername: "alice",
+      authorId: "789",
+      content: "Hello world",
+      channelId: "channel-1",
+    });
+
+    const originMessage = makeOriginMessageWithFetch(async () => fetchedMessage);
+    const tools = createDiscordTools(originMessage, passthroughDiscordAction, {
+      enableAgenticWorkspace: false,
+      workspaceDir: "/tmp",
+    });
+    const tool = findFetchTool(tools);
+
+    const result = await executeFetchTool(tool, { messageId: "456" });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0]?.text).toBe("Message 456 from @alice (789): Hello world");
+  });
+
+  test("includes reply reference when present", async () => {
+    const fetchedMessage = makeFetchedMessage({
+      id: "456",
+      authorUsername: "alice",
+      authorId: "789",
+      content: "Hello world",
+      channelId: "channel-1",
+      reference: { messageId: "111", channelId: "channel-1" },
+    });
+
+    const originMessage = makeOriginMessageWithFetch(async () => fetchedMessage);
+    const tools = createDiscordTools(originMessage, passthroughDiscordAction, {
+      enableAgenticWorkspace: false,
+      workspaceDir: "/tmp",
+    });
+    const tool = findFetchTool(tools);
+
+    const result = await executeFetchTool(tool, { messageId: "456" });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0]?.text).toBe(
+      "Message 456 from @alice (789), reply to message 111: Hello world",
+    );
   });
 });

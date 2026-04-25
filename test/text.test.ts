@@ -32,6 +32,31 @@ describe("mention normalization", () => {
 
     expect(formatted).toBe("Message 555 from @jmp (999): @bubblebuddy (123) what's my username?");
   });
+
+  test("includes reply reference when provided", () => {
+    const formatted = formatIncomingDiscordMessage(
+      "111",
+      "alice",
+      "222",
+      "Hello there",
+      new Map(),
+      "789",
+    );
+
+    expect(formatted).toBe("Message 111 from @alice (222), reply to message 789: Hello there");
+  });
+
+  test("includes reply reference for empty content", () => {
+    const formatted = formatIncomingDiscordMessage("111", "alice", "222", "", new Map(), "789");
+
+    expect(formatted).toBe("Message 111 from @alice (222), reply to message 789");
+  });
+
+  test("omits reply reference when not provided", () => {
+    const formatted = formatIncomingDiscordMessage("111", "alice", "222", "Hello there", new Map());
+
+    expect(formatted).toBe("Message 111 from @alice (222): Hello there");
+  });
 });
 
 describe("status formatting", () => {

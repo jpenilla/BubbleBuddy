@@ -13,11 +13,8 @@ import { Effect } from "effect";
 import { loadAppConfig, type AppConfigShape } from "./config.ts";
 import { createToolStatusEmbed, type ToolStatusEmbed } from "./discord/tool-status-embed.ts";
 import { isActivationMessage } from "./domain/activation.ts";
-import {
-  formatIncomingDiscordMessage,
-  splitDiscordMessage,
-  splitThinkingStatus,
-} from "./domain/text.ts";
+import { formatMessageForPrompt } from "./discord/message-formatting.ts";
+import { splitDiscordMessage, splitThinkingStatus } from "./domain/text.ts";
 import { resolvePiModel } from "./pi/model.ts";
 import {
   createChannelSessions,
@@ -77,15 +74,6 @@ const isReplyToBot = async (message: Message<true>, botUserId: string): Promise<
     return false;
   }
 };
-
-const normalizeMessageContent = (message: Message<true>): string =>
-  formatIncomingDiscordMessage(
-    message.id,
-    message.author.username,
-    message.author.id,
-    message.content,
-    new Map([...message.mentions.users.values()].map((user) => [user.id, user.username])),
-  );
 
 const createSessionInput = (
   message: Message<true>,
@@ -194,7 +182,7 @@ const handleGuildMessage = (
         return;
       }
 
-      const normalizedContent = normalizeMessageContent(message);
+      const normalizedContent = formatMessageForPrompt(message);
       await sessions.activate(createSessionInput(message, client, config), normalizedContent);
     }),
   );
