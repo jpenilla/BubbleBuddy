@@ -64,7 +64,6 @@ const handleGuildMessage = (
       }
 
       const activation = {
-        isFromBot: message.author.bot,
         isReplyToBot: await isReplyToBot(message, client.user.id),
         mentionsBot: message.mentions.has(client.user),
       };

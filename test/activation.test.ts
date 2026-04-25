@@ -3,12 +3,20 @@ import { describe, expect, test } from "bun:test";
 import { isActivationMessage, shouldTreatAsSteering } from "../src/domain/activation.ts";
 
 describe("activation rules", () => {
-  test("ignores bot-authored messages", () => {
+  test("activates when another bot mentions or replies to this bot", () => {
     expect(
       isActivationMessage({
-        isFromBot: true,
         isReplyToBot: true,
         mentionsBot: true,
+      }),
+    ).toBe(true);
+  });
+
+  test("ignores messages that don't target this bot", () => {
+    expect(
+      isActivationMessage({
+        isReplyToBot: false,
+        mentionsBot: false,
       }),
     ).toBe(false);
   });
@@ -35,7 +43,6 @@ describe("activation rules", () => {
 
   test("treats activations as steering only while a run is active", () => {
     const context = {
-      isFromBot: false,
       isReplyToBot: true,
       mentionsBot: false,
     };
