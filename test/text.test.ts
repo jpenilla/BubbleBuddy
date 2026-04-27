@@ -9,7 +9,7 @@ import {
 } from "../src/domain/text.ts";
 
 describe("mention normalization", () => {
-  test("normalizes Discord user mention ids to username and id references", () => {
+  test("normalizes Discord user mention ids to copyable mention references", () => {
     const normalized = normalizeIncomingUserMentions(
       "hey <@123> and <@!456>",
       new Map([
@@ -18,10 +18,10 @@ describe("mention normalization", () => {
       ]),
     );
 
-    expect(normalized).toBe("hey @alice (123) and @bob (456)");
+    expect(normalized).toBe("hey @alice mention=<@123> and @bob mention=<@456>");
   });
 
-  test("includes the speaking user id in normalized incoming Discord messages", () => {
+  test("formats incoming Discord messages with compact copyable mention references", () => {
     const formatted = formatIncomingDiscordMessage(
       "555",
       "jmp",
@@ -30,7 +30,9 @@ describe("mention normalization", () => {
       new Map([["123", "bubblebuddy"]]),
     );
 
-    expect(formatted).toBe("Message 555 from @jmp (999): @bubblebuddy (123) what's my username?");
+    expect(formatted).toBe(
+      "[msg 555 user=jmp mention=<@999>] @bubblebuddy mention=<@123> what's my username?",
+    );
   });
 
   test("includes reply reference when provided", () => {
@@ -43,19 +45,19 @@ describe("mention normalization", () => {
       "789",
     );
 
-    expect(formatted).toBe("Message 111 from @alice (222), reply to message 789: Hello there");
+    expect(formatted).toBe("[msg 111 user=alice mention=<@222> reply_to=789] Hello there");
   });
 
   test("includes reply reference for empty content", () => {
     const formatted = formatIncomingDiscordMessage("111", "alice", "222", "", new Map(), "789");
 
-    expect(formatted).toBe("Message 111 from @alice (222), reply to message 789");
+    expect(formatted).toBe("[msg 111 user=alice mention=<@222> reply_to=789]");
   });
 
   test("omits reply reference when not provided", () => {
     const formatted = formatIncomingDiscordMessage("111", "alice", "222", "Hello there", new Map());
 
-    expect(formatted).toBe("Message 111 from @alice (222): Hello there");
+    expect(formatted).toBe("[msg 111 user=alice mention=<@222>] Hello there");
   });
 });
 

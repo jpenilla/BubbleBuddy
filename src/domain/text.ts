@@ -3,7 +3,7 @@ import type { AssistantMessage } from "@mariozechner/pi-ai";
 export const DISCORD_SAFE_MESSAGE_LIMIT = 1_900;
 
 export const formatDiscordUserReference = (username: string, userId: string): string =>
-  `@${username} (${userId})`;
+  `@${username} mention=<@${userId}>`;
 
 export const normalizeIncomingUserMentions = (
   content: string,
@@ -29,12 +29,9 @@ export const formatIncomingDiscordMessage = (
   inReplyToMessageId?: string,
 ): string => {
   const normalizedContent = normalizeIncomingUserMentions(content, usernamesById).trim();
-  const authorReference = formatDiscordUserReference(authorUsername, authorId);
-  const replyReference =
-    inReplyToMessageId !== undefined ? `, reply to message ${inReplyToMessageId}` : "";
-  return normalizedContent.length === 0
-    ? `Message ${messageId} from ${authorReference}${replyReference}`
-    : `Message ${messageId} from ${authorReference}${replyReference}: ${normalizedContent}`;
+  const replyReference = inReplyToMessageId !== undefined ? ` reply_to=${inReplyToMessageId}` : "";
+  const prefix = `[msg ${messageId} user=${authorUsername} mention=<@${authorId}>${replyReference}]`;
+  return normalizedContent.length === 0 ? prefix : `${prefix} ${normalizedContent}`;
 };
 
 export const extractAssistantText = (message: AssistantMessage): string =>

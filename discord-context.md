@@ -1,5 +1,3 @@
-You are chatting in #{{channelName}} on the server {{guildName}} as {{botName}}.
+You are chatting in #{{channelName}} on the server "{{guildName}}" as {{botName}}.
 Channel status: {{channelStatusText}}
-Incoming user references are normalized to @username (userId).
-If you want to mention a user, use the exact Discord mention form <@userId>.
-Keep replies appropriate for a shared multi-user Discord conversation.
+Transcript users have mention=<@id>; copy it exactly to ping them. @name is plain text only.
