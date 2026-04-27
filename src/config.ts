@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { Redacted } from "effect";
-import { Config, ConfigProvider, Effect, Schema, FileSystem } from "effect";
+import { Config, ConfigProvider, Data, Effect, Schema, FileSystem } from "effect";
 
 // Matches @mariozechner/pi-agent-core's ThinkingLevel type.
 const THINKING_LEVELS: readonly ThinkingLevel[] = [
@@ -48,27 +48,28 @@ export interface AppConfigShape {
   readonly discordContextTemplate: string;
 }
 
+class ConfigError extends Data.TaggedError("ConfigError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
 const normalizeLineEndings = (value: string): string => value.replaceAll("\r\n", "\n");
 
 const readTextFile = (path: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
-    const text = yield* fs.readFileString(path).pipe(
-      Effect.mapError((error) => {
-        return Error(`Failed to read ${path}`, { cause: error });
-      }),
-    );
+    const text = yield* fs.readFileString(path);
     return normalizeLineEndings(text);
   });
 
 const CONFIG_FILE_NAME = "bubblebuddy.json";
 
-export const loadAppConfig: Effect.Effect<AppConfigShape, Error, FileSystem.FileSystem> =
+export const loadAppConfig: Effect.Effect<AppConfigShape, ConfigError, FileSystem.FileSystem> =
   Effect.gen(function* () {
     const text = yield* readTextFile(CONFIG_FILE_NAME);
     const json = yield* Effect.try({
       try: () => JSON.parse(text) as unknown,
-      catch: (e) => new Error(`Invalid JSON in ${CONFIG_FILE_NAME}`, { cause: e }),
+      catch: (e) => new ConfigError({ message: `Invalid JSON in ${CONFIG_FILE_NAME}`, cause: e }),
     });
     const jsonProvider = ConfigProvider.fromUnknown(json);
     const envProvider = ConfigProvider.fromEnv().pipe(ConfigProvider.constantCase);
@@ -125,4 +126,6 @@ export const loadAppConfig: Effect.Effect<AppConfigShape, Error, FileSystem.File
       // Extras, i.e. from other files
       discordContextTemplate,
     } satisfies AppConfigShape;
-  }).pipe(Effect.mapError((error) => new Error(`Configuration error`, { cause: error })));
+  }).pipe(
+    Effect.mapError((error) => new ConfigError({ message: "Configuration error", cause: error })),
+  );
