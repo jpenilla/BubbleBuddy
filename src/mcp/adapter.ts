@@ -300,7 +300,7 @@ export class McpAdapter {
         name,
         label: `MCP: ${mcpTool.name}`,
         description: mcpTool.description || `MCP tool from ${serverName}`,
-        promptSnippet: `Call ${name} from the ${serverName} MCP server`,
+        promptSnippet: mcpTool.description || `MCP tool from ${serverName}`,
         parameters: Type.Unsafe<Record<string, unknown>>(
           mcpTool.inputSchema || { type: "object", properties: {} },
         ),
