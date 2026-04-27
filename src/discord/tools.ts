@@ -30,12 +30,12 @@ const formatEmojiList = (message: Message<true>): string => {
 
   return [
     "Custom emojis you can use here:",
-    "In normal replies, use message=<...>. Plain :name: stays text.",
     ...emojis.map((emoji) => {
       const messageSyntax = formatCustomEmojiMessageSyntax(emoji);
       const reactionSyntax = formatCustomEmojiReactionSyntax(emoji);
       return `- :${emoji.name}: message=\`${messageSyntax}\` reaction=\`${reactionSyntax}\``;
     }),
+    "Always use the exact correct syntax for the use case. Do not escape or show the plain name unless a task explicitly needs it or a user asks.",
   ].join("\n");
 };
 
@@ -138,7 +138,7 @@ export const createDiscordTools = (
       description: "List custom emojis usable here, including exact text and reaction syntax.",
       promptSnippet: "List custom emojis usable here, including exact text and reaction syntax",
       promptGuidelines: [
-        `For custom emojis, always use exact syntax from ${LIST_CUSTOM_EMOJIS_TOOL} in text and reactions. Do not use plain :name:.`,
+        `For custom emojis, always use exact syntax from ${LIST_CUSTOM_EMOJIS_TOOL} in text and reactions.`,
       ],
       parameters: Type.Object({}),
       execute: async () => ({
@@ -202,7 +202,7 @@ export const createDiscordTools = (
       description: "React to a message in the current channel.",
       promptSnippet: "React to a message in the current channel",
       parameters: Type.Object({
-        emoji: Type.String({ description: "Emoji reaction to add" }),
+        emojis: Type.Array(Type.String({ description: "Emoji reaction to add" })),
         messageId: Type.String({ description: "Discord message ID" }),
       }),
       execute: async (_toolCallId, params) => {
@@ -215,20 +215,29 @@ export const createDiscordTools = (
 
         const targetMessage = await originMessage.channel.messages.fetch(params.messageId);
 
-        const emoji = normalizeReactionEmoji(originMessage, params.emoji);
-        if (emoji === null) {
-          throw new Error("That emoji is invalid or not available here.");
+        const failures: string[] = [];
+
+        for (const input of params.emojis) {
+          const emoji = normalizeReactionEmoji(originMessage, input);
+          if (emoji === null) {
+            failures.push(`${input}: invalid or not available`);
+            continue;
+          }
+
+          try {
+            await runDiscordAction(() => targetMessage.react(emoji));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            failures.push(`${emoji}: ${message}`);
+          }
         }
 
-        await runDiscordAction(() => targetMessage.react(emoji));
+        if (failures.length > 0) {
+          throw new Error(`Failed to add reactions: ${failures.join("; ")}`);
+        }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: `Added reaction ${emoji} to message ${targetMessage.id}.`,
-            },
-          ],
+          content: [{ type: "text", text: "Reactions added." }],
           details: {},
         };
       },

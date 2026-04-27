@@ -12,6 +12,7 @@ const mockCtx = {} as unknown as ExtensionContext;
 
 const UPLOAD_FILE_TOOL = "discord_upload_file";
 const FETCH_MESSAGE_TOOL = "discord_fetch_message";
+const REACT_TOOL = "discord_react";
 
 type DiscordTool = ReturnType<typeof createDiscordTools>[number];
 
@@ -356,5 +357,93 @@ describe("discord fetch message tool", () => {
     expect(result.content[0]?.text).toBe(
       "[msg 456 user=alice mention=<@789> reply_to=111] Hello world",
     );
+  });
+});
+
+describe("discord react tool", () => {
+  const makeOriginMessageForReact = (
+    fetch: (id: string) => Promise<{ id: string; react: (emoji: string) => Promise<void> }>,
+  ): Message<true> =>
+    ({
+      channel: {
+        messages: { fetch },
+        permissionsFor: () => null,
+      },
+      guild: {
+        id: "g1",
+        emojis: { cache: new Map() },
+      },
+      client: {
+        user: { id: "bot1" },
+        emojis: { cache: new Map() },
+      },
+    }) as unknown as Message<true>;
+
+  test("adds multiple reactions", async () => {
+    const reacted: string[] = [];
+    const msg = {
+      id: "m1",
+      react: async (e: string) => {
+        reacted.push(e);
+      },
+    };
+    const tool = createDiscordTools(
+      makeOriginMessageForReact(async () => msg),
+      passthroughDiscordAction,
+      {
+        enableAgenticWorkspace: false,
+        workspaceDir: "/tmp",
+      },
+    ).find((t) => t.name === REACT_TOOL)!;
+
+    const result = (await tool.execute(
+      "tool-call",
+      { messageId: "m1", emojis: ["👍", "🎉"] },
+      undefined,
+      undefined,
+      mockCtx,
+    )) as {
+      content: Array<{ type: string; text: string }>;
+    };
+
+    expect(result.content[0]?.text).toBe("Reactions added.");
+    expect(reacted).toEqual(["👍", "🎉"]);
+  });
+
+  test("applies valid reactions and reports combined failures", async () => {
+    const reacted: string[] = [];
+    const msg = {
+      id: "m1",
+      react: async (e: string) => {
+        if (e === "🎉") throw new Error("blocked");
+        reacted.push(e);
+      },
+    };
+    const tool = createDiscordTools(
+      makeOriginMessageForReact(async () => msg),
+      passthroughDiscordAction,
+      {
+        enableAgenticWorkspace: false,
+        workspaceDir: "/tmp",
+      },
+    ).find((t) => t.name === REACT_TOOL)!;
+
+    let error: unknown;
+    try {
+      await tool.execute(
+        "tool-call",
+        { messageId: "m1", emojis: ["👍", ":bad:", "🎉"] },
+        undefined,
+        undefined,
+        mockCtx,
+      );
+    } catch (e) {
+      error = e;
+    }
+
+    expect(reacted).toEqual(["👍"]);
+    expect(String(error)).toContain("Failed to add reactions");
+    expect(String(error)).toContain(":bad:");
+    expect(String(error)).toContain("blocked");
   });
 });
