@@ -330,7 +330,7 @@ describe("discord fetch message tool", () => {
     const result = await executeFetchTool(tool, { messageId: "456" });
 
     expect(result.isError).toBeUndefined();
-    expect(result.content[0]?.text).toBe("Message 456 from @alice (789): Hello world");
+    expect(result.content[0]?.text).toBe("[msg 456 user=alice mention=<@789>] Hello world");
   });
 
   test("includes reply reference when present", async () => {
@@ -354,7 +354,7 @@ describe("discord fetch message tool", () => {
 
     expect(result.isError).toBeUndefined();
     expect(result.content[0]?.text).toBe(
-      "Message 456 from @alice (789), reply to message 111: Hello world",
+      "[msg 456 user=alice mention=<@789> reply_to=111] Hello world",
     );
   });
 });
