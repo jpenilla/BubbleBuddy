@@ -23,6 +23,4 @@ const TOOL_STATUS_COLOR = {
 export const createToolStatusEmbed = (status: ToolStatusEmbed): EmbedBuilder =>
   new EmbedBuilder()
     .setColor(TOOL_STATUS_COLOR[status.phase])
-    .setDescription(
-      `${TOOL_EMOJI} **${status.toolName}** ${TOOL_STATUS_EMOJI[status.phase]}`,
-    );
+    .setDescription(`${TOOL_EMOJI} **${status.toolName}** ${TOOL_STATUS_EMOJI[status.phase]}`);

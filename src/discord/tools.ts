@@ -135,10 +135,10 @@ export const createDiscordTools = (
     defineTool({
       name: LIST_CUSTOM_EMOJIS_TOOL,
       label: "List Custom Emojis",
-      description: "List custom emojis usable here, including exact reply and reaction syntax.",
-      promptSnippet: "List custom emojis usable here, including exact reply and reaction syntax",
+      description: "List custom emojis usable here, including exact text and reaction syntax.",
+      promptSnippet: "List custom emojis usable here, including exact text and reaction syntax",
       promptGuidelines: [
-        "For custom emojis in text, use the exact <:name:id> or <a:name:id> syntax from discord_list_custom_emojis. Do not use plain :name:.",
+        `For custom emojis, always use exact syntax from ${LIST_CUSTOM_EMOJIS_TOOL} in text and reactions. Do not use plain :name:.`,
       ],
       parameters: Type.Object({}),
       execute: async () => ({
@@ -149,8 +149,8 @@ export const createDiscordTools = (
     defineTool({
       name: LIST_STICKERS_TOOL,
       label: "List Stickers",
-      description: "List stickers the bot can send here.",
-      promptSnippet: "List stickers the bot can send here",
+      description: "List stickers usable here.",
+      promptSnippet: "List stickers usable here",
       parameters: Type.Object({}),
       execute: async () => ({
         content: [{ type: "text", text: await formatStickerList(originMessage) }],
@@ -160,15 +160,15 @@ export const createDiscordTools = (
     defineTool({
       name: SEND_STICKER_TOOL,
       label: "Send Sticker",
-      description: "Send one sticker by sticker ID.",
-      promptSnippet: "Send one sticker by sticker ID",
+      description: "Send one sticker.",
+      promptSnippet: "Send one sticker",
       parameters: Type.Object({
         caption: Type.Optional(
           Type.String({
-            description: "Optional message text to send with the sticker.",
+            description: "Optional message text to send with the sticker",
           }),
         ),
-        stickerId: Type.String({ description: "Sticker ID to send." }),
+        stickerId: Type.String({ description: "Sticker ID" }),
       }),
       execute: async (_toolCallId, params) => {
         const stickers = await listUsableStickers(originMessage);
@@ -199,14 +199,11 @@ export const createDiscordTools = (
     defineTool({
       name: REACT_TOOL,
       label: "React",
-      description: "Add one reaction to a message in the current Discord channel.",
-      promptSnippet: "Add a reaction to a message in the current Discord channel",
-      promptGuidelines: [
-        "Use discord_react with a message ID from the conversation transcript. For custom emoji reactions, use the reaction syntax from discord_list_custom_emojis.",
-      ],
+      description: "React to a message in the current channel.",
+      promptSnippet: "React to a message in the current channel",
       parameters: Type.Object({
-        emoji: Type.String({ description: "Emoji reaction to add." }),
-        messageId: Type.String({ description: "Discord message ID in the current channel." }),
+        emoji: Type.String({ description: "Emoji reaction to add" }),
+        messageId: Type.String({ description: "Discord message ID" }),
       }),
       execute: async (_toolCallId, params) => {
         if (
@@ -239,13 +236,13 @@ export const createDiscordTools = (
     defineTool({
       name: FETCH_MESSAGE_TOOL,
       label: "Fetch Message",
-      description: "Fetch the content of a message in the current Discord channel by message ID.",
-      promptSnippet: "Fetch a message from the current Discord channel by ID",
+      description: "Fetch a message in the current Discord channel.",
+      promptSnippet: "Fetch a message in the current Discord channel",
       promptGuidelines: [
-        "When a message replies to or otherwise references a message ID you do not recognize, this tool can fetch the message.",
+        "When a message replies to or otherwise references a message ID you do not recognize, you may attempt to fetch it",
       ],
       parameters: Type.Object({
-        messageId: Type.String({ description: "Discord message ID in the current channel." }),
+        messageId: Type.String({ description: "Message ID" }),
       }),
       execute: async (_toolCallId, params) => {
         if (
@@ -270,24 +267,21 @@ export const createDiscordTools = (
       defineTool({
         name: UPLOAD_FILE_TOOL,
         label: "Upload File",
-        description: "Upload one file from /workspace to the current Discord channel.",
-        promptSnippet: "Upload a file from /workspace to the current Discord channel",
-        promptGuidelines: [
-          "Use discord_upload_file when the user asks for a file/download/attachment.",
-          "Only provide paths inside /workspace.",
-          "If needed, use read/bash tools first to inspect or generate the file in /workspace.",
-        ],
+        description:
+          "Upload file from /workspace into chat; path may be absolute or relative to /workspace.",
+        promptSnippet:
+          "Upload file from /workspace into chat; path may be absolute or relative to /workspace",
         parameters: Type.Object({
           caption: Type.Optional(
             Type.String({
-              description: "Optional message text to send with the uploaded file.",
+              description: "Optional message text to send with the uploaded file",
             }),
           ),
           fileName: Type.Optional(
-            Type.String({ description: "Optional attachment file name override." }),
+            Type.String({ description: "Optional attachment file name override" }),
           ),
           path: Type.String({
-            description: `Path to a file in ${WORKSPACE_CWD} (absolute or relative to ${WORKSPACE_CWD}).`,
+            description: "Path of file to upload",
           }),
         }),
         execute: async (_toolCallId, params) => {
