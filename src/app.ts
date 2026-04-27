@@ -12,10 +12,21 @@ import { Effect, Redacted } from "effect";
 
 import { loadAppConfig, type AppConfigShape } from "./config.ts";
 import { isActivationMessage } from "./domain/activation.ts";
+import type { PromptTemplateContext } from "./domain/prompt.ts";
 import { formatMessageForPrompt } from "./discord/message-formatting.ts";
 import { SHOW_THINKING_DEFAULT } from "./channel-repository.ts";
 import { resolvePiModel } from "./pi/model.ts";
 import { createChannelSessionManager, type ChannelSessionManager } from "./sessions.ts";
+
+const COMPACT_COMMAND = new SlashCommandBuilder()
+  .setName("compact")
+  .setDescription("Manually compact this channel's session context.")
+  .addStringOption((option) =>
+    option
+      .setName("instructions")
+      .setDescription("Custom instructions for the compaction summary")
+      .setRequired(false),
+  );
 
 const NEW_COMMAND = new SlashCommandBuilder()
   .setName("new")
@@ -25,11 +36,19 @@ const THINKING_COMMAND = new SlashCommandBuilder()
   .setName("thinking")
   .setDescription("Toggle thinking messages in this channel.");
 
-const isGuildTextChannel = (channel: Message<true>["channel"]): channel is GuildTextBasedChannel =>
+const isGuildTextChannel = (channel: unknown): channel is GuildTextBasedChannel =>
+  typeof channel === "object" &&
+  channel !== null &&
+  "isSendable" in channel &&
+  typeof channel.isSendable === "function" &&
   channel.isSendable();
 
 const registerSlashCommands = async (client: Client<true>): Promise<void> => {
-  await client.application.commands.set([NEW_COMMAND.toJSON(), THINKING_COMMAND.toJSON()]);
+  await client.application.commands.set([
+    COMPACT_COMMAND.toJSON(),
+    NEW_COMMAND.toJSON(),
+    THINKING_COMMAND.toJSON(),
+  ]);
 };
 
 const waitForReady = async (client: Client): Promise<Client<true>> =>
@@ -50,6 +69,23 @@ const isReplyToBot = async (message: Message<true>, botUserId: string): Promise<
     return false;
   }
 };
+
+const createPromptContext = (
+  client: Client<true>,
+  channel: GuildTextBasedChannel,
+  guildName: string,
+): PromptTemplateContext => ({
+  botName: client.user.username,
+  channelName:
+    "name" in channel && typeof channel.name === "string" ? channel.name : "unknown-channel",
+  channelStatusText:
+    "topic" in channel && typeof channel.topic === "string"
+      ? channel.topic.trim().length > 0
+        ? channel.topic.trim()
+        : "none"
+      : "none",
+  guildName,
+});
 
 const handleGuildMessage = (
   client: Client<true>,
@@ -77,27 +113,18 @@ const handleGuildMessage = (
         {
           channel: message.channel,
           originMessage: message,
-          promptContext: {
-            botName: client.user.username,
-            channelName:
-              "name" in message.channel && typeof message.channel.name === "string"
-                ? message.channel.name
-                : "unknown-channel",
-            channelStatusText:
-              "topic" in message.channel && typeof message.channel.topic === "string"
-                ? message.channel.topic.trim().length > 0
-                  ? message.channel.topic.trim()
-                  : "none"
-                : "none",
-            guildName: message.guild.name,
-          },
+          promptContext: createPromptContext(client, message.channel, message.guild.name),
         },
         normalizedContent,
       );
     }),
   );
 
-const handleInteraction = (sessions: ChannelSessionManager, interaction: Interaction) =>
+const handleInteraction = (
+  client: Client<true>,
+  sessions: ChannelSessionManager,
+  interaction: Interaction,
+) =>
   Effect.runPromise(
     Effect.tryPromise(async () => {
       if (!interaction.isChatInputCommand()) {
@@ -109,6 +136,48 @@ const handleInteraction = (sessions: ChannelSessionManager, interaction: Interac
           content: "This command only works in guild channels.",
           ephemeral: true,
         });
+        return;
+      }
+
+      const guild = interaction.guild;
+      if (guild === null) {
+        await interaction.reply("This command only works in guild channels.");
+        return;
+      }
+
+      if (interaction.commandName === "compact") {
+        if (!isGuildTextChannel(interaction.channel)) {
+          await interaction.reply("This command only works in guild text channels.");
+          return;
+        }
+
+        const customInstructions =
+          interaction.options.getString("instructions")?.trim() || undefined;
+        await interaction.deferReply();
+        const originMessage = (await interaction.fetchReply()) as Message<true>;
+        const result = await sessions.compact(
+          {
+            channel: interaction.channel,
+            originMessage,
+            promptContext: createPromptContext(client, interaction.channel, guild.name),
+          },
+          customInstructions,
+        );
+
+        switch (result) {
+          case "started":
+            await interaction.editReply("Compaction requested.");
+            break;
+          case "no-session":
+            await interaction.editReply("No session exists yet for this channel.");
+            break;
+          case "rejected-busy":
+            await interaction.editReply("A response is already in progress for this channel.");
+            break;
+          case "rejected-compacting":
+            await interaction.editReply("Compaction is already in progress for this channel.");
+            break;
+        }
         return;
       }
 
@@ -203,7 +272,7 @@ export const program = Effect.gen(function* () {
   });
 
   client.on(Events.InteractionCreate, (interaction) => {
-    void handleInteraction(sessions, interaction);
+    void handleInteraction(readyClient, sessions, interaction);
   });
 
   yield* Effect.logInfo("Logging into Discord.");

@@ -1,3 +1,4 @@
+import type { CompactionResult } from "@mariozechner/pi-coding-agent";
 import type {
   ChannelRepository,
   ChannelSettings,
@@ -35,6 +36,10 @@ export class ChannelState {
     return this.#pi !== undefined;
   }
 
+  get isCompacting(): boolean {
+    return this.#pi?.isCompacting ?? false;
+  }
+
   get isRunning(): boolean {
     return this.#pi?.isRunning ?? false;
   }
@@ -60,6 +65,13 @@ export class ChannelState {
       throw new Error("No session attached to channel");
     }
     await this.#pi.activate(messageText, replyToMessageId);
+  }
+
+  async compactSession(customInstructions?: string): Promise<CompactionResult> {
+    if (this.#pi === undefined) {
+      throw new Error("No session attached to channel");
+    }
+    return await this.#pi.compact(customInstructions);
   }
 
   /**

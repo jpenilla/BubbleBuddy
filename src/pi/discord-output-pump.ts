@@ -3,6 +3,7 @@ import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
 import { Cause, Effect, Option, Queue } from "effect";
 
 import { SHOW_THINKING_DEFAULT, type ChannelSettings } from "../channel-repository.ts";
+import type { CompactionStatusEmbed } from "../discord/compaction-status-embed.ts";
 import type { ToolStatusEmbed } from "../discord/tool-status-embed.ts";
 import { extractAssistantText } from "../domain/text.ts";
 
@@ -10,6 +11,7 @@ type DiscordAction = () => Promise<void>;
 export type RunDiscordAction = <T>(operation: () => Promise<T>) => Promise<T>;
 
 export interface SessionSink {
+  readonly onCompactionStatus: (status: CompactionStatusEmbed) => Promise<void>;
   readonly onError: (text: string) => Promise<void>;
   readonly onFinal: (text: string, replyToMessageId: string) => Promise<void>;
   readonly onRunEnd: () => Promise<void>;
@@ -114,6 +116,26 @@ export class DiscordOutputPump {
         });
         break;
       }
+      case "compaction_start":
+        this.#enqueueStatusAction(() =>
+          this.#sink.onCompactionStatus({
+            phase: "start",
+            reason: event.reason,
+          }),
+        );
+        break;
+      case "compaction_end":
+        if (event.errorMessage !== undefined) {
+          void Effect.runFork(Effect.logWarning(event.errorMessage));
+        }
+        this.#enqueueStatusAction(() =>
+          this.#sink.onCompactionStatus({
+            phase: event.aborted ? "aborted" : event.result === undefined ? "error" : "success",
+            reason: event.reason,
+            tokensBefore: event.result?.tokensBefore,
+          }),
+        );
+        break;
       case "message_update":
         if (event.assistantMessageEvent.type === "thinking_end") {
           if (this.#getChannelSettings().showThinking ?? SHOW_THINKING_DEFAULT) {

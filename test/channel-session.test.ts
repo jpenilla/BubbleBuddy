@@ -19,6 +19,9 @@ describe("channel session Discord output ordering", () => {
   test("processes tool completion statuses between queued Discord mutations", async () => {
     const observed: string[] = [];
     const sink: SessionSink = {
+      onCompactionStatus: async () => {
+        throw new Error("unexpected onCompactionStatus");
+      },
       onError: async () => {
         throw new Error("unexpected onError");
       },
@@ -95,6 +98,9 @@ describe("channel session Discord output ordering", () => {
   test("shutdown drains queued status and suppresses abort errors", async () => {
     const observed: string[] = [];
     const sink: SessionSink = {
+      onCompactionStatus: async (status) => {
+        observed.push(`compaction:${status.phase}`);
+      },
       onError: async (text) => {
         observed.push(`error:${text}`);
       },

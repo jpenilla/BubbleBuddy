@@ -6,16 +6,12 @@ export interface ToolStatusEmbed {
   readonly toolName: string;
 }
 
+const TOOL_EMOJI = "🛠️" as const;
+
 const TOOL_STATUS_EMOJI = {
-  start: "🛠️",
+  start: "⏳",
   success: "✅",
   error: "❌",
-} as const;
-
-const TOOL_STATUS_LABEL = {
-  start: "Running",
-  success: "Completed",
-  error: "Failed",
 } as const;
 
 const TOOL_STATUS_COLOR = {
@@ -28,5 +24,5 @@ export const createToolStatusEmbed = (status: ToolStatusEmbed): EmbedBuilder =>
   new EmbedBuilder()
     .setColor(TOOL_STATUS_COLOR[status.phase])
     .setDescription(
-      `${TOOL_STATUS_EMOJI[status.phase]} ${TOOL_STATUS_LABEL[status.phase]} \`${status.toolName}\``,
+      `${TOOL_EMOJI} **${status.toolName}** ${TOOL_STATUS_EMOJI[status.phase]}`,
     );

@@ -5,6 +5,7 @@ import {
   SessionManager,
   SettingsManager,
   type AgentSession,
+  type CompactionResult,
   type ExtensionFactory,
 } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
@@ -177,8 +178,16 @@ export class PiChannelSession {
     });
   }
 
+  get isCompacting(): boolean {
+    return this.#session.isCompacting;
+  }
+
   get isRunning(): boolean {
     return this.#session.isStreaming;
+  }
+
+  compact(customInstructions?: string): Promise<CompactionResult> {
+    return this.#executor.run(() => this.#session.compact(customInstructions));
   }
 
   activate(input: string, replyToMessageId: string): Promise<void> {

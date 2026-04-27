@@ -29,6 +29,10 @@ export interface SessionFactoryInput {
 
 export interface ChannelSessionManager {
   readonly activate: (input: SessionFactoryInput, messageText: string) => Promise<void>;
+  readonly compact: (
+    input: SessionFactoryInput,
+    customInstructions?: string,
+  ) => Promise<"started" | "no-session" | "rejected-busy" | "rejected-compacting">;
   readonly discard: (channelId: string) => Promise<"discarded" | "rejected-busy">;
   readonly withChannel: <T>(
     channelId: string,
@@ -53,6 +57,7 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
   readonly #modelRegistry: ModelRegistry;
   readonly #channels = new Map<string, ChannelState>();
   readonly #locks = new Map<string, SerialExecutor>();
+  readonly #requestedManualCompactions = new Set<string>();
   readonly #activeOperations = new Set<Promise<unknown>>();
   readonly #repository: ChannelRepository;
   readonly #idleTimeoutMs: number;
@@ -108,12 +113,60 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
     );
   }
 
-  discard(channelId: string): Promise<"discarded" | "rejected-busy"> {
+  compact(
+    input: SessionFactoryInput,
+    customInstructions?: string,
+  ): Promise<"started" | "no-session" | "rejected-busy" | "rejected-compacting"> {
+    const channelId = input.channel.id;
     return this.#trackOperation(
       this.#lockFor(channelId).run(async () => {
         const channel = await this.#getOrLoadChannel(channelId);
 
         if (channel.isRunning) {
+          return "rejected-busy";
+        }
+        if (this.#requestedManualCompactions.has(channelId) || channel.isCompacting) {
+          return "rejected-compacting";
+        }
+        if (!channel.hasSession) {
+          if (channel.activeSession === undefined) {
+            return "no-session";
+          }
+
+          const { pi } = await this.#createPiSession(input, channel);
+          channel.attachSession(pi);
+        }
+
+        this.#requestedManualCompactions.add(channelId);
+        channel.touchActivity();
+
+        void this.#trackOperation(
+          channel
+            .compactSession(customInstructions)
+            .catch((error) =>
+              Effect.runPromise(Effect.logWarning("Manual compaction failed", error)),
+            )
+            .finally(() => {
+              this.#requestedManualCompactions.delete(channelId);
+              channel.touchActivity();
+            })
+            .then(() => channel.persistIfDirty()),
+        );
+        return "started";
+      }),
+    );
+  }
+
+  discard(channelId: string): Promise<"discarded" | "rejected-busy"> {
+    return this.#trackOperation(
+      this.#lockFor(channelId).run(async () => {
+        const channel = await this.#getOrLoadChannel(channelId);
+
+        if (
+          channel.isRunning ||
+          channel.isCompacting ||
+          this.#requestedManualCompactions.has(channelId)
+        ) {
           void Effect.runFork(
             Effect.logInfo(`Session discard rejected for channel ${channelId}: session is busy.`),
           );
@@ -245,7 +298,12 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
 
     await channel.persistIfDirty();
 
-    if (now - channel.lastActivity > this.#idleTimeoutMs && !channel.isRunning) {
+    if (
+      now - channel.lastActivity > this.#idleTimeoutMs &&
+      !channel.isRunning &&
+      !channel.isCompacting &&
+      !this.#requestedManualCompactions.has(channelId)
+    ) {
       await this.#closeChannel(channelId, "shutdown");
     }
   }
