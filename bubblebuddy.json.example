@@ -1,0 +1,15 @@
+{
+  "botProfileFile": "profiles/friendly.md",
+  "modelProvider": "openai",
+  "modelId": "gpt-5.4-mini",
+  "storageDirectory": "storage",
+  "enableAgenticWorkspace": true,
+  "thinkingLevel": "minimal",
+  "typingIndicatorIntervalMs": 8000,
+  "channelIdleTimeoutMs": 1800000,
+  "mcpServers": {
+    "parallel": {
+      "url": "https://search.parallel.ai/mcp"
+    }
+  }
+}

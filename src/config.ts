@@ -1,119 +1,128 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { Config, ConfigProvider, Effect } from "effect";
+import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { Redacted } from "effect";
+import { Config, ConfigProvider, Effect, Schema, FileSystem } from "effect";
 
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+// Matches @mariozechner/pi-agent-core's ThinkingLevel type.
+const THINKING_LEVELS: readonly ThinkingLevel[] = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+];
+
+export type { ThinkingLevel };
+
+const McpServerConfigEntrySchema = Schema.Union([
+  Schema.Struct({
+    url: Schema.NonEmptyString,
+    bearerTokenEnv: Schema.optionalKey(Schema.String),
+  }),
+  Schema.Struct({
+    command: Schema.NonEmptyString,
+    args: Schema.optionalKey(Schema.Array(Schema.String)),
+    env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  }),
+]);
+
+const McpServersConfigSchema = Schema.Record(Schema.String, McpServerConfigEntrySchema);
+
+export type McpServerConfigEntry = Schema.Schema.Type<typeof McpServerConfigEntrySchema>;
+
+const PositiveFiniteFromStringSchema = Schema.FiniteFromString.check(Schema.isGreaterThan(0));
 
 export interface AppConfigShape {
+  readonly discordToken: Redacted.Redacted<string>;
   readonly botProfile: string;
-  readonly channelIdleTimeoutMs: number;
-  readonly discordContextTemplate: string;
-  readonly discordToken: string;
-  readonly enableAgenticWorkspace: boolean;
   readonly modelProvider: string;
   readonly modelId: string;
   readonly storageDirectory: string;
+  readonly enableAgenticWorkspace: boolean;
   readonly thinkingLevel: ThinkingLevel;
   readonly typingIndicatorIntervalMs: number;
+  readonly channelIdleTimeoutMs: number;
+  readonly mcpServers: Record<string, McpServerConfigEntry>;
+  readonly discordContextTemplate: string;
 }
 
 const normalizeLineEndings = (value: string): string => value.replaceAll("\r\n", "\n");
 
-const parseThinkingLevel = (value: string): ThinkingLevel => {
-  switch (value) {
-    case "off":
-    case "minimal":
-    case "low":
-    case "medium":
-    case "high":
-    case "xhigh":
-      return value;
-    default:
-      throw new Error(
-        `Unsupported PI_THINKING_LEVEL "${value}". Expected one of off, minimal, low, medium, high, xhigh.`,
-      );
-  }
-};
-
-const parseBooleanFlag = (name: string, value: string): boolean => {
-  switch (value.trim().toLowerCase()) {
-    case "1":
-    case "true":
-    case "yes":
-      return true;
-    case "0":
-    case "false":
-    case "no":
-      return false;
-    default:
-      throw new Error(`Unsupported ${name} "${value}". Expected true/false.`);
-  }
-};
-
-const readTextFile = (path: string, missingFileHint: string): Effect.Effect<string, Error, never> =>
-  Effect.tryPromise({
-    try: async () => normalizeLineEndings(await readFile(resolve(path), "utf8")),
-    catch: (error) => {
-      const reason = error instanceof Error && error.message.length > 0 ? `: ${error.message}` : "";
-      return new Error(`Failed to read "${path}". ${missingFileHint}${reason}`);
-    },
+const readTextFile = (path: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const text = yield* fs.readFileString(path).pipe(
+      Effect.mapError((error) => {
+        return Error(`Failed to read ${path}`, { cause: error });
+      }),
+    );
+    return normalizeLineEndings(text);
   });
 
-const AppConfigSpec = Config.all({
-  botProfileFile: Config.string("BOT_PROFILE_FILE").pipe(
-    Config.withDefault("profiles/friendly.md"),
-  ),
-  discordContextTemplateFile: Config.string("DISCORD_CONTEXT_TEMPLATE_FILE").pipe(
-    Config.withDefault("discord-context.md"),
-  ),
-  discordToken: Config.string("DISCORD_TOKEN"),
-  enableAgenticWorkspace: Config.string("ENABLE_AGENTIC_WORKSPACE").pipe(
-    Config.withDefault("false"),
-  ),
-  modelProvider: Config.string("PI_PROVIDER"),
-  modelId: Config.string("PI_MODEL"),
-  storageDirectory: Config.string("STORAGE_DIRECTORY"),
-  thinkingLevel: Config.string("PI_THINKING_LEVEL").pipe(Config.withDefault("minimal")),
-  typingIndicatorIntervalMs: Config.number("DISCORD_TYPING_INTERVAL_MS").pipe(
-    Config.withDefault(8_000),
-  ),
-  channelIdleTimeoutMs: Config.number("CHANNEL_IDLE_TIMEOUT_MS").pipe(
-    Config.withDefault(30 * 60 * 1000),
-  ),
-});
+const CONFIG_FILE_NAME = "bubblebuddy.json";
 
-export const loadAppConfig = Effect.gen(function* () {
-  const values = yield* AppConfigSpec.parse(ConfigProvider.fromEnv());
-  const enableAgenticWorkspace = parseBooleanFlag(
-    "ENABLE_AGENTIC_WORKSPACE",
-    values.enableAgenticWorkspace,
-  );
+export const loadAppConfig: Effect.Effect<AppConfigShape, Error, FileSystem.FileSystem> =
+  Effect.gen(function* () {
+    const text = yield* readTextFile(CONFIG_FILE_NAME);
+    const json = yield* Effect.try({
+      try: () => JSON.parse(text) as unknown,
+      catch: (e) => new Error(`Invalid JSON in ${CONFIG_FILE_NAME}`, { cause: e }),
+    });
+    const jsonProvider = ConfigProvider.fromUnknown(json);
+    const envProvider = ConfigProvider.fromEnv().pipe(ConfigProvider.constantCase);
 
-  const botProfile = yield* readTextFile(
-    values.botProfileFile.trim() || "profiles/friendly.md",
-    "Use BOT_PROFILE_FILE to point at a committed profile such as profiles/friendly.md.",
-  );
-  const discordContextTemplate = yield* readTextFile(
-    values.discordContextTemplateFile.trim() || "discord-context.md",
-    "Copy discord-context.md.example to discord-context.md or set DISCORD_CONTEXT_TEMPLATE_FILE.",
-  );
-  const storageDirectory = values.storageDirectory.trim();
+    const discordToken = yield* Config.schema(
+      Schema.Redacted(Schema.NonEmptyString),
+      "discordToken",
+    ).parse(envProvider);
 
-  if (storageDirectory.length === 0) {
-    throw new Error("STORAGE_DIRECTORY must not be empty.");
-  }
+    // Required
+    const jsonConfig = Config.all({
+      botProfileFile: Config.nonEmptyString("botProfileFile"),
+      modelProvider: Config.nonEmptyString("modelProvider"),
+      modelId: Config.nonEmptyString("modelId"),
+      storageDirectory: Config.nonEmptyString("storageDirectory"),
+      enableAgenticWorkspace: Config.boolean("enableAgenticWorkspace"),
 
-  return {
-    botProfile,
-    discordContextTemplate,
-    discordToken: values.discordToken,
-    enableAgenticWorkspace,
-    modelId: values.modelId,
-    modelProvider: values.modelProvider,
-    storageDirectory: resolve(storageDirectory),
-    thinkingLevel: parseThinkingLevel(values.thinkingLevel),
-    typingIndicatorIntervalMs: values.typingIndicatorIntervalMs,
-    channelIdleTimeoutMs: values.channelIdleTimeoutMs,
-  } satisfies AppConfigShape;
-});
+      // Optional with defaults
+      thinkingLevel: Config.schema(Schema.Literals(THINKING_LEVELS), "thinkingLevel").pipe(
+        Config.withDefault("minimal"),
+      ),
+      typingIndicatorIntervalMs: Config.schema(
+        PositiveFiniteFromStringSchema,
+        "typingIndicatorIntervalMs",
+      ).pipe(Config.withDefault(8000)),
+      channelIdleTimeoutMs: Config.schema(
+        PositiveFiniteFromStringSchema,
+        "channelIdleTimeoutMs",
+      ).pipe(Config.withDefault(30 * 60 * 1000)),
+      mcpServers: Config.schema(McpServersConfigSchema, "mcpServers").pipe(Config.withDefault({})),
+    });
+
+    const cfg = yield* jsonConfig.parse(jsonProvider);
+    const botProfile = yield* readTextFile(cfg.botProfileFile);
+
+    // Extras, i.e. from other files
+    const discordContextTemplate = yield* readTextFile("discord-context.md");
+
+    return {
+      // Required
+      discordToken,
+      botProfile,
+      modelProvider: cfg.modelProvider,
+      modelId: cfg.modelId,
+      storageDirectory: resolve(cfg.storageDirectory),
+      enableAgenticWorkspace: cfg.enableAgenticWorkspace,
+
+      // Optional with defaults
+      thinkingLevel: cfg.thinkingLevel,
+      typingIndicatorIntervalMs: cfg.typingIndicatorIntervalMs,
+      channelIdleTimeoutMs: cfg.channelIdleTimeoutMs,
+      mcpServers: cfg.mcpServers,
+
+      // Extras, i.e. from other files
+      discordContextTemplate,
+    } satisfies AppConfigShape;
+  }).pipe(Effect.mapError((error) => new Error(`Configuration error`, { cause: error })));

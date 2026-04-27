@@ -2,7 +2,7 @@ import type { GuildTextBasedChannel, Message } from "discord.js";
 
 import type { AppConfigShape } from "../config.ts";
 import { ChannelState } from "../channel-state.ts";
-import { type SessionSink } from "../pi/channel-session.ts";
+import { type SessionSink } from "../pi/discord-output-pump.ts";
 import { createToolStatusEmbed, type ToolStatusEmbed } from "./tool-status-embed.ts";
 import { splitDiscordMessage, splitThinkingStatus } from "../domain/text.ts";
 

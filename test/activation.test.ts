@@ -24,7 +24,6 @@ describe("activation rules", () => {
   test("activates on mention", () => {
     expect(
       isActivationMessage({
-        isFromBot: false,
         isReplyToBot: false,
         mentionsBot: true,
       }),
@@ -34,7 +33,6 @@ describe("activation rules", () => {
   test("activates on reply to bot", () => {
     expect(
       isActivationMessage({
-        isFromBot: false,
         isReplyToBot: true,
         mentionsBot: false,
       }),

@@ -3,6 +3,8 @@ import type {
   ChannelSettings,
   PersistentChannelState,
 } from "./channel-repository.ts";
+import { Effect } from "effect";
+
 import type { PiChannelSession } from "./pi/channel-session.ts";
 
 export class ChannelState {
@@ -66,7 +68,7 @@ export class ChannelState {
    */
   async detachAndClearSession(): Promise<void> {
     try {
-      await this.#pi?.dispose();
+      await Effect.runPromise(this.#pi?.dispose() ?? Effect.void);
     } finally {
       this.#pi = undefined;
     }
@@ -75,7 +77,7 @@ export class ChannelState {
 
   async shutdownSession(): Promise<void> {
     try {
-      await this.#pi?.shutdown();
+      await Effect.runPromise(this.#pi?.shutdown() ?? Effect.void);
     } finally {
       this.#pi = undefined;
     }

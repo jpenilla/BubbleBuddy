@@ -8,7 +8,7 @@ import {
   SlashCommandBuilder,
   type GuildTextBasedChannel,
 } from "discord.js";
-import { Effect } from "effect";
+import { Effect, Redacted } from "effect";
 
 import { loadAppConfig, type AppConfigShape } from "./config.ts";
 import { isActivationMessage } from "./domain/activation.ts";
@@ -209,7 +209,7 @@ export const program = Effect.gen(function* () {
   yield* Effect.logInfo("Logging into Discord.");
   const readyClient = yield* Effect.tryPromise(async () => {
     const ready = waitForReady(client);
-    await client.login(config.discordToken);
+    await client.login(Redacted.value(config.discordToken));
     return await ready;
   });
 
@@ -218,5 +218,5 @@ export const program = Effect.gen(function* () {
   yield* Effect.logInfo("Discord slash commands registered.");
 
   yield* Effect.logInfo(`Connected to Discord as ${readyClient.user.tag}`);
-  yield* Effect.never;
+  return yield* Effect.never;
 });

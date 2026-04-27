@@ -178,22 +178,25 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
 
     const sink = createSessionSink(input.channel, this.#config, channel);
 
-    const pi = await PiChannelSession.create({
-      agentDir: this.#agentDir,
-      authStorage: this.#authStorage,
-      botProfile: this.#config.botProfile,
-      discordContextTemplate: this.#config.discordContextTemplate,
-      enableAgenticWorkspace: this.#config.enableAgenticWorkspace,
-      getChannelSettings: () => channel.settings,
-      hostWorkspaceDir: this.#workspaceDir(input.channel.id),
-      model: this.#model,
-      modelRegistry: this.#modelRegistry,
-      originMessage: input.originMessage,
-      promptContext: input.promptContext,
-      sessionManager,
-      sink,
-      thinkingLevel: this.#config.thinkingLevel,
-    });
+    const pi = await Effect.runPromise(
+      PiChannelSession.create({
+        agentDir: this.#agentDir,
+        authStorage: this.#authStorage,
+        botProfile: this.#config.botProfile,
+        discordContextTemplate: this.#config.discordContextTemplate,
+        enableAgenticWorkspace: this.#config.enableAgenticWorkspace,
+        getChannelSettings: () => channel.settings,
+        hostWorkspaceDir: this.#workspaceDir(input.channel.id),
+        model: this.#model,
+        mcpServers: this.#config.mcpServers,
+        modelRegistry: this.#modelRegistry,
+        originMessage: input.originMessage,
+        promptContext: input.promptContext,
+        sessionManager,
+        sink,
+        thinkingLevel: this.#config.thinkingLevel,
+      }),
+    );
 
     return { pi, sessionManager };
   }
@@ -249,20 +252,19 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
 
   #runSweeper(): Effect.Effect<void> {
     return Effect.repeat(
-      Effect.catch(
-        Effect.gen({ self: this }, function* () {
-          const now = Date.now();
-          const channelIds = [...this.#channels.keys()];
-          for (const channelId of channelIds) {
-            yield* Effect.tryPromise(() =>
-              this.#trackOperation(
-                this.#lockFor(channelId).run(() => this._sweepChannel(channelId, now)),
-              ),
-            );
-          }
-        }),
-        (error) => Effect.logWarning(`Channel sweeper iteration failed: ${String(error)}`),
-      ),
+      Effect.gen({ self: this }, function* () {
+        const now = Date.now();
+        const channelIds = [...this.#channels.keys()];
+        for (const channelId of channelIds) {
+          // Work around Effect tsgo false-positive TS2683 on `this` in directly yielded expressions: https://github.com/Effect-TS/tsgo/issues/173
+          const sweepChannel = Effect.tryPromise(() =>
+            this.#trackOperation(
+              this.#lockFor(channelId).run(() => this._sweepChannel(channelId, now)),
+            ),
+          );
+          yield* sweepChannel;
+        }
+      }).pipe(Effect.ignore({ log: "Warn", message: "Channel sweeper iteration failed" })),
       Schedule.spaced(SWEEP_INTERVAL).pipe(Schedule.while(() => !this.#isShuttingDown)),
     );
   }
