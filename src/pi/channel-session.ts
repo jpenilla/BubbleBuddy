@@ -9,7 +9,7 @@ import {
   type ExtensionFactory,
 } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
-import { Effect, Exit, Scope } from "effect";
+import { Data, Effect, Exit, Scope } from "effect";
 import type { Api, Model } from "@mariozechner/pi-ai";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 
@@ -45,6 +45,11 @@ export interface PiChannelSessionOptions {
 
 const SHUTDOWN_ABORT_TIMEOUT = "8 seconds";
 
+class ChannelSessionInitError extends Data.TaggedError("ChannelSessionInitError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
 export class PiChannelSession {
   readonly #executor = new SerialExecutor();
   readonly #output: DiscordOutputPump;
@@ -59,7 +64,9 @@ export class PiChannelSession {
     this.#scope = scope;
   }
 
-  static create(options: PiChannelSessionOptions): Effect.Effect<PiChannelSession, Error> {
+  static create(
+    options: PiChannelSessionOptions,
+  ): Effect.Effect<PiChannelSession, ChannelSessionInitError> {
     return Effect.gen(function* () {
       const scope = yield* Scope.make("sequential");
       return yield* PiChannelSession.createInScope(options, scope).pipe(
@@ -71,7 +78,7 @@ export class PiChannelSession {
   private static createInScope(
     options: PiChannelSessionOptions,
     scope: Scope.Closeable,
-  ): Effect.Effect<PiChannelSession, Error> {
+  ): Effect.Effect<PiChannelSession, ChannelSessionInitError> {
     return Effect.gen(function* () {
       const settingsManager = SettingsManager.inMemory({
         steeringMode: "all",
@@ -112,7 +119,10 @@ export class PiChannelSession {
       yield* Effect.tryPromise({
         try: () => resourceLoader.reload(),
         catch: (error) =>
-          new Error("Failed to reload channel workspace resources", { cause: error }),
+          new ChannelSessionInitError({
+            message: "Failed to reload channel workspace resources",
+            cause: error,
+          }),
       });
 
       const output = yield* DiscordOutputPump.make({
@@ -134,7 +144,11 @@ export class PiChannelSession {
         mcpTools = yield* mcpAdapter.connect().pipe(
           Effect.provideService(Scope.Scope, scope),
           Effect.mapError(
-            (error) => new Error("Failed to configure MCP servers", { cause: error }),
+            (error) =>
+              new ChannelSessionInitError({
+                message: "Failed to configure MCP servers",
+                cause: error,
+              }),
           ),
         );
       }
@@ -155,7 +169,8 @@ export class PiChannelSession {
             settingsManager,
             thinkingLevel: options.thinkingLevel,
           }),
-        catch: (error) => new Error("Failed to create agent session", { cause: error }),
+        catch: (error) =>
+          new ChannelSessionInitError({ message: "Failed to create agent session", cause: error }),
       });
       yield* Scope.addFinalizer(
         scope,
