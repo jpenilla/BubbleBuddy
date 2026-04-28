@@ -96,7 +96,7 @@ const runMcpRequest = <T>(
   connection: McpConnection,
   serverName: string,
   label: string,
-  request: (signal: AbortSignal) => PromiseLike<T>,
+  request: () => PromiseLike<T>,
 ): Effect.Effect<T, McpConnectError> =>
   Effect.tryPromise({
     try: request,
@@ -195,30 +195,24 @@ export class McpAdapter {
 
   #connectServer(server: McpServerConfig): Effect.Effect<McpConnectedServer, McpConnectError> {
     return Effect.gen({ self: this }, function* () {
-      const client = new Client({ name: "bubblebuddy", version: "1.0.0" });
       const transport = yield* this.#createTransport(server);
+      const client = new Client({ name: "bubblebuddy", version: "1.0.0" });
       const connection = { client, transport };
 
       // Work around Effect tsgo false-positive TS2683 on `this` in directly yielded expressions: https://github.com/Effect-TS/tsgo/issues/173
       const buildConnectedServer = Effect.gen({ self: this }, function* () {
-        yield* runMcpRequest(connection, server.name, "Connection", (signal) =>
+        yield* runMcpRequest(connection, server.name, "Connection", () =>
           client.connect(transport, {
             maxTotalTimeout: CONNECT_TIMEOUT,
-            signal,
             timeout: CONNECT_TIMEOUT,
           }),
         );
 
-        const { tools: mcpTools } = yield* runMcpRequest(
-          connection,
-          server.name,
-          "listTools",
-          (signal) =>
-            client.listTools(undefined, {
-              maxTotalTimeout: CONNECT_TIMEOUT,
-              signal,
-              timeout: CONNECT_TIMEOUT,
-            }),
+        const { tools: mcpTools } = yield* runMcpRequest(connection, server.name, "listTools", () =>
+          client.listTools(undefined, {
+            maxTotalTimeout: CONNECT_TIMEOUT,
+            timeout: CONNECT_TIMEOUT,
+          }),
         );
 
         return { client, connection, serverName: server.name, tools: mcpTools };
@@ -266,16 +260,8 @@ export class McpAdapter {
     mcpTools: readonly McpToolInfo[],
     toolSources: Map<string, string>,
   ): Effect.Effect<ToolDefinition[], McpConfigurationError> {
-    const stagedToolSources = new Map(toolSources);
     return Effect.forEach(mcpTools, (mcpTool) =>
-      this.#buildToolDefinition(serverName, client, mcpTool, stagedToolSources),
-    ).pipe(
-      Effect.map((tools) => {
-        for (const [name, source] of stagedToolSources) {
-          toolSources.set(name, source);
-        }
-        return tools;
-      }),
+      this.#buildToolDefinition(serverName, client, mcpTool, toolSources),
     );
   }
 
