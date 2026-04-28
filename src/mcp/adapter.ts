@@ -8,7 +8,7 @@ import {
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
-import { Cause, Data, Effect, Scope } from "effect";
+import { Data, Effect, Scope } from "effect";
 import { Type } from "typebox";
 
 import type { McpServerConfigEntry } from "../config.ts";
@@ -26,15 +26,11 @@ class McpConfigurationError extends Data.TaggedError("McpConfigurationError")<{
 
 class McpServerConnectionError extends Data.TaggedError("McpServerConnectionError")<{
   readonly serverName: string;
-  readonly message: string;
+  readonly operation: string;
   readonly cause: unknown;
 }> {
-  constructor(serverName: string, cause: unknown) {
-    super({
-      serverName,
-      message: `server "${serverName}" failed to connect or list tools: ${formatError(cause)}`,
-      cause,
-    });
+  get message(): string {
+    return `MCP ${this.operation} for server ${this.serverName} failed`;
   }
 }
 
@@ -42,9 +38,6 @@ type McpConnectError = McpConfigurationError | McpServerConnectionError;
 
 const formatError = (error: unknown): string =>
   error instanceof Error && error.message.length > 0 ? error.message : String(error);
-
-const toMcpConnectError = (serverName: string, error: unknown): McpConnectError =>
-  error instanceof McpConfigurationError ? error : new McpServerConnectionError(serverName, error);
 
 const sanitizeNamePart = (name: string): string =>
   name
@@ -90,25 +83,16 @@ const formatBearerTokenEnvName = (
   });
 
 const CONNECT_TIMEOUT = 10_000;
-const CONNECT_TIMEOUT_DURATION = "10 seconds";
 
 const runMcpRequest = <T>(
-  connection: McpConnection,
   serverName: string,
   label: string,
   request: () => PromiseLike<T>,
-): Effect.Effect<T, McpConnectError> =>
+): Effect.Effect<T, McpServerConnectionError> =>
   Effect.tryPromise({
     try: request,
-    catch: (error) => toMcpConnectError(serverName, error),
-  }).pipe(
-    Effect.timeout(CONNECT_TIMEOUT_DURATION),
-    Effect.mapError((error) =>
-      Cause.isTimeoutError(error)
-        ? toMcpConnectError(serverName, new Error(`${label} timed out after ${CONNECT_TIMEOUT}ms`))
-        : error,
-    ),
-  );
+    catch: (error) => new McpServerConnectionError({ serverName, operation: label, cause: error }),
+  });
 
 export interface McpAdapterOptions {
   readonly servers: readonly McpServerConfig[];
@@ -201,14 +185,14 @@ export class McpAdapter {
 
       // Work around Effect tsgo false-positive TS2683 on `this` in directly yielded expressions: https://github.com/Effect-TS/tsgo/issues/173
       const buildConnectedServer = Effect.gen({ self: this }, function* () {
-        yield* runMcpRequest(connection, server.name, "Connection", () =>
+        yield* runMcpRequest(server.name, "connect", () =>
           client.connect(transport, {
             maxTotalTimeout: CONNECT_TIMEOUT,
             timeout: CONNECT_TIMEOUT,
           }),
         );
 
-        const { tools: mcpTools } = yield* runMcpRequest(connection, server.name, "listTools", () =>
+        const { tools: mcpTools } = yield* runMcpRequest(server.name, "listTools", () =>
           client.listTools(undefined, {
             maxTotalTimeout: CONNECT_TIMEOUT,
             timeout: CONNECT_TIMEOUT,
