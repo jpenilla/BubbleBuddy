@@ -57,7 +57,6 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
   readonly #modelRegistry: ModelRegistry;
   readonly #channels = new Map<string, ChannelState>();
   readonly #locks = new Map<string, SerialExecutor>();
-  readonly #requestedManualCompactions = new Set<string>();
   readonly #activeOperations = new Set<Promise<unknown>>();
   readonly #repository: ChannelRepository;
   readonly #idleTimeoutMs: number;
@@ -122,11 +121,11 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
       this.#lockFor(channelId).run(async () => {
         const channel = await this.#getOrLoadChannel(channelId);
 
+        if (channel.isCompacting) {
+          return "rejected-compacting";
+        }
         if (channel.isRunning) {
           return "rejected-busy";
-        }
-        if (this.#requestedManualCompactions.has(channelId) || channel.isCompacting) {
-          return "rejected-compacting";
         }
         if (!channel.hasSession) {
           if (channel.activeSession === undefined) {
@@ -137,21 +136,10 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
           channel.attachSession(pi);
         }
 
-        this.#requestedManualCompactions.add(channelId);
         channel.touchActivity();
 
-        void this.#trackOperation(
-          channel
-            .compactSession(customInstructions)
-            .catch((error) =>
-              Effect.runPromise(Effect.logWarning("Manual compaction failed", error)),
-            )
-            .finally(() => {
-              this.#requestedManualCompactions.delete(channelId);
-              channel.touchActivity();
-            })
-            .then(() => channel.persistIfDirty()),
-        );
+        await channel.requestCompaction(customInstructions);
+
         return "started";
       }),
     );
@@ -162,11 +150,7 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
       this.#lockFor(channelId).run(async () => {
         const channel = await this.#getOrLoadChannel(channelId);
 
-        if (
-          channel.isRunning ||
-          channel.isCompacting ||
-          this.#requestedManualCompactions.has(channelId)
-        ) {
+        if (channel.isRunning || channel.isCompacting) {
           void Effect.runFork(
             Effect.logInfo(`Session discard rejected for channel ${channelId}: session is busy.`),
           );
@@ -301,8 +285,7 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
     if (
       now - channel.lastActivity > this.#idleTimeoutMs &&
       !channel.isRunning &&
-      !channel.isCompacting &&
-      !this.#requestedManualCompactions.has(channelId)
+      !channel.isCompacting
     ) {
       await this.#closeChannel(channelId, "shutdown");
     }

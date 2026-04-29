@@ -5,7 +5,6 @@ import {
   SessionManager,
   SettingsManager,
   type AgentSession,
-  type CompactionResult,
   type ExtensionFactory,
 } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
@@ -201,8 +200,28 @@ export class PiChannelSession {
     return this.#session.isStreaming;
   }
 
-  compact(customInstructions?: string): Promise<CompactionResult> {
-    return this.#executor.run(() => this.#session.compact(customInstructions));
+  /**
+   * Start compaction and resolve once the session acknowledges it
+   * (isCompacting = true). The optional onSettled callback runs after compaction completes.
+   */
+  requestCompaction(customInstructions?: string, onSettled?: () => void): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const unsub = this.#session.subscribe((event) => {
+        if (event.type === "compaction_start") {
+          unsub();
+          resolve();
+        }
+      });
+
+      this.#executor
+        .run(() => this.#session.compact(customInstructions))
+        .catch(() => {}) // Output sink handles showing failed compaction in card
+        .finally(() => {
+          unsub();
+          resolve();
+          onSettled?.();
+        });
+    });
   }
 
   activate(input: string, replyToMessageId: string): Promise<void> {
@@ -221,22 +240,20 @@ export class PiChannelSession {
   }
 
   shutdown(): Effect.Effect<void> {
-    return Effect.suspend(() => {
+    return Effect.gen({ self: this }, function* () {
       if (this.#isDisposed || this.#isShuttingDown) {
-        return Effect.void;
+        return;
       }
 
       this.#isShuttingDown = true;
       this.#output.setShuttingDown(true);
 
-      return Effect.gen({ self: this }, function* () {
-        yield* this.#abortForShutdown();
-        if (this.#session.isStreaming) {
-          this.#output.enqueueRunEnd();
-        }
-        yield* this.#output.drain();
-        yield* this.dispose();
-      });
+      yield* this.#abortForShutdown();
+      this.#session.abortCompaction();
+      this.#output.enqueueRunEnd(); // Ensure typing indicator shuts down, even in edge-case error states
+      yield* Effect.yieldNow; // Let abort-triggered microtasks (e.g. compaction_end) flush before draining output
+      yield* this.#output.drain();
+      yield* this.dispose();
     });
   }
 
