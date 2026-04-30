@@ -1,0 +1,3 @@
+- Our package manager is Bun. Do not manage packages or run scripts with any other pm.
+- Our current app runtime is the Node.js, current test runtime is Bun.
+- Maintain a clone of Effect v4 (https://github.com/Effect-TS/effect-smol) in ./context for reference purposes. Do not assume anything from memory about Effect, v4 is very different from old Effect versions.

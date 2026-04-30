@@ -4,6 +4,7 @@ node_modules/
 !.env.example
 *.md
 !discord-context.md
+!AGENTS.md
 bubblebuddy.json
 !profiles/
 !profiles/coding-agent.md
@@ -16,3 +17,4 @@ storage/
 .idea/
 .vscode/
 .DS_Store
+/context/
