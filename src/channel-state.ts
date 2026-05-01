@@ -39,8 +39,12 @@ export class ChannelState {
     return this.#pi?.isCompacting ?? false;
   }
 
-  get isRunning(): boolean {
-    return this.#pi?.isRunning ?? false;
+  get isStreaming(): boolean {
+    return this.#pi?.isStreaming ?? false;
+  }
+
+  get isRetrying(): boolean {
+    return this.#pi?.isRetrying ?? false;
   }
 
   get settings(): Readonly<ChannelSettings> {

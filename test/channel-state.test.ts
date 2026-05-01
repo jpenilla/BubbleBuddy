@@ -16,7 +16,7 @@ describe("channel state", () => {
     expect(state.settings).toEqual({});
     expect(state.lastActivity).toBeGreaterThan(0);
     expect(state.hasSession).toBe(false);
-    expect(state.isRunning).toBe(false);
+    expect(state.isStreaming).toBe(false);
   });
 
   test("persists settings when dirty", async () => {

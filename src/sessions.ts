@@ -124,7 +124,7 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
         if (channel.isCompacting) {
           return "rejected-compacting";
         }
-        if (channel.isRunning) {
+        if (channel.isStreaming || channel.isRetrying) {
           return "rejected-busy";
         }
         if (!channel.hasSession) {
@@ -150,7 +150,7 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
       this.#lockFor(channelId).run(async () => {
         const channel = await this.#getOrLoadChannel(channelId);
 
-        if (channel.isRunning || channel.isCompacting) {
+        if (channel.isStreaming || channel.isCompacting || channel.isRetrying) {
           void Effect.runFork(
             Effect.logInfo(`Session discard rejected for channel ${channelId}: session is busy.`),
           );
@@ -284,8 +284,9 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
 
     if (
       now - channel.lastActivity > this.#idleTimeoutMs &&
-      !channel.isRunning &&
-      !channel.isCompacting
+      !channel.isStreaming &&
+      !channel.isCompacting &&
+      !channel.isRetrying
     ) {
       await this.#closeChannel(channelId, "shutdown");
     }

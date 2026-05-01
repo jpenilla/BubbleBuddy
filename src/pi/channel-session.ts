@@ -5,6 +5,7 @@ import {
   SessionManager,
   SettingsManager,
   type AgentSession,
+  type AgentSessionEvent,
   type ExtensionFactory,
 } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
@@ -54,6 +55,7 @@ export class PiChannelSession {
   readonly #output: DiscordOutputPump;
   readonly #session: AgentSession;
   readonly #scope: Scope.Closeable;
+  #pendingQueue: Array<{ text: string; replyToMessageId: string }> = [];
   #isDisposed = false;
   #isShuttingDown = false;
 
@@ -188,6 +190,11 @@ export class PiChannelSession {
       const unsubscribe = session.subscribe((event) => output.handleSessionEvent(event));
       yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe));
 
+      const unsubscribeInternal = session.subscribe((event) =>
+        piSession.#handleSessionEvent(event),
+      );
+      yield* Scope.addFinalizer(scope, Effect.sync(unsubscribeInternal));
+
       return piSession;
     });
   }
@@ -196,8 +203,12 @@ export class PiChannelSession {
     return this.#session.isCompacting;
   }
 
-  get isRunning(): boolean {
+  get isStreaming(): boolean {
     return this.#session.isStreaming;
+  }
+
+  get isRetrying(): boolean {
+    return this.#session.isRetrying;
   }
 
   /**
@@ -233,6 +244,16 @@ export class PiChannelSession {
         return;
       }
 
+      if (this.#session.isCompacting) {
+        this.#pendingQueue.push({ text: input, replyToMessageId });
+        return;
+      }
+
+      if (this.#session.isRetrying) {
+        await this.#session.steer(input);
+        return;
+      }
+
       void this.#session.prompt(input).catch((error) => {
         this.#output.enqueueUnexpectedError(error);
       });
@@ -259,6 +280,23 @@ export class PiChannelSession {
 
   dispose(): Effect.Effect<void> {
     return Effect.suspend(() => (this.#isDisposed ? Effect.void : this.#dispose()));
+  }
+
+  #handleSessionEvent(event: AgentSessionEvent): void {
+    if (event.type === "compaction_end") {
+      const messages = this.#pendingQueue;
+      this.#pendingQueue = [];
+      if (messages.length === 0) return;
+
+      for (const { text, replyToMessageId } of messages) {
+        this.#output.setReplyToMessageId(replyToMessageId);
+        this.#session.steer(text);
+      }
+
+      if (event.result === undefined && !event.willRetry) {
+        this.#session.agent.continue();
+      }
+    }
   }
 
   #abortForShutdown(): Effect.Effect<void> {
