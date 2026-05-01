@@ -1,5 +1,4 @@
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
-import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
 import { Cause, Effect, Option, Queue } from "effect";
 
 import { SHOW_THINKING_DEFAULT, type ChannelSettings } from "../channel-repository.ts";
@@ -14,6 +13,7 @@ export interface SessionSink {
   readonly onCompactionStatus: (status: CompactionStatusEmbed) => Promise<void>;
   readonly onError: (text: string) => Promise<void>;
   readonly onFinal: (text: string, replyToMessageId: string) => Promise<void>;
+  readonly onIntermediate: (text: string, replyToMessageId: string) => Promise<void>;
   readonly onRunEnd: () => Promise<void>;
   readonly onRunStart: () => Promise<void>;
   readonly onStatus: (status: ToolStatusEmbed) => Promise<void>;
@@ -41,8 +41,8 @@ export class DiscordOutputPump {
   readonly #statusQueue: Queue.Queue<DiscordAction>;
   readonly #getChannelSettings: () => Readonly<ChannelSettings>;
   #isShuttingDown = false;
-  #latestAssistantText?: string;
-  #replyToMessageId: string;
+  #latestTriggerMessageId: string;
+  #currentTurnReplyTo: string = "";
 
   private constructor(
     options: DiscordOutputPumpOptions,
@@ -51,7 +51,7 @@ export class DiscordOutputPump {
   ) {
     this.#getChannelSettings = options.getChannelSettings;
     this.#mutationQueue = mutationQueue;
-    this.#replyToMessageId = options.initialReplyToMessageId;
+    this.#latestTriggerMessageId = options.initialReplyToMessageId;
     this.#sink = options.sink;
     this.#statusQueue = statusQueue;
   }
@@ -94,28 +94,14 @@ export class DiscordOutputPump {
   handleSessionEvent(event: AgentSessionEvent): void {
     switch (event.type) {
       case "agent_start":
-        this.#latestAssistantText = undefined;
         this.#enqueueStatusAction(() => this.#sink.onRunStart());
         break;
-      case "agent_end": {
-        const lastMessage = event.messages.at(-1);
-        const latestAssistantText = this.#latestAssistantText;
-        const replyToMessageId = this.#replyToMessageId;
-        this.#enqueueStatusAction(async () => {
-          try {
-            await this.#flushFinalOutput(
-              lastMessage?.role === "assistant" || lastMessage?.role === "toolResult"
-                ? lastMessage
-                : undefined,
-              latestAssistantText,
-              replyToMessageId,
-            );
-          } finally {
-            await this.#sink.onRunEnd();
-          }
-        });
+      case "agent_end":
+        this.#enqueueStatusAction(() => this.#sink.onRunEnd());
         break;
-      }
+      case "turn_start":
+        this.#currentTurnReplyTo = this.#latestTriggerMessageId;
+        break;
       case "compaction_start":
         this.#enqueueStatusAction(() =>
           this.#sink.onCompactionStatus({
@@ -135,6 +121,32 @@ export class DiscordOutputPump {
             tokensBefore: event.result?.tokensBefore,
           }),
         );
+        break;
+      case "message_end":
+        if (event.message.role === "assistant") {
+          const msg = event.message;
+          if (msg.stopReason === "error" || msg.stopReason === "aborted") {
+            if (!this.#isShuttingDown) {
+              this.#enqueueStatusAction(() =>
+                this.#sink.onError(msg.errorMessage ?? "The model request failed."),
+              );
+            }
+            break;
+          }
+          const text = extractAssistantText(msg);
+          if (text.trim().length === 0) {
+            break;
+          }
+          if (msg.stopReason === "toolUse") {
+            // More turns are guaranteed — send now as non-pinging reply
+            this.#enqueueStatusAction(() =>
+              this.#sink.onIntermediate(text, this.#currentTurnReplyTo),
+            );
+          } else {
+            // stop or length — almost certainly the final answer — send as pinging reply
+            this.#enqueueStatusAction(() => this.#sink.onFinal(text, this.#currentTurnReplyTo));
+          }
+        }
         break;
       case "message_update":
         if (event.assistantMessageEvent.type === "thinking_end") {
@@ -161,12 +173,6 @@ export class DiscordOutputPump {
               toolName: event.toolName,
             }),
           );
-        }
-        break;
-      case "turn_end":
-        if (event.message.role === "assistant") {
-          const assistantText = extractAssistantText(event.message);
-          this.#latestAssistantText = assistantText.trim().length === 0 ? undefined : assistantText;
         }
         break;
     }
@@ -219,7 +225,7 @@ export class DiscordOutputPump {
     });
 
   setReplyToMessageId(replyToMessageId: string): void {
-    this.#replyToMessageId = replyToMessageId;
+    this.#latestTriggerMessageId = replyToMessageId;
   }
 
   setShuttingDown(isShuttingDown: boolean): void {
@@ -235,28 +241,6 @@ export class DiscordOutputPump {
 
   #enqueueStatusAction(action: DiscordAction): void {
     this.#offerDiscordAction(this.#statusQueue, action);
-  }
-
-  async #flushFinalOutput(
-    lastMessage: AssistantMessage | ToolResultMessage | undefined,
-    latestAssistantText: string | undefined,
-    replyToMessageId: string,
-  ): Promise<void> {
-    if (
-      lastMessage?.role === "assistant" &&
-      (lastMessage.stopReason === "aborted" || lastMessage.stopReason === "error")
-    ) {
-      if (!this.#isShuttingDown) {
-        await this.#sink.onError(lastMessage.errorMessage ?? "The model request failed.");
-      } else if (latestAssistantText !== undefined) {
-        await this.#sink.onFinal(latestAssistantText, replyToMessageId);
-      }
-      return;
-    }
-
-    if (latestAssistantText !== undefined) {
-      await this.#sink.onFinal(latestAssistantText, replyToMessageId);
-    }
   }
 
   #formatUnexpectedError(error: unknown): string {

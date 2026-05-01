@@ -28,6 +28,9 @@ describe("channel session Discord output ordering", () => {
       onFinal: async () => {
         throw new Error("unexpected onFinal");
       },
+      onIntermediate: async () => {
+        throw new Error("unexpected onIntermediate");
+      },
       onRunEnd: async () => {
         throw new Error("unexpected onRunEnd");
       },
@@ -106,6 +109,9 @@ describe("channel session Discord output ordering", () => {
       },
       onFinal: async (text) => {
         observed.push(`final:${text}`);
+      },
+      onIntermediate: async (text) => {
+        observed.push(`intermediate:${text}`);
       },
       onRunEnd: async () => {
         observed.push("run-end");

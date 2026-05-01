@@ -1,4 +1,9 @@
-import type { GuildTextBasedChannel, Message } from "discord.js";
+import type {
+  GuildTextBasedChannel,
+  Message,
+  MessageMentionOptions,
+  ReplyOptions,
+} from "discord.js";
 
 import type { AppConfigShape } from "../config.ts";
 import { ChannelState } from "../channel-state.ts";
@@ -23,26 +28,28 @@ const sendOrEditStatusCard = async (
   return await channel.send({ embeds: [embed] });
 };
 
-const sendChunkedMessage = async (
-  channel: GuildTextBasedChannel,
-  content: string,
-  replyToMessageId?: string,
-): Promise<void> => {
-  const chunks = splitDiscordMessage(content);
+const sendChunkedMessage = async (opts: {
+  channel: GuildTextBasedChannel;
+  content: string;
+  reply?: ReplyOptions;
+  allowedMentions?: MessageMentionOptions;
+}): Promise<void> => {
+  const chunks = splitDiscordMessage(opts.content);
 
   for (const [index, chunk] of chunks.entries()) {
-    if (index === 0 && replyToMessageId !== undefined) {
-      await channel.send({
+    if (index === 0 && opts.reply !== undefined) {
+      await opts.channel.send({
         content: chunk,
-        reply: {
-          failIfNotExists: false,
-          messageReference: replyToMessageId,
-        },
+        reply: opts.reply,
+        allowedMentions: opts.allowedMentions,
       });
       continue;
     }
 
-    await channel.send(chunk);
+    await opts.channel.send({
+      content: chunk,
+      allowedMentions: opts.allowedMentions,
+    });
   }
 };
 
@@ -75,10 +82,28 @@ export const createSessionSink = (
       }
     },
     onError: async (text: string) => {
-      await sendChunkedMessage(channel, text);
+      await sendChunkedMessage({ channel, content: text });
     },
     onFinal: async (text: string, replyToMessageId: string) => {
-      await sendChunkedMessage(channel, text, replyToMessageId);
+      await sendChunkedMessage({
+        channel,
+        content: text,
+        reply: {
+          messageReference: replyToMessageId,
+          failIfNotExists: false,
+        },
+      });
+    },
+    onIntermediate: async (text: string, replyToMessageId: string) => {
+      await sendChunkedMessage({
+        channel,
+        content: text,
+        reply: {
+          messageReference: replyToMessageId,
+          failIfNotExists: false,
+        },
+        allowedMentions: { repliedUser: false },
+      });
     },
     onThinking: async (text: string) => {
       for (const chunk of splitThinkingStatus(text)) {
