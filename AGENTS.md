@@ -1,3 +1,6 @@
 - Our package manager is Bun. Do not manage packages or run scripts with any other pm.
 - Our current app runtime is the Node.js, current test runtime is Bun.
-- Maintain a clone of Effect v4 (https://github.com/Effect-TS/effect-smol) in ./context for reference purposes. Do not assume anything from memory about Effect, v4 is very different from old Effect versions.
+- We use Effect v4, it's not the same as the older versions you remember.
+  - Maintain a clone of Effect v4 (https://github.com/Effect-TS/effect-smol) in ./context for reference purposes.
+  - Do not assume anything from memory about Effect v4, instead read the source using the ./context repo.
+  - Do not read node_modules, always use the ./context repo. Assume versions are syncd, if you are certain there's a mismatch after updating the ./context repo, pause and tell the user.
