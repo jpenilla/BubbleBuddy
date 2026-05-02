@@ -1,6 +1,3 @@
 {
-  "packages": [
-    "npm:@ff-labs/pi-fff",
-    "npm:pi-mcp-adapter"
-  ]
+  "packages": ["npm:pi-mcp-adapter"]
 }

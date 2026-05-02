@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { isActivationMessage, shouldTreatAsSteering } from "../src/domain/activation.ts";
+import { isActivationMessage } from "../src/discord/activation.ts";
 
 describe("activation rules", () => {
   test("activates when another bot mentions or replies to this bot", () => {
@@ -37,14 +37,5 @@ describe("activation rules", () => {
         mentionsBot: false,
       }),
     ).toBe(true);
-  });
-
-  test("treats activations as steering only while a run is active", () => {
-    const context = {
-      isReplyToBot: true,
-      mentionsBot: false,
-    };
-    expect(shouldTreatAsSteering(context, true)).toBe(true);
-    expect(shouldTreatAsSteering(context, false)).toBe(false);
   });
 });
