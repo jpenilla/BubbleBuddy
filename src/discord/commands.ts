@@ -133,6 +133,7 @@ export const handleCommand = (
     const handler = commandRegistry.get(interaction.commandName);
     if (handler === undefined) return;
     yield* handler.execute(interaction, context).pipe(
+      Effect.withSpan(interaction.commandName),
       Effect.tapError(() =>
         Effect.tryPromise(async () => {
           if (interaction.deferred) {
