@@ -4,3 +4,4 @@
   - Maintain a clone of Effect v4 (https://github.com/Effect-TS/effect-smol) in ./context for reference purposes.
   - Do not assume anything from memory about Effect v4, instead read the source using the ./context repo.
   - Do not read node_modules, always use the ./context repo. Assume versions are syncd, if you are certain there's a mismatch after updating the ./context repo, pause and tell the user.
+- Use `bun run <package.json script name>` rather than direct check invocations.
