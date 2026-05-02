@@ -4,6 +4,7 @@ import type {
   MessageMentionOptions,
   ReplyOptions,
 } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 
 import type { AppConfigShape } from "../config.ts";
 import { ChannelState } from "../channel-state.ts";
@@ -12,13 +13,19 @@ import {
   createCompactionStatusEmbed,
   type CompactionStatusEmbed,
 } from "./compaction-status-embed.ts";
+import {
+  createRetryStatusEmbed,
+  createRunAbortedEmbed,
+  createRunErrorEmbed,
+  type RetryStatusEmbed,
+} from "./run-status-embed.ts";
 import { createToolStatusEmbed, type ToolStatusEmbed } from "./tool-status-embed.ts";
 import { splitDiscordMessage, splitThinkingStatus } from "../domain/text.ts";
 
 const sendOrEditStatusCard = async (
   channel: GuildTextBasedChannel,
   existing: Message<true> | undefined,
-  embed: ReturnType<typeof createToolStatusEmbed> | ReturnType<typeof createCompactionStatusEmbed>,
+  embed: EmbedBuilder,
 ): Promise<Message<true>> => {
   if (existing !== undefined) {
     await existing.edit({ embeds: [embed] });
@@ -60,6 +67,7 @@ export const createSessionSink = (
 ): SessionSink => {
   let typingTimer: ReturnType<typeof setInterval> | undefined;
   let compactionStatusMessage: Message<true> | undefined;
+  let runRetryMessage: Message<true> | undefined;
   let toolStatusMessages = new Map<string, Message<true>>();
 
   const stopTypingLoop = (): void => {
@@ -80,9 +88,6 @@ export const createSessionSink = (
       if (status.phase !== "start") {
         compactionStatusMessage = undefined;
       }
-    },
-    onError: async (text: string) => {
-      await sendChunkedMessage({ channel, content: text });
     },
     onFinal: async (text: string, replyToMessageId: string) => {
       await sendChunkedMessage({
@@ -105,15 +110,29 @@ export const createSessionSink = (
         allowedMentions: { repliedUser: false },
       });
     },
-    onThinking: async (text: string) => {
-      for (const chunk of splitThinkingStatus(text)) {
-        await channel.send(chunk);
+    onRetryStatus: async (status: RetryStatusEmbed) => {
+      const embed = createRetryStatusEmbed(status);
+      runRetryMessage = await sendOrEditStatusCard(channel, runRetryMessage, embed);
+      if (status.phase === "success" || status.phase === "failure" || status.phase === "aborted") {
+        runRetryMessage = undefined;
       }
+    },
+    onRunAborted: async () => {
+      if (runRetryMessage !== undefined) {
+        const embed = createRetryStatusEmbed({ phase: "aborted" });
+        runRetryMessage = await sendOrEditStatusCard(channel, runRetryMessage, embed);
+        runRetryMessage = undefined;
+        return;
+      }
+      await channel.send({ embeds: [createRunAbortedEmbed()] });
     },
     onRunEnd: async () => {
       resetRunToolStatusMessages();
       stopTypingLoop();
       channelState.touchActivity();
+    },
+    onRunError: async (errorMessage: string) => {
+      await channel.send({ embeds: [createRunErrorEmbed({ errorMessage })] });
     },
     onRunStart: async () => {
       resetRunToolStatusMessages();
@@ -134,6 +153,11 @@ export const createSessionSink = (
         toolStatusMessages.set(status.toolCallId, sent);
       } else {
         toolStatusMessages.delete(status.toolCallId);
+      }
+    },
+    onThinking: async (text: string) => {
+      for (const chunk of splitThinkingStatus(text)) {
+        await channel.send(chunk);
       }
     },
   };

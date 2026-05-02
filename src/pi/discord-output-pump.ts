@@ -3,6 +3,7 @@ import { Cause, Effect, Option, Queue } from "effect";
 
 import { SHOW_THINKING_DEFAULT, type ChannelSettings } from "../channel-repository.ts";
 import type { CompactionStatusEmbed } from "../discord/compaction-status-embed.ts";
+import type { RetryStatusEmbed } from "../discord/run-status-embed.ts";
 import type { ToolStatusEmbed } from "../discord/tool-status-embed.ts";
 import { extractAssistantText } from "../domain/text.ts";
 
@@ -11,10 +12,12 @@ export type RunDiscordAction = <T>(operation: () => Promise<T>) => Promise<T>;
 
 export interface SessionSink {
   readonly onCompactionStatus: (status: CompactionStatusEmbed) => Promise<void>;
-  readonly onError: (text: string) => Promise<void>;
   readonly onFinal: (text: string, replyToMessageId: string) => Promise<void>;
   readonly onIntermediate: (text: string, replyToMessageId: string) => Promise<void>;
+  readonly onRetryStatus: (status: RetryStatusEmbed) => Promise<void>;
+  readonly onRunAborted: () => Promise<void>;
   readonly onRunEnd: () => Promise<void>;
+  readonly onRunError: (errorMessage: string) => Promise<void>;
   readonly onRunStart: () => Promise<void>;
   readonly onStatus: (status: ToolStatusEmbed) => Promise<void>;
   readonly onThinking: (text: string) => Promise<void>;
@@ -40,7 +43,6 @@ export class DiscordOutputPump {
   readonly #sink: SessionSink;
   readonly #statusQueue: Queue.Queue<DiscordAction>;
   readonly #getChannelSettings: () => Readonly<ChannelSettings>;
-  #isShuttingDown = false;
   #latestTriggerMessageId: string;
   #currentTurnReplyTo: string = "";
 
@@ -86,9 +88,7 @@ export class DiscordOutputPump {
   }
 
   enqueueUnexpectedError(error: unknown): void {
-    if (!this.#isShuttingDown) {
-      this.#enqueueStatusAction(() => this.#sink.onError(this.#formatUnexpectedError(error)));
-    }
+    void Effect.runFork(Effect.logError(this.#formatUnexpectedError(error)));
   }
 
   handleSessionEvent(event: AgentSessionEvent): void {
@@ -125,12 +125,14 @@ export class DiscordOutputPump {
       case "message_end":
         if (event.message.role === "assistant") {
           const msg = event.message;
-          if (msg.stopReason === "error" || msg.stopReason === "aborted") {
-            if (!this.#isShuttingDown) {
-              this.#enqueueStatusAction(() =>
-                this.#sink.onError(msg.errorMessage ?? "The model request failed."),
-              );
-            }
+          if (msg.stopReason === "error") {
+            this.#enqueueStatusAction(() =>
+              this.#sink.onRunError(msg.errorMessage ?? "The model request failed."),
+            );
+            break;
+          }
+          if (msg.stopReason === "aborted") {
+            this.#enqueueStatusAction(() => this.#sink.onRunAborted());
             break;
           }
           const text = extractAssistantText(msg);
@@ -174,6 +176,23 @@ export class DiscordOutputPump {
             }),
           );
         }
+        break;
+      case "auto_retry_start":
+        this.#enqueueStatusAction(() =>
+          this.#sink.onRetryStatus({
+            phase: "retrying",
+            attempt: event.attempt,
+          }),
+        );
+        break;
+      case "auto_retry_end":
+        this.#enqueueStatusAction(() =>
+          this.#sink.onRetryStatus(
+            event.success
+              ? { phase: "success" }
+              : { phase: "failure", finalError: event.finalError },
+          ),
+        );
         break;
     }
   }
@@ -226,10 +245,6 @@ export class DiscordOutputPump {
 
   setReplyToMessageId(replyToMessageId: string): void {
     this.#latestTriggerMessageId = replyToMessageId;
-  }
-
-  setShuttingDown(isShuttingDown: boolean): void {
-    this.#isShuttingDown = isShuttingDown;
   }
 
   shutdownQueues(): Effect.Effect<void> {

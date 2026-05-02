@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Fiber } from "effect";
 
-import { DiscordOutputPump, type SessionSink } from "../src/pi/discord-output-pump.ts";
+import { DiscordOutputPump } from "../src/pi/discord-output-pump.ts";
+import { makeSink } from "./utils/session-sink.ts";
 
 type SessionEvent = Parameters<DiscordOutputPump["handleSessionEvent"]>[0];
 
@@ -15,41 +16,23 @@ const runPump = async <T>(output: DiscordOutputPump, use: () => Promise<T>): Pro
   }
 };
 
+const makeOutput = (sink: ReturnType<typeof makeSink>) =>
+  Effect.runPromise(
+    DiscordOutputPump.make({
+      getChannelSettings: () => ({}),
+      initialReplyToMessageId: "message-1",
+      sink,
+    }),
+  );
+
 describe("channel session Discord output ordering", () => {
   test("processes tool completion statuses between queued Discord mutations", async () => {
     const observed: string[] = [];
-    const sink: SessionSink = {
-      onCompactionStatus: async () => {
-        throw new Error("unexpected onCompactionStatus");
-      },
-      onError: async () => {
-        throw new Error("unexpected onError");
-      },
-      onFinal: async () => {
-        throw new Error("unexpected onFinal");
-      },
-      onIntermediate: async () => {
-        throw new Error("unexpected onIntermediate");
-      },
-      onRunEnd: async () => {
-        throw new Error("unexpected onRunEnd");
-      },
-      onRunStart: async () => {
-        throw new Error("unexpected onRunStart");
-      },
-      onStatus: async (status) => {
-        observed.push(`${status.phase}:${status.toolCallId}`);
-      },
-      onThinking: async () => {
-        throw new Error("unexpected onThinking");
-      },
-    };
-
-    const output = await Effect.runPromise(
-      DiscordOutputPump.make({
-        getChannelSettings: () => ({}),
-        initialReplyToMessageId: "message-1",
-        sink,
+    const output = await makeOutput(
+      makeSink({
+        onStatus: async (status) => {
+          observed.push(`${status.phase}:${status.toolCallId}`);
+        },
       }),
     );
 
@@ -98,59 +81,102 @@ describe("channel session Discord output ordering", () => {
     ]);
   });
 
-  test("shutdown drains queued status and suppresses abort errors", async () => {
+  test("dispatches onRunError for message_end with error stopReason", async () => {
     const observed: string[] = [];
-    const sink: SessionSink = {
-      onCompactionStatus: async (status) => {
-        observed.push(`compaction:${status.phase}`);
-      },
-      onError: async (text) => {
-        observed.push(`error:${text}`);
-      },
-      onFinal: async (text) => {
-        observed.push(`final:${text}`);
-      },
-      onIntermediate: async (text) => {
-        observed.push(`intermediate:${text}`);
-      },
-      onRunEnd: async () => {
-        observed.push("run-end");
-      },
-      onRunStart: async () => {
-        observed.push("run-start");
-      },
-      onStatus: async (status) => {
-        observed.push(`${status.phase}:${status.toolCallId}`);
-      },
-      onThinking: async (text) => {
-        observed.push(`thinking:${text}`);
-      },
-    };
-
-    const output = await Effect.runPromise(
-      DiscordOutputPump.make({
-        getChannelSettings: () => ({}),
-        initialReplyToMessageId: "message-1",
-        sink,
+    const output = await makeOutput(
+      makeSink({
+        onRunError: async (msg) => {
+          observed.push(`run-error:${msg}`);
+        },
       }),
     );
 
     await runPump(output, async () => {
       output.handleSessionEvent({
-        type: "tool_execution_start",
-        toolCallId: "tool-1",
-        toolName: "bash",
+        type: "message_end",
+        message: { role: "assistant", stopReason: "error", errorMessage: "API timeout" },
+      } as SessionEvent);
+      await Effect.runPromise(output.drain());
+    });
+
+    expect(observed).toEqual(["run-error:API timeout"]);
+  });
+
+  test("dispatches onRunAborted for message_end with aborted stopReason", async () => {
+    const observed: string[] = [];
+    const output = await makeOutput(
+      makeSink({
+        onRunAborted: async () => {
+          observed.push("run-aborted");
+        },
+      }),
+    );
+
+    await runPump(output, async () => {
+      output.handleSessionEvent({
+        type: "message_end",
+        message: { role: "assistant", stopReason: "aborted" },
+      } as SessionEvent);
+      await Effect.runPromise(output.drain());
+    });
+
+    expect(observed).toEqual(["run-aborted"]);
+  });
+
+  test("dispatches onRetryStatus for auto_retry_start and auto_retry_end", async () => {
+    const observed: string[] = [];
+    const output = await makeOutput(
+      makeSink({
+        onRetryStatus: async (status) => {
+          const detail =
+            status.phase === "retrying"
+              ? `:${status.attempt}`
+              : status.phase === "failure" && status.finalError !== undefined
+                ? `:${status.finalError}`
+                : "";
+          observed.push(`retry:${status.phase}${detail}`);
+        },
+      }),
+    );
+
+    await runPump(output, async () => {
+      output.handleSessionEvent({
+        type: "auto_retry_start",
+        attempt: 1,
+        maxAttempts: 3,
+        delayMs: 1000,
+        errorMessage: "Rate limited",
       } as SessionEvent);
 
-      output.setShuttingDown(true);
       output.handleSessionEvent({
-        type: "agent_end",
-        messages: [{ role: "assistant", stopReason: "aborted" }],
+        type: "auto_retry_end",
+        success: false,
+        attempt: 1,
+        finalError: "Still rate limited",
+      } as SessionEvent);
+
+      output.handleSessionEvent({
+        type: "auto_retry_start",
+        attempt: 2,
+        maxAttempts: 3,
+        delayMs: 2000,
+        errorMessage: "Rate limited",
+      } as SessionEvent);
+
+      output.handleSessionEvent({
+        type: "auto_retry_end",
+        success: true,
+        attempt: 2,
       } as SessionEvent);
 
       await Effect.runPromise(output.drain());
     });
 
-    expect(observed).toEqual(["start:tool-1", "run-end"]);
+    expect(observed).toEqual([
+      "retry:retrying:1",
+      "retry:failure:Still rate limited",
+      "retry:retrying:2",
+      "retry:success",
+    ]);
   });
 });

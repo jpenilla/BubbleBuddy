@@ -267,7 +267,6 @@ export class PiChannelSession {
       }
 
       this.#isShuttingDown = true;
-      this.#output.setShuttingDown(true);
 
       yield* this.#abortForShutdown();
       this.#session.abortCompaction();
