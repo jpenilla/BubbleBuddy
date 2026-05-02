@@ -51,24 +51,28 @@ const handleInteraction = (
   sessions: ChannelSessionManager,
   interaction: Interaction,
 ) =>
-  Effect.tryPromise(async () => {
+  Effect.gen(function* () {
     if (!interaction.isChatInputCommand()) {
       return;
     }
 
     if (!interaction.inGuild() || interaction.channel === null) {
-      await interaction.reply({
-        content: "This command only works in guild channels.",
-        ephemeral: true,
-      });
+      yield* Effect.tryPromise(() =>
+        interaction.reply({
+          content: "This command only works in guild channels.",
+          ephemeral: true,
+        }),
+      );
       return;
     }
 
     if (interaction.guild === null) {
-      await interaction.reply("This command only works in guild channels.");
+      yield* Effect.tryPromise(() =>
+        interaction.reply("This command only works in guild channels."),
+      );
       return;
     }
 
     const context: CommandContext = { client, sessions, guild: interaction.guild };
-    await handleCommand(interaction, context);
+    yield* handleCommand(interaction, context);
   });
