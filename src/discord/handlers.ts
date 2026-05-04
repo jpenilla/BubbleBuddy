@@ -30,6 +30,11 @@ const handleGuildMessage = (
       return;
     }
 
+    // Avoid infinite reply loop to self (mostly happens when the bot ping leaks into thinking messages)
+    if (message.author.id === client.user.id) {
+      return;
+    }
+
     const activation = await checkGuildMessageActivation(message, client.user.id);
     if (!isActivationMessage(activation)) {
       return;
