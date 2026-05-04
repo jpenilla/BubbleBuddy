@@ -4,7 +4,7 @@ import { Effect } from "effect";
 
 const CHANNEL_FILE_NAME = "channel.json";
 
-export const SHOW_THINKING_DEFAULT = true;
+export const SHOW_THINKING_DEFAULT = false;
 
 export interface ChannelSettings {
   showThinking?: boolean;
