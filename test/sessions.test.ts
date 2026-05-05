@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Redacted } from "effect";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,7 +13,6 @@ const makeConfig = (storageDir: string): AppConfigShape => ({
   botProfile: "test",
   channelIdleTimeoutMs: 1,
   discordContextTemplate: "",
-  discordToken: Redacted.make("fake"),
   enableAgenticWorkspace: false,
   mcpServers: {},
   modelId: "test-model",

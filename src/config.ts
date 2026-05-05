@@ -1,7 +1,6 @@
 import { resolve } from "node:path";
 
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Redacted } from "effect";
 import { Config, ConfigProvider, Data, Effect, Schema, FileSystem } from "effect";
 
 // Matches @mariozechner/pi-agent-core's ThinkingLevel type.
@@ -35,7 +34,6 @@ export type McpServerConfigEntry = Schema.Schema.Type<typeof McpServerConfigEntr
 const PositiveFiniteFromStringSchema = Schema.FiniteFromString.check(Schema.isGreaterThan(0));
 
 export interface AppConfigShape {
-  readonly discordToken: Redacted.Redacted<string>;
   readonly botProfile: string;
   readonly modelProvider: string;
   readonly modelId: string;
@@ -72,12 +70,6 @@ export const loadAppConfig: Effect.Effect<AppConfigShape, ConfigError, FileSyste
       catch: (e) => new ConfigError({ message: `Invalid JSON in ${CONFIG_FILE_NAME}`, cause: e }),
     });
     const jsonProvider = ConfigProvider.fromUnknown(json);
-    const envProvider = ConfigProvider.fromEnv().pipe(ConfigProvider.constantCase);
-
-    const discordToken = yield* Config.schema(
-      Schema.Redacted(Schema.NonEmptyString),
-      "discordToken",
-    ).parse(envProvider);
 
     // Required
     const jsonConfig = Config.all({
@@ -110,7 +102,6 @@ export const loadAppConfig: Effect.Effect<AppConfigShape, ConfigError, FileSyste
 
     return {
       // Required
-      discordToken,
       botProfile,
       modelProvider: cfg.modelProvider,
       modelId: cfg.modelId,

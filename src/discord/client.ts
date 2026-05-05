@@ -1,5 +1,15 @@
 import { Client, Events, GatewayIntentBits, type ClientEvents } from "discord.js";
-import { Context, Deferred, Effect, FiberSet, Layer, Redacted, Schema, Scope } from "effect";
+import {
+  Config,
+  Context,
+  Deferred,
+  Effect,
+  FiberSet,
+  Layer,
+  Redacted,
+  Schema,
+  Scope,
+} from "effect";
 
 export class DiscordLoginError extends Schema.TaggedErrorClass<DiscordLoginError>()(
   "DiscordLoginError",
@@ -46,59 +56,57 @@ export class Discord extends Context.Service<
     readonly events: DiscordEvents;
   }
 >()("Discord") {
-  static readonly layer = (options: {
-    readonly token: Redacted.Redacted<string>;
-  }): Layer.Layer<Discord, DiscordLoginError> =>
-    Layer.effect(
-      Discord,
-      Effect.gen(function* () {
-        const client = yield* Effect.acquireRelease(
-          Effect.sync(() => new Client({ intents: INTENTS })),
-          (client) =>
-            Effect.tryPromise(() => client.destroy()).pipe(
-              Effect.ignore({ log: "Warn", message: "Error destroying Discord client" }),
-            ),
-        );
+  static readonly layer = Layer.effect(
+    Discord,
+    Effect.gen(function* () {
+      const token = yield* Config.redacted("DISCORD_TOKEN");
+      const client = yield* Effect.acquireRelease(
+        Effect.sync(() => new Client({ intents: INTENTS })),
+        (client) =>
+          Effect.tryPromise(() => client.destroy()).pipe(
+            Effect.ignore({ log: "Warn", message: "Error destroying Discord client" }),
+          ),
+      );
 
-        const events: DiscordEvents = {
-          on: (event, listener) =>
-            Effect.acquireRelease(
+      const events: DiscordEvents = {
+        on: (event, listener) =>
+          Effect.acquireRelease(
+            Effect.sync(() => {
+              client.on(event, listener);
+            }),
+            () =>
               Effect.sync(() => {
-                client.on(event, listener);
+                client.removeListener(event, listener);
               }),
-              () =>
-                Effect.sync(() => {
-                  client.removeListener(event, listener);
-                }),
-            ),
-          once: (event, listener) =>
-            Effect.acquireRelease(
+          ),
+        once: (event, listener) =>
+          Effect.acquireRelease(
+            Effect.sync(() => {
+              client.once(event, listener);
+            }),
+            () =>
               Effect.sync(() => {
-                client.once(event, listener);
+                client.removeListener(event, listener);
               }),
-              () =>
-                Effect.sync(() => {
-                  client.removeListener(event, listener);
-                }),
-            ),
-          forkOn: (event, listener) =>
-            registerForkedEvent(
-              (wrapper) => client.on(event, wrapper),
-              (wrapper) => client.removeListener(event, wrapper),
-              listener,
-            ),
-        };
+          ),
+        forkOn: (event, listener) =>
+          registerForkedEvent(
+            (wrapper) => client.on(event, wrapper),
+            (wrapper) => client.removeListener(event, wrapper),
+            listener,
+          ),
+      };
 
-        yield* events.forkOn(Events.Error, (error) => Effect.logWarning(error));
+      yield* events.forkOn(Events.Error, (error) => Effect.logWarning(error));
 
-        const readyClient = yield* loginClient(client, events, options.token);
+      const readyClient = yield* loginClient(client, events, token);
 
-        return Discord.of({
-          client: readyClient,
-          events,
-        });
-      }),
-    );
+      return Discord.of({
+        client: readyClient,
+        events,
+      });
+    }),
+  );
 }
 
 const loginClient = (

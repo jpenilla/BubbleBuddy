@@ -12,7 +12,7 @@ export const program = Effect.gen(function* () {
   yield* Effect.logInfo("Starting BubbleBuddy.");
   const config = yield* loadAppConfig;
   yield* Effect.logInfo("Configuration loaded.");
-  return yield* main(config).pipe(Effect.provide(Discord.layer({ token: config.discordToken })));
+  return yield* main(config).pipe(Effect.provide(Discord.layer));
 });
 
 const main = (config: AppConfigShape) =>
