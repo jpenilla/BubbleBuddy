@@ -1,7 +1,8 @@
 import { resolve } from "node:path";
 
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import { Config, ConfigProvider, Data, Effect, Schema, FileSystem } from "effect";
+import { Config, ConfigProvider, Context, Data, Effect, Schema, Layer } from "effect";
+import { readTextFile } from "./resources.ts";
 
 // Matches @mariozechner/pi-agent-core's ThinkingLevel type.
 const THINKING_LEVELS: readonly ThinkingLevel[] = [
@@ -34,7 +35,7 @@ export type McpServerConfigEntry = Schema.Schema.Type<typeof McpServerConfigEntr
 const PositiveFiniteFromStringSchema = Schema.FiniteFromString.check(Schema.isGreaterThan(0));
 
 export interface AppConfigShape {
-  readonly botProfile: string;
+  readonly botProfileFile: string;
   readonly modelProvider: string;
   readonly modelId: string;
   readonly storageDirectory: string;
@@ -43,7 +44,6 @@ export interface AppConfigShape {
   readonly typingIndicatorIntervalMs: number;
   readonly channelIdleTimeoutMs: number;
   readonly mcpServers: Record<string, McpServerConfigEntry>;
-  readonly discordContextTemplate: string;
 }
 
 class ConfigError extends Data.TaggedError("ConfigError")<{
@@ -51,72 +51,67 @@ class ConfigError extends Data.TaggedError("ConfigError")<{
   readonly cause?: unknown;
 }> {}
 
-const normalizeLineEndings = (value: string): string => value.replaceAll("\r\n", "\n");
-
-const readTextFile = (path: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const text = yield* fs.readFileString(path);
-    return normalizeLineEndings(text);
-  });
+const wrapConfigError = Effect.mapError((error) => {
+  if (error instanceof ConfigError) return error;
+  return new ConfigError({ message: "Configuration error", cause: error });
+});
 
 const CONFIG_FILE_NAME = "bubblebuddy.json";
 
-export const loadAppConfig: Effect.Effect<AppConfigShape, ConfigError, FileSystem.FileSystem> =
-  Effect.gen(function* () {
-    const text = yield* readTextFile(CONFIG_FILE_NAME);
-    const json = yield* Effect.try({
-      try: () => JSON.parse(text) as unknown,
-      catch: (e) => new ConfigError({ message: `Invalid JSON in ${CONFIG_FILE_NAME}`, cause: e }),
-    });
-    const jsonProvider = ConfigProvider.fromUnknown(json);
+export class AppConfig extends Context.Service<AppConfig, AppConfigShape>()(
+  "bubblebuddy/AppConfig",
+) {
+  static readonly layer = Layer.effect(
+    AppConfig,
+    Effect.gen(function* () {
+      const text = yield* readTextFile(CONFIG_FILE_NAME);
+      const json = yield* Effect.try({
+        try: () => JSON.parse(text) as unknown,
+        catch: (e) => new ConfigError({ message: `Invalid JSON in ${CONFIG_FILE_NAME}`, cause: e }),
+      });
+      const jsonProvider = ConfigProvider.fromUnknown(json);
 
-    // Required
-    const jsonConfig = Config.all({
-      botProfileFile: Config.nonEmptyString("botProfileFile"),
-      modelProvider: Config.nonEmptyString("modelProvider"),
-      modelId: Config.nonEmptyString("modelId"),
-      storageDirectory: Config.nonEmptyString("storageDirectory"),
-      enableAgenticWorkspace: Config.boolean("enableAgenticWorkspace"),
+      const jsonConfig = Config.all({
+        // Required
+        botProfileFile: Config.nonEmptyString("botProfileFile"),
+        modelProvider: Config.nonEmptyString("modelProvider"),
+        modelId: Config.nonEmptyString("modelId"),
+        storageDirectory: Config.nonEmptyString("storageDirectory"),
+        enableAgenticWorkspace: Config.boolean("enableAgenticWorkspace"),
 
-      // Optional with defaults
-      thinkingLevel: Config.schema(Schema.Literals(THINKING_LEVELS), "thinkingLevel").pipe(
-        Config.withDefault("minimal"),
-      ),
-      typingIndicatorIntervalMs: Config.schema(
-        PositiveFiniteFromStringSchema,
-        "typingIndicatorIntervalMs",
-      ).pipe(Config.withDefault(8000)),
-      channelIdleTimeoutMs: Config.schema(
-        PositiveFiniteFromStringSchema,
-        "channelIdleTimeoutMs",
-      ).pipe(Config.withDefault(30 * 60 * 1000)),
-      mcpServers: Config.schema(McpServersConfigSchema, "mcpServers").pipe(Config.withDefault({})),
-    });
+        // Optional with defaults
+        thinkingLevel: Config.schema(Schema.Literals(THINKING_LEVELS), "thinkingLevel").pipe(
+          Config.withDefault("minimal"),
+        ),
+        typingIndicatorIntervalMs: Config.schema(
+          PositiveFiniteFromStringSchema,
+          "typingIndicatorIntervalMs",
+        ).pipe(Config.withDefault(8000)),
+        channelIdleTimeoutMs: Config.schema(
+          PositiveFiniteFromStringSchema,
+          "channelIdleTimeoutMs",
+        ).pipe(Config.withDefault(30 * 60 * 1000)),
+        mcpServers: Config.schema(McpServersConfigSchema, "mcpServers").pipe(
+          Config.withDefault({}),
+        ),
+      });
 
-    const cfg = yield* jsonConfig.parse(jsonProvider);
-    const botProfile = yield* readTextFile(cfg.botProfileFile);
+      const cfg = yield* jsonConfig.parse(jsonProvider);
 
-    // Extras, i.e. from other files
-    const discordContextTemplate = yield* readTextFile("discord-context.md");
+      return AppConfig.of({
+        // Required
+        botProfileFile: cfg.botProfileFile,
+        modelProvider: cfg.modelProvider,
+        modelId: cfg.modelId,
+        storageDirectory: resolve(cfg.storageDirectory),
+        enableAgenticWorkspace: cfg.enableAgenticWorkspace,
 
-    return {
-      // Required
-      botProfile,
-      modelProvider: cfg.modelProvider,
-      modelId: cfg.modelId,
-      storageDirectory: resolve(cfg.storageDirectory),
-      enableAgenticWorkspace: cfg.enableAgenticWorkspace,
-
-      // Optional with defaults
-      thinkingLevel: cfg.thinkingLevel,
-      typingIndicatorIntervalMs: cfg.typingIndicatorIntervalMs,
-      channelIdleTimeoutMs: cfg.channelIdleTimeoutMs,
-      mcpServers: cfg.mcpServers,
-
-      // Extras, i.e. from other files
-      discordContextTemplate,
-    } satisfies AppConfigShape;
-  }).pipe(
-    Effect.mapError((error) => new ConfigError({ message: "Configuration error", cause: error })),
+        // Optional with defaults
+        thinkingLevel: cfg.thinkingLevel,
+        typingIndicatorIntervalMs: cfg.typingIndicatorIntervalMs,
+        channelIdleTimeoutMs: cfg.channelIdleTimeoutMs,
+        mcpServers: cfg.mcpServers,
+      });
+    }).pipe(wrapConfigError),
   );
+}

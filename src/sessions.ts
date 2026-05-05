@@ -16,6 +16,7 @@ import { createSessionSink } from "./discord/session-sink.ts";
 import type { PromptTemplateContext } from "./domain/prompt.ts";
 import { PiChannelSession } from "./pi/channel-session.ts";
 import { WORKSPACE_CWD } from "./pi/workspace.ts";
+import type { LoadedResourcesShape } from "./resources.ts";
 import { SerialExecutor } from "./util/serial-executor.ts";
 import { ChannelState } from "./channel-state.ts";
 
@@ -47,6 +48,7 @@ export interface ChannelSessionManagerOptions {
   readonly config: AppConfigShape;
   readonly model: Model<Api>;
   readonly modelRegistry: ModelRegistry;
+  readonly resources: LoadedResourcesShape;
 }
 
 export class ChannelSessionManagerImpl implements ChannelSessionManager {
@@ -55,6 +57,7 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
   readonly #config: AppConfigShape;
   readonly #model: Model<Api>;
   readonly #modelRegistry: ModelRegistry;
+  readonly #resources: LoadedResourcesShape;
   readonly #channels = new Map<string, ChannelState>();
   readonly #locks = new Map<string, SerialExecutor>();
   readonly #activeOperations = new Set<Promise<unknown>>();
@@ -69,6 +72,7 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
     this.#config = options.config;
     this.#model = options.model;
     this.#modelRegistry = options.modelRegistry;
+    this.#resources = options.resources;
     this.#repository = new FileSystemChannelRepository(options.config.storageDirectory);
     this.#idleTimeoutMs = options.config.channelIdleTimeoutMs;
     this.#sweeper = Effect.runFork(this.#runSweeper());
@@ -219,8 +223,6 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
       PiChannelSession.create({
         agentDir: this.#agentDir,
         authStorage: this.#authStorage,
-        botProfile: this.#config.botProfile,
-        discordContextTemplate: this.#config.discordContextTemplate,
         enableAgenticWorkspace: this.#config.enableAgenticWorkspace,
         getChannelSettings: () => channel.settings,
         hostWorkspaceDir: this.#workspaceDir(input.channel.id),
@@ -229,6 +231,7 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
         modelRegistry: this.#modelRegistry,
         originMessage: input.originMessage,
         promptContext: input.promptContext,
+        resources: this.#resources,
         sessionManager,
         sink,
         thinkingLevel: this.#config.thinkingLevel,

@@ -19,6 +19,7 @@ import { McpAdapter } from "../mcp/adapter.ts";
 import { SerialExecutor } from "../util/serial-executor.ts";
 import type { McpServerConfigEntry, ThinkingLevel } from "../config.ts";
 import type { PromptTemplateContext } from "../domain/prompt.ts";
+import type { LoadedResourcesShape } from "../resources.ts";
 import { createChannelWorkspaceResourceLoader } from "./channel-workspace-resource-loader.ts";
 import { createGondolinExtension } from "./gondolin-extension.ts";
 import { DiscordOutputPump, type SessionSink } from "./discord-output-pump.ts";
@@ -28,8 +29,6 @@ import { WORKSPACE_CWD } from "./workspace.ts";
 export interface PiChannelSessionOptions {
   readonly agentDir: string;
   readonly authStorage: AuthStorage;
-  readonly botProfile: string;
-  readonly discordContextTemplate: string;
   readonly getChannelSettings: () => Readonly<ChannelSettings>;
   readonly hostWorkspaceDir: string;
   readonly enableAgenticWorkspace: boolean;
@@ -38,6 +37,7 @@ export interface PiChannelSessionOptions {
   readonly modelRegistry: ModelRegistry;
   readonly originMessage: Message<true>;
   readonly promptContext: PromptTemplateContext;
+  readonly resources: LoadedResourcesShape;
   readonly sessionManager: SessionManager;
   readonly sink: SessionSink;
   readonly thinkingLevel: ThinkingLevel;
@@ -87,8 +87,8 @@ export class PiChannelSession {
       });
       const extensionFactories: ExtensionFactory[] = [
         createPromptComposerExtension({
-          botProfile: options.botProfile,
-          discordContextTemplate: options.discordContextTemplate,
+          botProfile: options.resources.botProfile,
+          discordContextTemplate: options.resources.discordContextTemplate,
           enableAgenticWorkspace: options.enableAgenticWorkspace,
           promptContext: options.promptContext,
         }),

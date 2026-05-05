@@ -8,11 +8,11 @@ import type { ModelRegistry } from "@mariozechner/pi-coding-agent";
 
 import { ChannelSessionManagerImpl } from "../src/sessions.ts";
 import type { AppConfigShape } from "../src/config.ts";
+import type { LoadedResourcesShape } from "../src/resources.ts";
 
 const makeConfig = (storageDir: string): AppConfigShape => ({
-  botProfile: "test",
+  botProfileFile: "profiles/test.md",
   channelIdleTimeoutMs: 1,
-  discordContextTemplate: "",
   enableAgenticWorkspace: false,
   mcpServers: {},
   modelId: "test-model",
@@ -21,6 +21,11 @@ const makeConfig = (storageDir: string): AppConfigShape => ({
   thinkingLevel: "medium",
   typingIndicatorIntervalMs: 1000,
 });
+
+const resources: LoadedResourcesShape = {
+  botProfile: "test",
+  discordContextTemplate: "",
+};
 
 describe("channel session manager", () => {
   test("evicts idle channels on sweep", async () => {
@@ -31,6 +36,7 @@ describe("channel session manager", () => {
       config: makeConfig(tmpDir),
       model: {} as unknown as Model<never>,
       modelRegistry: {} as unknown as ModelRegistry,
+      resources,
     });
 
     try {
@@ -59,6 +65,7 @@ describe("channel session manager", () => {
       config: makeConfig(tmpDir),
       model: {} as unknown as Model<never>,
       modelRegistry: {} as unknown as ModelRegistry,
+      resources,
     });
 
     try {

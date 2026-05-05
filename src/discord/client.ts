@@ -55,7 +55,7 @@ export class Discord extends Context.Service<
     readonly client: Client<true>;
     readonly events: DiscordEvents;
   }
->()("Discord") {
+>()("bubblebuddy/discord/Discord") {
   static readonly layer = Layer.effect(
     Discord,
     Effect.gen(function* () {
