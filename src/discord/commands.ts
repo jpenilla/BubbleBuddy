@@ -1,7 +1,9 @@
 import {
   type ChatInputCommandInteraction,
   type Client,
+  Events,
   type Guild,
+  type Interaction,
   type Message,
   SharedSlashCommand,
   SlashCommandBuilder,
@@ -11,6 +13,7 @@ import { Cause, Effect } from "effect";
 import type { ChannelSessionManager } from "../sessions.ts";
 import { SHOW_THINKING_DEFAULT } from "../channel-repository.ts";
 import { createPromptContext, isGuildTextChannel } from "./utils.ts";
+import { Discord } from "./client.ts";
 
 export interface CommandContext {
   readonly client: Client<true>;
@@ -147,8 +150,47 @@ export const handleCommand = (
     );
   });
 
-export const registerSlashCommands = async (client: Client<true>): Promise<void> => {
-  await client.application.commands.set(
-    [...commandRegistry.values()].map((handler) => handler.data.toJSON()),
-  );
-};
+export const registerSlashCommands = (sessions: ChannelSessionManager) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("Registering Discord slash commands.");
+    const discord = yield* Discord;
+    yield* Effect.tryPromise(() =>
+      discord.client.application.commands.set(
+        [...commandRegistry.values()].map((handler) => handler.data.toJSON()),
+      ),
+    );
+    yield* registerCommandHandler(sessions);
+    yield* Effect.logInfo("Discord slash commands registered.");
+  });
+
+const registerCommandHandler = (sessions: ChannelSessionManager) =>
+  Effect.gen(function* () {
+    const discord = yield* Discord;
+    yield* discord.events.forkOn(Events.InteractionCreate, (interaction) =>
+      handleInteraction(sessions, interaction),
+    );
+  });
+
+const handleInteraction = (sessions: ChannelSessionManager, interaction: Interaction) =>
+  Effect.gen(function* () {
+    if (!interaction.isChatInputCommand()) {
+      return;
+    }
+
+    if (!interaction.inGuild() || interaction.channel === null || interaction.guild === null) {
+      yield* Effect.tryPromise(() =>
+        interaction.reply({
+          content: "This command only works in guild channels.",
+          ephemeral: true,
+        }),
+      );
+      return;
+    }
+
+    const discord = yield* Discord;
+    yield* handleCommand(interaction, {
+      client: discord.client,
+      sessions,
+      guild: interaction.guild,
+    });
+  });
