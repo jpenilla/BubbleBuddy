@@ -21,6 +21,7 @@ const main = (config: AppConfigShape) =>
     const authStorage = AuthStorage.create();
     const modelRegistry = ModelRegistry.create(authStorage);
     const model = resolvePiModel(modelRegistry, config.modelProvider, config.modelId);
+    yield* Effect.logInfo(`Using model: ${model.provider}/${model.id}`);
     const sessions = createChannelSessionManager({
       agentDir,
       authStorage,
@@ -29,9 +30,7 @@ const main = (config: AppConfigShape) =>
       modelRegistry,
     });
 
-    yield* Effect.logInfo("Pi model initialized.");
-
-    yield* Effect.acquireRelease(Effect.void, () =>
+    yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
         yield* Effect.logInfo("Shutdown requested. Shutting down channel sessions.");
         yield* Effect.tryPromise(() => sessions.shutdown()).pipe(
