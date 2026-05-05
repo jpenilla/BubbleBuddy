@@ -8,7 +8,7 @@ import {
   SessionManager,
 } from "@mariozechner/pi-coding-agent";
 import type { GuildTextBasedChannel, Message } from "discord.js";
-import { Context, Effect, Fiber, Layer, Schedule } from "effect";
+import { Context, Effect, Layer, Schedule } from "effect";
 import type { Api, Model } from "@mariozechner/pi-ai";
 
 import { FileSystemChannelRepository, type ChannelRepository } from "./channel-repository.ts";
@@ -67,7 +67,7 @@ export class ChannelSessions extends Context.Service<ChannelSessions, ChannelSes
 
       yield* Effect.logInfo(`Using model: ${model.provider}/${model.id}`);
 
-      const sessions = createChannelSessionManager({
+      const sessions = new ChannelSessionManagerImpl({
         agentDir: getAgentDir(),
         authStorage,
         config,
@@ -75,6 +75,8 @@ export class ChannelSessions extends Context.Service<ChannelSessions, ChannelSes
         modelRegistry,
         resources,
       });
+
+      yield* sessions.runSweeper().pipe(Effect.forkScoped);
 
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
@@ -109,7 +111,6 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
   readonly #activeOperations = new Set<Promise<unknown>>();
   readonly #repository: ChannelRepository;
   readonly #idleTimeoutMs: number;
-  readonly #sweeper: Fiber.Fiber<void, never>;
   #isShuttingDown = false;
 
   constructor(options: ChannelSessionManagerOptions) {
@@ -121,7 +122,6 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
     this.#resources = options.resources;
     this.#repository = new FileSystemChannelRepository(options.config.storageDirectory);
     this.#idleTimeoutMs = options.config.channelIdleTimeoutMs;
-    this.#sweeper = Effect.runFork(this.#runSweeper());
   }
 
   activate(input: SessionFactoryInput, messageText: string): Promise<void> {
@@ -227,7 +227,6 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
   async shutdown(): Promise<void> {
     this.#isShuttingDown = true;
     void Effect.runFork(Effect.logInfo("Channel session shutdown started."));
-    await Effect.runPromise(Fiber.interrupt(this.#sweeper)).catch(() => undefined);
     await Promise.allSettled(this.#activeOperations);
 
     const channelIds = [...this.#channels.keys()];
@@ -341,7 +340,7 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
     }
   }
 
-  #runSweeper(): Effect.Effect<void> {
+  runSweeper(): Effect.Effect<void> {
     return Effect.repeat(
       Effect.gen({ self: this }, function* () {
         const now = Date.now();
@@ -389,7 +388,3 @@ export class ChannelSessionManagerImpl implements ChannelSessionManager {
     return lock;
   }
 }
-
-export const createChannelSessionManager = (
-  options: ChannelSessionManagerOptions,
-): ChannelSessionManager => new ChannelSessionManagerImpl(options);
