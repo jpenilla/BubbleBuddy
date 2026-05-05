@@ -9,11 +9,10 @@ import { SlashCommandsLive } from "./discord/commands.ts";
 import { LoadedResources } from "./resources.ts";
 import { ChannelSessions } from "./sessions.ts";
 
-const ResourcesLayer = LoadedResources.layer.pipe(Layer.provideMerge(AppConfig.layer));
-const SessionsLayer = ChannelSessions.layer.pipe(Layer.provideMerge(ResourcesLayer));
-
 const AppLayer = Layer.mergeAll(ActivationLive, SlashCommandsLive).pipe(
-  Layer.provideMerge(SessionsLayer),
+  Layer.provideMerge(ChannelSessions.layer),
+  Layer.provideMerge(LoadedResources.layer),
+  Layer.provideMerge(AppConfig.layer),
   Layer.provideMerge(Discord.layer),
   Layer.provideMerge(NodeServices.layer),
 );
