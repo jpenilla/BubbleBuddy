@@ -1,16 +1,21 @@
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Layer } from "effect";
+import { Layer } from "effect";
 
-import { program } from "./app.ts";
 import { AppConfig } from "./config.ts";
+import { ActivationLive } from "./discord/activation.ts";
 import { Discord } from "./discord/client.ts";
+import { SlashCommandsLive } from "./discord/commands.ts";
 import { LoadedResources } from "./resources.ts";
+import { ChannelSessions } from "./sessions.ts";
 
-const AppServicesLayer = LoadedResources.layer.pipe(Layer.provideMerge(AppConfig.layer));
+const ResourcesLayer = LoadedResources.layer.pipe(Layer.provideMerge(AppConfig.layer));
+const SessionsLayer = ChannelSessions.layer.pipe(Layer.provideMerge(ResourcesLayer));
 
-const AppLayer = Layer.mergeAll(AppServicesLayer, Discord.layer).pipe(
+const AppLayer = Layer.mergeAll(ActivationLive, SlashCommandsLive).pipe(
+  Layer.provideMerge(SessionsLayer),
+  Layer.provideMerge(Discord.layer),
   Layer.provideMerge(NodeServices.layer),
 );
 
-NodeRuntime.runMain(Effect.scoped(program).pipe(Effect.provide(AppLayer)));
+NodeRuntime.runMain(Layer.launch(AppLayer));

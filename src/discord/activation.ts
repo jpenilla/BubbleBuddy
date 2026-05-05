@@ -1,7 +1,7 @@
 import { Events, type Client, type Message } from "discord.js";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 
-import type { ChannelSessionManager } from "../sessions.ts";
+import { ChannelSessions, type ChannelSessionManager } from "../sessions.ts";
 import { Discord } from "./client.ts";
 import { createPromptContext, isGuildTextChannel } from "./utils.ts";
 import { formatMessageForPrompt } from "./message-formatting.ts";
@@ -35,18 +35,21 @@ export const checkGuildMessageActivation = async (
   mentionsBot: message.mentions.has(botUserId),
 });
 
-export function registerActivationHandler(sessions: ChannelSessionManager) {
-  return Effect.gen(function* () {
+export const ActivationLive = Layer.effectDiscard(
+  Effect.gen(function* () {
     const discord = yield* Discord;
-    yield* discord.events.forkOn(Events.MessageCreate, (message) => {
-      if (!message.inGuild()) {
-        return Effect.void;
-      }
+    yield* discord.events.forkOn(Events.MessageCreate, (message) =>
+      Effect.gen(function* () {
+        if (!message.inGuild()) {
+          return;
+        }
 
-      return handleGuildMessage(discord.client, sessions, message);
-    });
-  });
-}
+        const sessions = yield* ChannelSessions;
+        return yield* handleGuildMessage(discord.client, sessions, message);
+      }),
+    );
+  }),
+);
 
 const handleGuildMessage = (
   client: Client<true>,

@@ -8,9 +8,9 @@ import {
   SharedSlashCommand,
   SlashCommandBuilder,
 } from "discord.js";
-import { Cause, Effect } from "effect";
+import { Cause, Effect, Layer } from "effect";
 
-import type { ChannelSessionManager } from "../sessions.ts";
+import { ChannelSessions, type ChannelSessionManager } from "../sessions.ts";
 import { SHOW_THINKING_DEFAULT } from "../channel-repository.ts";
 import { createPromptContext, isGuildTextChannel } from "./utils.ts";
 import { Discord } from "./client.ts";
@@ -150,7 +150,7 @@ export const handleCommand = (
     );
   });
 
-export const registerSlashCommands = (sessions: ChannelSessionManager) =>
+export const SlashCommandsLive = Layer.effectDiscard(
   Effect.gen(function* () {
     yield* Effect.logInfo("Registering Discord slash commands.");
     const discord = yield* Discord;
@@ -159,19 +159,14 @@ export const registerSlashCommands = (sessions: ChannelSessionManager) =>
         [...commandRegistry.values()].map((handler) => handler.data.toJSON()),
       ),
     );
-    yield* registerCommandHandler(sessions);
-    yield* Effect.logInfo("Discord slash commands registered.");
-  });
-
-const registerCommandHandler = (sessions: ChannelSessionManager) =>
-  Effect.gen(function* () {
-    const discord = yield* Discord;
     yield* discord.events.forkOn(Events.InteractionCreate, (interaction) =>
-      handleInteraction(sessions, interaction),
+      handleInteraction(interaction),
     );
-  });
+    yield* Effect.logInfo("Discord slash commands registered.");
+  }),
+);
 
-const handleInteraction = (sessions: ChannelSessionManager, interaction: Interaction) =>
+const handleInteraction = (interaction: Interaction) =>
   Effect.gen(function* () {
     if (!interaction.isChatInputCommand()) {
       return;
@@ -188,6 +183,7 @@ const handleInteraction = (sessions: ChannelSessionManager, interaction: Interac
     }
 
     const discord = yield* Discord;
+    const sessions = yield* ChannelSessions;
     yield* handleCommand(interaction, {
       client: discord.client,
       sessions,

@@ -2,21 +2,23 @@ import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import {
+  AuthStorage,
+  getAgentDir,
+  ModelRegistry,
   SessionManager,
-  type AuthStorage,
-  type ModelRegistry,
 } from "@mariozechner/pi-coding-agent";
 import type { GuildTextBasedChannel, Message } from "discord.js";
-import { Effect, Fiber, Schedule } from "effect";
+import { Context, Effect, Fiber, Layer, Schedule } from "effect";
 import type { Api, Model } from "@mariozechner/pi-ai";
 
 import { FileSystemChannelRepository, type ChannelRepository } from "./channel-repository.ts";
-import type { AppConfigShape } from "./config.ts";
+import { AppConfig, type AppConfigShape } from "./config.ts";
 import { createSessionSink } from "./discord/session-sink.ts";
 import type { PromptTemplateContext } from "./domain/prompt.ts";
+import { resolvePiModel } from "./pi/model.ts";
 import { PiChannelSession } from "./pi/channel-session.ts";
 import { WORKSPACE_CWD } from "./pi/workspace.ts";
-import type { LoadedResourcesShape } from "./resources.ts";
+import { LoadedResources, type LoadedResourcesShape } from "./resources.ts";
 import { SerialExecutor } from "./util/serial-executor.ts";
 import { ChannelState } from "./channel-state.ts";
 
@@ -49,6 +51,50 @@ export interface ChannelSessionManagerOptions {
   readonly model: Model<Api>;
   readonly modelRegistry: ModelRegistry;
   readonly resources: LoadedResourcesShape;
+}
+
+export class ChannelSessions extends Context.Service<ChannelSessions, ChannelSessionManager>()(
+  "bubblebuddy/ChannelSessions",
+) {
+  static readonly layer = Layer.effect(
+    ChannelSessions,
+    Effect.gen(function* () {
+      const config = yield* AppConfig;
+      const resources = yield* LoadedResources;
+      const authStorage = AuthStorage.create();
+      const modelRegistry = ModelRegistry.create(authStorage);
+      const model = resolvePiModel(modelRegistry, config.modelProvider, config.modelId);
+
+      yield* Effect.logInfo(`Using model: ${model.provider}/${model.id}`);
+
+      const sessions = createChannelSessionManager({
+        agentDir: getAgentDir(),
+        authStorage,
+        config,
+        model,
+        modelRegistry,
+        resources,
+      });
+
+      yield* Effect.addFinalizer(() =>
+        Effect.gen(function* () {
+          yield* Effect.logInfo("Shutdown requested. Shutting down channel sessions.");
+          yield* Effect.tryPromise(() => sessions.shutdown()).pipe(
+            Effect.timeoutOrElse({
+              duration: "10 seconds",
+              orElse: () => Effect.logWarning("Timed out waiting for sessions to shut down."),
+            }),
+            Effect.catch((error: unknown) =>
+              Effect.logWarning(`Session shutdown failed: ${String(error)}`),
+            ),
+          );
+          yield* Effect.logInfo("Shutdown cleanup complete.");
+        }),
+      );
+
+      return ChannelSessions.of(sessions);
+    }),
+  );
 }
 
 export class ChannelSessionManagerImpl implements ChannelSessionManager {
