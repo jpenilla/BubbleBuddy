@@ -97,7 +97,9 @@ export class Discord extends Context.Service<
           ),
       };
 
-      yield* events.forkOn(Events.Error, (error) => Effect.logWarning(error));
+      yield* events.forkOn(Events.Error, (error) => Effect.logError(error));
+      yield* events.forkOn(Events.Warn, (warn) => Effect.logWarning(warn));
+      // yield* events.forkOn(Events.Debug, (debug) => Effect.logDebug(debug));
 
       const readyClient = yield* loginClient(client, events, token);
 
