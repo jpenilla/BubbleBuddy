@@ -69,7 +69,7 @@ export const makeChannelRuntime = (
   options: ChannelRuntimeOptions,
 ): Effect.Effect<ChannelRuntimeEntry> =>
   Effect.gen(function* () {
-    const lock = Semaphore.makeUnsafe(1);
+    const lock = yield* Semaphore.make(1);
     const state = options.state;
     let pi: ScopedPiChannelSession | undefined;
     let idleFiber: Fiber.Fiber<void> | undefined;

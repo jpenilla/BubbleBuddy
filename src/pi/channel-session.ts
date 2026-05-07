@@ -97,18 +97,21 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
     ];
 
     if (config.enableAgenticWorkspace) {
-      const gondolin = createGondolinExtension({
-        channelId: options.channel.id,
-        sessionCwd: WORKSPACE_CWD,
-        sessionLabel: `bubblebuddy:${options.channel.id}`,
-        workspaceDir: options.hostWorkspaceDir,
-      });
-      extensionFactories.push(gondolin.extensionFactory);
-      yield* Effect.addFinalizer(() =>
-        Effect.tryPromise(() => gondolin.dispose()).pipe(
-          Effect.ignore({ log: "Warn", message: "Failed to dispose Gondolin workspace" }),
+      const gondolin = yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          createGondolinExtension({
+            channelId: options.channel.id,
+            sessionCwd: WORKSPACE_CWD,
+            sessionLabel: `bubblebuddy:${options.channel.id}`,
+            workspaceDir: options.hostWorkspaceDir,
+          }),
         ),
+        (gondolin) =>
+          Effect.tryPromise(() => gondolin.dispose()).pipe(
+            Effect.ignore({ log: "Warn", message: "Failed to dispose Gondolin workspace" }),
+          ),
       );
+      extensionFactories.push(gondolin.extensionFactory);
     }
 
     const resourceLoader = createChannelWorkspaceResourceLoader({
@@ -162,30 +165,32 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
 
     const allTools = [...discordTools, ...mcpTools];
 
-    const { session } = yield* Effect.tryPromise({
-      try: () =>
-        createAgentSession({
-          agentDir: piContext.agentDir,
-          authStorage: piContext.authStorage,
-          customTools: allTools,
-          cwd: WORKSPACE_CWD,
-          model: piContext.model,
-          modelRegistry: piContext.modelRegistry,
-          resourceLoader,
-          sessionManager: options.sessionManager,
-          settingsManager,
-          thinkingLevel: config.thinkingLevel,
-        }),
-      catch: (error) =>
-        new ChannelSessionInitError({ message: "Failed to create agent session", cause: error }),
-    });
-    yield* Effect.addFinalizer(() => Effect.sync(() => session.dispose()));
+    const { session } = yield* Effect.acquireRelease(
+      Effect.tryPromise({
+        try: () =>
+          createAgentSession({
+            agentDir: piContext.agentDir,
+            authStorage: piContext.authStorage,
+            customTools: allTools,
+            cwd: WORKSPACE_CWD,
+            model: piContext.model,
+            modelRegistry: piContext.modelRegistry,
+            resourceLoader,
+            sessionManager: options.sessionManager,
+            settingsManager,
+            thinkingLevel: config.thinkingLevel,
+          }),
+        catch: (error) =>
+          new ChannelSessionInitError({ message: "Failed to create agent session", cause: error }),
+      }),
+      ({ session }) => Effect.sync(() => session.dispose()),
+    );
 
     if (!config.enableAgenticWorkspace) {
       session.setActiveToolsByName(allTools.map((tool) => tool.name));
     }
 
-    const operationLock = Semaphore.makeUnsafe(1);
+    const operationLock = yield* Semaphore.make(1);
     let pendingQueue: Array<{ text: string; replyToMessageId: string }> = [];
 
     const prepareForClose = () =>
