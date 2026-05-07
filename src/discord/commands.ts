@@ -4,20 +4,22 @@ import {
   Events,
   type Guild,
   type Interaction,
-  type Message,
   SharedSlashCommand,
   SlashCommandBuilder,
 } from "discord.js";
 import { Cause, Effect, Layer } from "effect";
 
-import { ChannelSessions, type ChannelSessionManager } from "../sessions.ts";
-import { SHOW_THINKING_DEFAULT } from "../channel-repository.ts";
+import {
+  ChannelSessions,
+  type ChannelRuntimeError,
+  type ChannelSessionsShape,
+} from "../sessions.ts";
 import { createPromptContext, isGuildTextChannel } from "./utils.ts";
 import { Discord } from "./client.ts";
 
 export interface CommandContext {
   readonly client: Client<true>;
-  readonly sessions: ChannelSessionManager;
+  readonly sessions: ChannelSessionsShape;
   readonly guild: Guild;
 }
 
@@ -26,7 +28,7 @@ export interface CommandHandler {
   readonly execute: (
     interaction: ChatInputCommandInteraction,
     context: CommandContext,
-  ) => Effect.Effect<void, Cause.UnknownError, never>;
+  ) => Effect.Effect<void, Cause.UnknownError | ChannelRuntimeError>;
 }
 
 // --- compact ---
@@ -42,37 +44,38 @@ const compactCommand: CommandHandler = {
         .setRequired(false),
     ),
   execute: (interaction, { client, sessions, guild }) =>
-    Effect.tryPromise(async () => {
+    Effect.gen(function* () {
       if (!isGuildTextChannel(interaction.channel)) {
-        await interaction.reply("This command only works in guild text channels.");
+        yield* Effect.tryPromise(() =>
+          interaction.reply("This command only works in guild text channels."),
+        );
         return;
       }
 
       const customInstructions = interaction.options.getString("instructions")?.trim() || undefined;
-      await interaction.deferReply();
-      const originMessage = (await interaction.fetchReply()) as Message<true>;
-      const result = await sessions.compact(
-        {
-          channel: interaction.channel,
-          originMessage,
-          promptContext: createPromptContext(client, interaction.channel, guild.name),
-        },
+      yield* Effect.tryPromise(() => interaction.deferReply());
+      const runtime = yield* sessions.get(interaction.channelId);
+      yield* Effect.tryPromise(() => interaction.editReply("Compaction requested."));
+      const result = yield* runtime.compact({
+        channel: interaction.channel,
+        promptContext: createPromptContext(client, interaction.channel, guild.name),
         customInstructions,
-      );
+      });
 
-      switch (result) {
-        case "started":
-          await interaction.editReply("Compaction requested.");
-          break;
-        case "no-session":
-          await interaction.editReply("No session exists yet for this channel.");
-          break;
-        case "rejected-busy":
-          await interaction.editReply("A response is already in progress for this channel.");
-          break;
-        case "rejected-compacting":
-          await interaction.editReply("Compaction is already in progress for this channel.");
-          break;
+      if (result !== "done") {
+        let reply: string;
+        switch (result) {
+          case "no-session":
+            reply = "No session exists yet for this channel";
+            break;
+          case "rejected-busy":
+            reply = "A response is already in progress for this channel.";
+            break;
+          case "rejected-compacting":
+            reply = "Compaction is already in progress for this channel.";
+            break;
+        }
+        yield* Effect.tryPromise(() => interaction.editReply(reply));
       }
     }),
 };
@@ -84,16 +87,19 @@ const newCommand: CommandHandler = {
     .setName("new")
     .setDescription("Discard this channel's current pi session."),
   execute: (interaction, { sessions }) =>
-    Effect.tryPromise(async () => {
-      await interaction.deferReply();
-      const result = await sessions.discard(interaction.channelId);
+    Effect.gen(function* () {
+      yield* Effect.tryPromise(() => interaction.deferReply());
+      const runtime = yield* sessions.get(interaction.channelId);
+      const result = yield* runtime.discard();
       if (result === "rejected-busy") {
-        await interaction.editReply("A response is already in progress for this channel.");
+        yield* Effect.tryPromise(() =>
+          interaction.editReply("A response is already in progress for this channel."),
+        );
         return;
       }
 
-      await interaction.editReply(
-        "The next bot interaction in this channel will use a new session.",
+      yield* Effect.tryPromise(() =>
+        interaction.editReply("The next bot interaction in this channel will use a new session."),
       );
     }),
 };
@@ -105,17 +111,14 @@ const thinkingCommand: CommandHandler = {
     .setName("thinking")
     .setDescription("Toggle thinking messages in this channel."),
   execute: (interaction, { sessions }) =>
-    Effect.tryPromise(async () => {
-      await interaction.deferReply();
-      const newValue = await sessions.withChannel(interaction.channelId, async (channel) => {
-        const value = !(channel.settings.showThinking ?? SHOW_THINKING_DEFAULT);
-        channel.modifySettings((settings) => {
-          settings.showThinking = value === SHOW_THINKING_DEFAULT ? undefined : value;
-        });
-        return value;
-      });
-      await interaction.editReply(
-        `Thinking messages are now ${newValue ? "enabled" : "disabled"} in this channel.`,
+    Effect.gen(function* () {
+      yield* Effect.tryPromise(() => interaction.deferReply());
+      const runtime = yield* sessions.get(interaction.channelId);
+      const newValue = yield* runtime.toggleShowThinking();
+      yield* Effect.tryPromise(() =>
+        interaction.editReply(
+          `Thinking messages are now ${newValue ? "enabled" : "disabled"} in this channel.`,
+        ),
       );
     }),
 };
@@ -131,7 +134,7 @@ const commandRegistry = new Map<string, CommandHandler>([
 export const handleCommand = (
   interaction: ChatInputCommandInteraction,
   context: CommandContext,
-): Effect.Effect<void, never, never> =>
+): Effect.Effect<void, never> =>
   Effect.gen(function* () {
     const handler = commandRegistry.get(interaction.commandName);
     if (handler === undefined) return;

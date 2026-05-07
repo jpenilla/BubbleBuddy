@@ -3,12 +3,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuthStorage } from "@mariozechner/pi-coding-agent";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Effect, Layer } from "effect";
 import type { Model } from "@mariozechner/pi-ai";
 import type { ModelRegistry } from "@mariozechner/pi-coding-agent";
 
-import { ChannelSessionManagerImpl } from "../src/sessions.ts";
-import type { AppConfigShape } from "../src/config.ts";
-import type { LoadedResourcesShape } from "../src/resources.ts";
+import { ChannelRepository } from "../src/channel-repository.ts";
+import { PiContext } from "../src/pi/context.ts";
+import { ChannelSessions } from "../src/sessions.ts";
+import { AppConfig, type AppConfigShape } from "../src/config.ts";
+import { LoadedResources, type LoadedResourcesShape } from "../src/resources.ts";
 
 const makeConfig = (storageDir: string): AppConfigShape => ({
   botProfileFile: "profiles/test.md",
@@ -27,62 +31,58 @@ const resources: LoadedResourcesShape = {
   discordContextTemplate: "",
 };
 
+const testLayer = (config: AppConfigShape) =>
+  ChannelSessions.layer.pipe(
+    Layer.provideMerge(ChannelRepository.layer),
+    Layer.provideMerge(Layer.succeed(AppConfig, config)),
+    Layer.provideMerge(Layer.succeed(LoadedResources, resources)),
+    Layer.provideMerge(
+      Layer.succeed(PiContext, {
+        agentDir: "",
+        authStorage: AuthStorage.create(),
+        model: {} as unknown as Model<never>,
+        modelRegistry: {} as unknown as ModelRegistry,
+      }),
+    ),
+    Layer.provideMerge(NodeServices.layer),
+  );
+
 describe("channel session manager", () => {
-  test("evicts idle channels on sweep", async () => {
+  test("keeps idle channel entries after the idle timeout", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
-    const manager = new ChannelSessionManagerImpl({
-      agentDir: tmpDir,
-      authStorage: AuthStorage.create(),
-      config: makeConfig(tmpDir),
-      model: {} as unknown as Model<never>,
-      modelRegistry: {} as unknown as ModelRegistry,
-      resources,
-    });
+    const config = makeConfig(tmpDir);
 
     try {
-      await manager.withChannel("ch-1", async (ch) => {
-        ch.modifySettings((s) => {
-          s.showThinking = false;
-        });
-      });
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const manager = yield* ChannelSessions;
+          const runtime = yield* manager.get("ch-1");
+          yield* runtime.toggleShowThinking();
 
-      expect(manager.channelCount).toBe(1);
-
-      await manager._sweepChannel("ch-1", Date.now() + 1_000_000);
-
-      expect(manager.channelCount).toBe(0);
+          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 25)));
+          expect(yield* manager.get("ch-1")).toBe(runtime);
+        }).pipe(Effect.scoped, Effect.provide(testLayer(config))),
+      );
     } finally {
-      await manager.shutdown();
       await rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  test("withChannel persists dirty state", async () => {
+  test("toggleShowThinking persists dirty state", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
-    const manager = new ChannelSessionManagerImpl({
-      agentDir: tmpDir,
-      authStorage: AuthStorage.create(),
-      config: makeConfig(tmpDir),
-      model: {} as unknown as Model<never>,
-      modelRegistry: {} as unknown as ModelRegistry,
-      resources,
-    });
+    const config = makeConfig(tmpDir);
 
     try {
-      await manager.withChannel("ch-2", async (ch) => {
-        ch.modifySettings((s) => {
-          s.showThinking = true;
-        });
-      });
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const manager = yield* ChannelSessions;
+          const runtime = yield* manager.get("ch-2");
+          const newValue = yield* runtime.toggleShowThinking();
 
-      const state = await manager.withChannel("ch-2", async (ch) => {
-        return ch.settings.showThinking;
-      });
-
-      expect(state).toBe(true);
-      expect(manager.channelCount).toBe(1);
+          expect(newValue).toBe(true);
+        }).pipe(Effect.scoped, Effect.provide(testLayer(config))),
+      );
     } finally {
-      await manager.shutdown();
       await rm(tmpDir, { recursive: true, force: true });
     }
   });

@@ -7,7 +7,7 @@ import type {
 import { EmbedBuilder } from "discord.js";
 
 import type { AppConfigShape } from "../config.ts";
-import { ChannelState } from "../channel-state.ts";
+import type { ChannelState } from "../channel-state.ts";
 import { type SessionSink } from "../pi/discord-output-pump.ts";
 import {
   createCompactionStatusEmbed,

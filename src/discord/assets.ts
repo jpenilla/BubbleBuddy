@@ -2,10 +2,18 @@ import {
   PermissionFlagsBits,
   StickerType,
   parseEmoji,
+  type Client,
+  type Guild,
   type GuildEmoji,
-  type Message,
+  type GuildTextBasedChannel,
   type Sticker,
 } from "discord.js";
+
+export type DiscordAssetContext = {
+  readonly channel: GuildTextBasedChannel;
+  readonly client: Client<true>;
+  readonly guild: Guild;
+};
 
 export type UsableSticker = {
   readonly guildId: string | null;
@@ -14,13 +22,8 @@ export type UsableSticker = {
   readonly sticker: Sticker;
 };
 
-const currentContextPermissions = (message: Message<true>) => {
-  if (!message.client.user) {
-    return null;
-  }
-
-  return message.channel.permissionsFor(message.client.user);
-};
+const currentContextPermissions = (context: DiscordAssetContext) =>
+  context.channel.permissionsFor(context.client.user);
 
 const sortByContextAndName = <T extends { readonly id: string; readonly name: string }>(
   items: ReadonlyArray<T>,
@@ -64,14 +67,14 @@ export const formatCustomEmojiMessageSyntax = (emoji: GuildEmoji): string =>
 export const formatCustomEmojiReactionSyntax = (emoji: GuildEmoji): string =>
   `${emoji.animated ? "a:" : ""}${emoji.name}:${emoji.id}`;
 
-export const listUsableCustomEmojis = (message: Message<true>): GuildEmoji[] => {
+export const listUsableCustomEmojis = (context: DiscordAssetContext): GuildEmoji[] => {
   const allowExternal =
-    currentContextPermissions(message)?.has(PermissionFlagsBits.UseExternalEmojis) ?? false;
-  const currentGuildId = message.guild.id;
+    currentContextPermissions(context)?.has(PermissionFlagsBits.UseExternalEmojis) ?? false;
+  const currentGuildId = context.guild.id;
   const candidates = [
-    ...message.guild.emojis.cache.values(),
+    ...context.guild.emojis.cache.values(),
     ...(allowExternal
-      ? [...message.client.emojis.cache.values()].filter(
+      ? [...context.client.emojis.cache.values()].filter(
           (emoji) => emoji.guild.id !== currentGuildId,
         )
       : []),
@@ -101,14 +104,17 @@ const sortUsableStickers = (items: ReadonlyArray<UsableSticker>, currentGuildId:
     );
   });
 
-export const normalizeReactionEmoji = (message: Message<true>, input: string): string | null => {
+export const normalizeReactionEmoji = (
+  context: DiscordAssetContext,
+  input: string,
+): string | null => {
   const trimmed = input.trim();
   if (!trimmed) {
     return null;
   }
 
   const customEmojiById = new Map(
-    listUsableCustomEmojis(message).map((emoji) => [emoji.id, emoji]),
+    listUsableCustomEmojis(context).map((emoji) => [emoji.id, emoji]),
   );
   const aliasMatch = trimmed.match(/^:([A-Za-z0-9_]{2,32}):$/);
   if (aliasMatch) {
@@ -134,20 +140,22 @@ export const normalizeReactionEmoji = (message: Message<true>, input: string): s
   return trimmed;
 };
 
-export const listUsableStickers = async (message: Message<true>): Promise<UsableSticker[]> => {
+export const listUsableStickers = async (
+  context: DiscordAssetContext,
+): Promise<UsableSticker[]> => {
   const allowExternal =
-    currentContextPermissions(message)?.has(PermissionFlagsBits.UseExternalStickers) ?? false;
-  const currentGuildId = message.guild.id;
+    currentContextPermissions(context)?.has(PermissionFlagsBits.UseExternalStickers) ?? false;
+  const currentGuildId = context.guild.id;
   const guildCandidates = [
-    ...message.guild.stickers.cache.values(),
+    ...context.guild.stickers.cache.values(),
     ...(allowExternal
-      ? [...message.client.guilds.cache.values()]
+      ? [...context.client.guilds.cache.values()]
           .filter((guild) => guild.id !== currentGuildId)
           .flatMap((guild) => [...guild.stickers.cache.values()])
       : []),
   ];
 
-  const standardCandidates = [...(await message.client.fetchStickerPacks()).values()].flatMap(
+  const standardCandidates = [...(await context.client.fetchStickerPacks()).values()].flatMap(
     (pack) =>
       [...pack.stickers.values()].map((sticker) => ({
         guildId: null,

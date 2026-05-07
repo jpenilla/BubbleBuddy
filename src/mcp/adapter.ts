@@ -94,10 +94,6 @@ const runMcpRequest = <T>(
     catch: (error) => new McpServerConnectionError({ serverName, operation: label, cause: error }),
   });
 
-export interface McpAdapterOptions {
-  readonly servers: readonly McpServerConfig[];
-}
-
 interface McpConnection {
   readonly client: Client;
   readonly transport: Transport;
@@ -122,240 +118,212 @@ const closeConnection = ({ client, transport }: McpConnection): Effect.Effect<vo
     yield* Effect.tryPromise(() => transport.close()).pipe(Effect.ignore);
   });
 
-export class McpAdapter {
-  readonly #options: McpAdapterOptions;
+const formatToolError = (
+  serverName: string,
+  toolName: string,
+  content: (TextContent | ImageContent)[],
+): string => {
+  const text = content
+    .filter((block): block is TextContent => block.type === "text")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+  return text.length > 0 ? text : `MCP tool ${serverName}.${toolName} failed.`;
+};
 
-  constructor(options: McpAdapterOptions) {
-    this.#options = options;
-  }
+const transformContent = (mcpContent: unknown[]): (TextContent | ImageContent)[] =>
+  mcpContent.map((c: unknown) => {
+    if (typeof c !== "object" || c === null) {
+      return { type: "text", text: String(c) };
+    }
 
-  connect(): Effect.Effect<ToolDefinition[], McpConfigurationError, Scope.Scope> {
-    return this.#connectAll();
-  }
+    const block = c as Record<string, unknown>;
 
-  #connectAll(): Effect.Effect<ToolDefinition[], McpConfigurationError, Scope.Scope> {
-    const servers = this.#options.servers;
-    const connectServer = (server: McpServerConfig) => this.#connectServer(server);
-    const buildToolDefinitions = (
-      serverName: string,
-      client: Client,
-      tools: readonly McpToolInfo[],
-      toolSources: Map<string, string>,
-    ) => this.#buildToolDefinitions(serverName, client, tools, toolSources);
+    if (block.type === "text") {
+      return { type: "text", text: String(block.text ?? "") };
+    }
 
-    return Effect.gen(function* () {
-      const connectedServers = yield* Effect.forEach(
-        servers,
-        (server) =>
-          Effect.acquireRelease(connectServer(server), ({ connection }) =>
-            closeConnection(connection),
-          ).pipe(
-            Effect.catchTag("McpServerConnectionError", (error) =>
-              Effect.logWarning(`MCP: skipping ${formatError(error)}`).pipe(Effect.as(undefined)),
-            ),
-          ),
-        { concurrency: "unbounded" },
+    if (block.type === "image") {
+      return {
+        type: "image",
+        data: String(block.data ?? ""),
+        mimeType: String(block.mimeType ?? "image/png"),
+      };
+    }
+
+    if (block.type === "resource_link") {
+      const linkName = String(block.name ?? block.uri ?? "unknown");
+      const linkUri = String(block.uri ?? "(no URI)");
+      return {
+        type: "text",
+        text: `[Resource Link: ${linkName}]\nURI: ${linkUri}`,
+      };
+    }
+
+    if (block.type === "audio") {
+      return {
+        type: "text",
+        text: `[Audio content: ${String(block.mimeType ?? "audio/*")}]`,
+      };
+    }
+
+    if (block.type === "resource") {
+      const resource = block.resource as Record<string, unknown> | undefined;
+      const resourceUri = String(resource?.uri ?? "(no URI)");
+      const resourceContent = String(
+        resource?.text ?? (resource ? JSON.stringify(resource) : "(no content)"),
+      );
+      return { type: "text", text: `[Resource: ${resourceUri}]\n${resourceContent}` };
+    }
+
+    return { type: "text", text: JSON.stringify(c) };
+  });
+
+const buildToolDefinition = (
+  serverName: string,
+  client: Client,
+  mcpTool: McpToolInfo,
+  toolSources: Map<string, string>,
+): Effect.Effect<ToolDefinition, McpConfigurationError> =>
+  Effect.gen(function* () {
+    const name = yield* formatToolName(mcpTool.name, serverName);
+    const source = `${serverName}.${mcpTool.name}`;
+    const existingSource = toolSources.get(name);
+    if (existingSource) {
+      return yield* new McpConfigurationError(
+        `MCP tool name conflict for "${name}": ${existingSource} and ${source}.`,
+      );
+    }
+    toolSources.set(name, source);
+
+    return defineTool({
+      name,
+      label: `MCP: ${mcpTool.name}`,
+      description: mcpTool.description || `MCP tool from ${serverName}`,
+      promptSnippet: mcpTool.description || `MCP tool from ${serverName}`,
+      parameters: Type.Unsafe<Record<string, unknown>>(
+        mcpTool.inputSchema || { type: "object", properties: {} },
+      ),
+      execute: async (_toolCallId, params, signal) => {
+        const result = await client.callTool(
+          { name: mcpTool.name, arguments: params as Record<string, unknown> },
+          undefined,
+          { signal },
+        );
+
+        const content = transformContent(Array.isArray(result.content) ? result.content : []);
+        if (result.isError) {
+          throw new Error(formatToolError(serverName, mcpTool.name, content));
+        }
+
+        return {
+          content: content.length > 0 ? content : [{ type: "text", text: "(empty result)" }],
+          details: { server: serverName, tool: mcpTool.name },
+        };
+      },
+    });
+  });
+
+const buildToolDefinitions = (
+  serverName: string,
+  client: Client,
+  mcpTools: readonly McpToolInfo[],
+  toolSources: Map<string, string>,
+): Effect.Effect<ToolDefinition[], McpConfigurationError> =>
+  Effect.forEach(mcpTools, (mcpTool) =>
+    buildToolDefinition(serverName, client, mcpTool, toolSources),
+  );
+
+const createTransport = (server: McpServerConfig): Effect.Effect<Transport, McpConnectError> =>
+  Effect.gen(function* () {
+    if ("url" in server) {
+      const url = yield* Effect.try({
+        try: () => new URL(server.url),
+        catch: (error) =>
+          new McpConfigurationError(`Invalid MCP URL for server "${server.name}".`, {
+            cause: error,
+          }),
+      });
+      const headers: Record<string, string> = {};
+
+      const envName = server.bearerTokenEnv ?? (yield* formatBearerTokenEnvName(server.name));
+      const token = process.env[envName];
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const requestInit = Object.keys(headers).length > 0 ? { headers } : undefined;
+      return new StreamableHTTPClientTransport(url, { requestInit });
+    }
+
+    const params: StdioServerParameters = {
+      command: server.command,
+      args: server.args ? [...server.args] : [],
+    };
+    if (server.env) {
+      params.env = { ...getDefaultEnvironment(), ...server.env };
+    }
+    return new StdioClientTransport(params);
+  });
+
+const connectServer = (
+  server: McpServerConfig,
+): Effect.Effect<McpConnectedServer, McpConnectError> =>
+  Effect.gen(function* () {
+    const transport = yield* createTransport(server);
+    const client = new Client({ name: "bubblebuddy", version: "1.0.0" });
+    const connection = { client, transport };
+    return yield* Effect.gen(function* () {
+      yield* runMcpRequest(server.name, "connect", () =>
+        client.connect(transport, {
+          maxTotalTimeout: CONNECT_TIMEOUT,
+          timeout: CONNECT_TIMEOUT,
+        }),
       );
 
-      const allTools: ToolDefinition[] = [];
-      const toolSources = new Map<string, string>();
-      for (const connectedServer of connectedServers) {
-        if (connectedServer === undefined) {
-          continue;
-        }
+      const { tools: mcpTools } = yield* runMcpRequest(server.name, "listTools", () =>
+        client.listTools(undefined, {
+          maxTotalTimeout: CONNECT_TIMEOUT,
+          timeout: CONNECT_TIMEOUT,
+        }),
+      );
 
-        const tools = yield* buildToolDefinitions(
-          connectedServer.serverName,
-          connectedServer.client,
-          connectedServer.tools,
-          toolSources,
-        );
-        allTools.push(...tools);
-      }
+      return { client, connection, serverName: server.name, tools: mcpTools };
+    }).pipe(Effect.onError(() => closeConnection(connection)));
+  });
 
-      return allTools;
-    });
-  }
-
-  #connectServer(server: McpServerConfig): Effect.Effect<McpConnectedServer, McpConnectError> {
-    return Effect.gen({ self: this }, function* () {
-      const transport = yield* this.#createTransport(server);
-      const client = new Client({ name: "bubblebuddy", version: "1.0.0" });
-      const connection = { client, transport };
-
-      // Work around Effect tsgo false-positive TS2683 on `this` in directly yielded expressions: https://github.com/Effect-TS/tsgo/issues/173
-      const buildConnectedServer = Effect.gen({ self: this }, function* () {
-        yield* runMcpRequest(server.name, "connect", () =>
-          client.connect(transport, {
-            maxTotalTimeout: CONNECT_TIMEOUT,
-            timeout: CONNECT_TIMEOUT,
-          }),
-        );
-
-        const { tools: mcpTools } = yield* runMcpRequest(server.name, "listTools", () =>
-          client.listTools(undefined, {
-            maxTotalTimeout: CONNECT_TIMEOUT,
-            timeout: CONNECT_TIMEOUT,
-          }),
-        );
-
-        return { client, connection, serverName: server.name, tools: mcpTools };
-      });
-      return yield* buildConnectedServer.pipe(Effect.onError(() => closeConnection(connection)));
-    });
-  }
-
-  #createTransport(server: McpServerConfig): Effect.Effect<Transport, McpConnectError> {
-    return Effect.gen(function* () {
-      if ("url" in server) {
-        const url = yield* Effect.try({
-          try: () => new URL(server.url),
-          catch: (error) =>
-            new McpConfigurationError(`Invalid MCP URL for server "${server.name}".`, {
-              cause: error,
-            }),
-        });
-        const headers: Record<string, string> = {};
-
-        const envName = server.bearerTokenEnv ?? (yield* formatBearerTokenEnvName(server.name));
-        const token = process.env[envName];
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
-
-        const requestInit = Object.keys(headers).length > 0 ? { headers } : undefined;
-        return new StreamableHTTPClientTransport(url, { requestInit });
-      }
-
-      const params: StdioServerParameters = {
-        command: server.command,
-        args: server.args ? [...server.args] : [],
-      };
-      if (server.env) {
-        params.env = { ...getDefaultEnvironment(), ...server.env };
-      }
-      return new StdioClientTransport(params);
-    });
-  }
-
-  #buildToolDefinitions(
-    serverName: string,
-    client: Client,
-    mcpTools: readonly McpToolInfo[],
-    toolSources: Map<string, string>,
-  ): Effect.Effect<ToolDefinition[], McpConfigurationError> {
-    return Effect.forEach(mcpTools, (mcpTool) =>
-      this.#buildToolDefinition(serverName, client, mcpTool, toolSources),
-    );
-  }
-
-  #buildToolDefinition(
-    serverName: string,
-    client: Client,
-    mcpTool: McpToolInfo,
-    toolSources: Map<string, string>,
-  ): Effect.Effect<ToolDefinition, McpConfigurationError> {
-    return Effect.gen({ self: this }, function* () {
-      const name = yield* formatToolName(mcpTool.name, serverName);
-      const source = `${serverName}.${mcpTool.name}`;
-      const existingSource = toolSources.get(name);
-      if (existingSource) {
-        return yield* new McpConfigurationError(
-          `MCP tool name conflict for "${name}": ${existingSource} and ${source}.`,
-        );
-      }
-      toolSources.set(name, source);
-
-      return defineTool({
-        name,
-        label: `MCP: ${mcpTool.name}`,
-        description: mcpTool.description || `MCP tool from ${serverName}`,
-        promptSnippet: mcpTool.description || `MCP tool from ${serverName}`,
-        parameters: Type.Unsafe<Record<string, unknown>>(
-          mcpTool.inputSchema || { type: "object", properties: {} },
+export const connectMcpServers = (
+  servers: readonly McpServerConfig[],
+): Effect.Effect<ToolDefinition[], McpConfigurationError, Scope.Scope> =>
+  Effect.gen(function* () {
+    const connectedServers = yield* Effect.forEach(
+      servers,
+      (server) =>
+        Effect.acquireRelease(connectServer(server), ({ connection }) =>
+          closeConnection(connection),
+        ).pipe(
+          Effect.catchTag("McpServerConnectionError", (error) =>
+            Effect.logWarning(`MCP: skipping ${formatError(error)}`).pipe(Effect.as(undefined)),
+          ),
         ),
-        execute: async (_toolCallId, params, signal) => {
-          const result = await client.callTool(
-            { name: mcpTool.name, arguments: params as Record<string, unknown> },
-            undefined,
-            { signal },
-          );
+      { concurrency: "unbounded" },
+    );
 
-          const content = this.#transformContent(
-            Array.isArray(result.content) ? result.content : [],
-          );
-          if (result.isError) {
-            throw new Error(this.#formatToolError(serverName, mcpTool.name, content));
-          }
-
-          return {
-            content: content.length > 0 ? content : [{ type: "text", text: "(empty result)" }],
-            details: { server: serverName, tool: mcpTool.name },
-          };
-        },
-      });
-    });
-  }
-
-  #formatToolError(
-    serverName: string,
-    toolName: string,
-    content: (TextContent | ImageContent)[],
-  ): string {
-    const text = content
-      .filter((block): block is TextContent => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
-    return text.length > 0 ? text : `MCP tool ${serverName}.${toolName} failed.`;
-  }
-
-  #transformContent(mcpContent: unknown[]): (TextContent | ImageContent)[] {
-    return mcpContent.map((c: unknown) => {
-      if (typeof c !== "object" || c === null) {
-        return { type: "text", text: String(c) };
+    const allTools: ToolDefinition[] = [];
+    const toolSources = new Map<string, string>();
+    for (const connectedServer of connectedServers) {
+      if (connectedServer === undefined) {
+        continue;
       }
 
-      const block = c as Record<string, unknown>;
+      const tools = yield* buildToolDefinitions(
+        connectedServer.serverName,
+        connectedServer.client,
+        connectedServer.tools,
+        toolSources,
+      );
+      allTools.push(...tools);
+    }
 
-      if (block.type === "text") {
-        return { type: "text", text: String(block.text ?? "") };
-      }
-
-      if (block.type === "image") {
-        return {
-          type: "image",
-          data: String(block.data ?? ""),
-          mimeType: String(block.mimeType ?? "image/png"),
-        };
-      }
-
-      if (block.type === "resource_link") {
-        const linkName = String(block.name ?? block.uri ?? "unknown");
-        const linkUri = String(block.uri ?? "(no URI)");
-        return {
-          type: "text",
-          text: `[Resource Link: ${linkName}]\nURI: ${linkUri}`,
-        };
-      }
-
-      if (block.type === "audio") {
-        return {
-          type: "text",
-          text: `[Audio content: ${String(block.mimeType ?? "audio/*")}]`,
-        };
-      }
-
-      if (block.type === "resource") {
-        const resource = block.resource as Record<string, unknown> | undefined;
-        const resourceUri = String(resource?.uri ?? "(no URI)");
-        const resourceContent = String(
-          resource?.text ?? (resource ? JSON.stringify(resource) : "(no content)"),
-        );
-        return { type: "text", text: `[Resource: ${resourceUri}]\n${resourceContent}` };
-      }
-
-      return { type: "text", text: JSON.stringify(c) };
-    });
-  }
-}
+    return allTools;
+  });

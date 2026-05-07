@@ -1,316 +1,280 @@
 import {
-  AuthStorage,
   createAgentSession,
-  ModelRegistry,
   SessionManager,
   SettingsManager,
-  type AgentSession,
   type AgentSessionEvent,
   type ExtensionFactory,
 } from "@mariozechner/pi-coding-agent";
-import type { Message } from "discord.js";
-import { Data, Effect, Exit, Scope } from "effect";
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { GuildTextBasedChannel } from "discord.js";
+import { Data, Effect, Exit, Scope, Semaphore } from "effect";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 import { createDiscordTools } from "../discord/tools.ts";
 import type { ChannelSettings } from "../channel-repository.ts";
-import { McpAdapter } from "../mcp/adapter.ts";
-import { SerialExecutor } from "../util/serial-executor.ts";
-import type { McpServerConfigEntry, ThinkingLevel } from "../config.ts";
+import { connectMcpServers } from "../mcp/adapter.ts";
+import { AppConfig } from "../config.ts";
 import type { PromptTemplateContext } from "../domain/prompt.ts";
-import type { LoadedResourcesShape } from "../resources.ts";
+import { LoadedResources } from "../resources.ts";
 import { createChannelWorkspaceResourceLoader } from "./channel-workspace-resource-loader.ts";
 import { createGondolinExtension } from "./gondolin-extension.ts";
-import { DiscordOutputPump, type SessionSink } from "./discord-output-pump.ts";
+import { makeDiscordOutputPump, type SessionSink } from "./discord-output-pump.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
+import { PiContext } from "./context.ts";
 import { WORKSPACE_CWD } from "./workspace.ts";
 
 export interface PiChannelSessionOptions {
-  readonly agentDir: string;
-  readonly authStorage: AuthStorage;
+  readonly channel: GuildTextBasedChannel;
   readonly getChannelSettings: () => Readonly<ChannelSettings>;
   readonly hostWorkspaceDir: string;
-  readonly enableAgenticWorkspace: boolean;
-  readonly mcpServers: Record<string, McpServerConfigEntry>;
-  readonly model: Model<Api>;
-  readonly modelRegistry: ModelRegistry;
-  readonly originMessage: Message<true>;
   readonly promptContext: PromptTemplateContext;
-  readonly resources: LoadedResourcesShape;
   readonly sessionManager: SessionManager;
   readonly sink: SessionSink;
-  readonly thinkingLevel: ThinkingLevel;
 }
 
 const SHUTDOWN_ABORT_TIMEOUT = "8 seconds";
 
-class ChannelSessionInitError extends Data.TaggedError("ChannelSessionInitError")<{
+export class ChannelSessionInitError extends Data.TaggedError("ChannelSessionInitError")<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
 
-export class PiChannelSession {
-  readonly #executor = new SerialExecutor();
-  readonly #output: DiscordOutputPump;
-  readonly #session: AgentSession;
-  readonly #scope: Scope.Closeable;
-  #pendingQueue: Array<{ text: string; replyToMessageId: string }> = [];
-  #isDisposed = false;
-  #isShuttingDown = false;
+export class ChannelSessionOperationError extends Data.TaggedError("ChannelSessionOperationError")<{
+  readonly operation: "activate" | "compact";
+  readonly cause: unknown;
+}> {}
 
-  private constructor(session: AgentSession, output: DiscordOutputPump, scope: Scope.Closeable) {
-    this.#output = output;
-    this.#session = session;
-    this.#scope = scope;
-  }
+export interface PiChannelSession {
+  readonly isCompacting: boolean;
+  readonly isStreaming: boolean;
+  readonly isRetrying: boolean;
+  activate(
+    input: string,
+    replyToMessageId: string,
+  ): Effect.Effect<void, ChannelSessionOperationError>;
+  requestCompaction(customInstructions?: string): Effect.Effect<void, ChannelSessionOperationError>;
+}
 
-  static create(
-    options: PiChannelSessionOptions,
-  ): Effect.Effect<PiChannelSession, ChannelSessionInitError> {
-    return Effect.gen(function* () {
-      const scope = yield* Scope.make("sequential");
-      return yield* PiChannelSession.createInScope(options, scope).pipe(
-        Effect.onError((cause) => Scope.close(scope, Exit.failCause(cause))),
-      );
+export interface ScopedPiChannelSession {
+  readonly session: PiChannelSession;
+  readonly close: Effect.Effect<void>;
+}
+
+export const createPiChannelSession = (
+  options: PiChannelSessionOptions,
+): Effect.Effect<
+  ScopedPiChannelSession,
+  ChannelSessionInitError,
+  AppConfig | LoadedResources | PiContext
+> =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make("sequential");
+    const session = yield* createPiChannelSessionInScope(options).pipe(
+      Effect.provideService(Scope.Scope, scope),
+      Effect.onError((cause) => Scope.close(scope, Exit.failCause(cause))),
+    );
+    return {
+      session,
+      close: Scope.close(scope, Exit.void),
+    };
+  });
+
+const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
+  Effect.gen(function* () {
+    const config = yield* AppConfig;
+    const resources = yield* LoadedResources;
+    const piContext = yield* PiContext;
+    const settingsManager = SettingsManager.inMemory({
+      steeringMode: "all",
+      followUpMode: "all",
     });
-  }
+    const extensionFactories: ExtensionFactory[] = [
+      createPromptComposerExtension({
+        botProfile: resources.botProfile,
+        discordContextTemplate: resources.discordContextTemplate,
+        enableAgenticWorkspace: config.enableAgenticWorkspace,
+        promptContext: options.promptContext,
+      }),
+    ];
 
-  private static createInScope(
-    options: PiChannelSessionOptions,
-    scope: Scope.Closeable,
-  ): Effect.Effect<PiChannelSession, ChannelSessionInitError> {
-    return Effect.gen(function* () {
-      const settingsManager = SettingsManager.inMemory({
-        steeringMode: "all",
-        followUpMode: "all",
+    if (config.enableAgenticWorkspace) {
+      const gondolin = createGondolinExtension({
+        channelId: options.channel.id,
+        sessionCwd: WORKSPACE_CWD,
+        sessionLabel: `bubblebuddy:${options.channel.id}`,
+        workspaceDir: options.hostWorkspaceDir,
       });
-      const extensionFactories: ExtensionFactory[] = [
-        createPromptComposerExtension({
-          botProfile: options.resources.botProfile,
-          discordContextTemplate: options.resources.discordContextTemplate,
-          enableAgenticWorkspace: options.enableAgenticWorkspace,
-          promptContext: options.promptContext,
+      extensionFactories.push(gondolin.extensionFactory);
+      yield* Effect.addFinalizer(() =>
+        Effect.tryPromise(() => gondolin.dispose()).pipe(
+          Effect.ignore({ log: "Warn", message: "Failed to dispose Gondolin workspace" }),
+        ),
+      );
+    }
+
+    const resourceLoader = createChannelWorkspaceResourceLoader({
+      agentDir: piContext.agentDir,
+      enableAgenticWorkspace: config.enableAgenticWorkspace,
+      extensionFactories,
+      settingsManager,
+      workspaceDir: options.hostWorkspaceDir,
+    });
+    yield* Effect.tryPromise({
+      try: () => resourceLoader.reload(),
+      catch: (error) =>
+        new ChannelSessionInitError({
+          message: "Failed to reload channel workspace resources",
+          cause: error,
         }),
-      ];
+    });
 
-      if (options.enableAgenticWorkspace) {
-        const gondolin = createGondolinExtension({
-          channelId: options.originMessage.channelId,
-          sessionCwd: WORKSPACE_CWD,
-          sessionLabel: `bubblebuddy:${options.originMessage.channelId}`,
-          workspaceDir: options.hostWorkspaceDir,
-        });
-        extensionFactories.push(gondolin.extensionFactory);
-        yield* Scope.addFinalizer(
-          scope,
-          Effect.tryPromise(() => gondolin.dispose()).pipe(
-            Effect.ignore({ log: "Warn", message: "Failed to dispose Gondolin workspace" }),
-          ),
-        );
-      }
+    const output = yield* makeDiscordOutputPump({
+      getChannelSettings: options.getChannelSettings,
+      sink: options.sink,
+    });
 
-      const resourceLoader = createChannelWorkspaceResourceLoader({
-        agentDir: options.agentDir,
-        enableAgenticWorkspace: options.enableAgenticWorkspace,
-        extensionFactories,
-        settingsManager,
+    const discordTools = createDiscordTools(
+      {
+        channel: options.channel,
+        client: options.channel.client,
+        guild: options.channel.guild,
+      },
+      output.runDiscordAction,
+      {
+        enableAgenticWorkspace: config.enableAgenticWorkspace,
         workspaceDir: options.hostWorkspaceDir,
-      });
-      yield* Effect.tryPromise({
-        try: () => resourceLoader.reload(),
-        catch: (error) =>
-          new ChannelSessionInitError({
-            message: "Failed to reload channel workspace resources",
-            cause: error,
-          }),
-      });
+      },
+    );
 
-      const output = yield* DiscordOutputPump.make({
-        getChannelSettings: options.getChannelSettings,
-        initialReplyToMessageId: options.originMessage.id,
-        sink: options.sink,
-      });
+    let mcpTools: ToolDefinition[] = [];
+    if (Object.keys(config.mcpServers).length > 0) {
+      mcpTools = yield* connectMcpServers(
+        Object.entries(config.mcpServers).map(([name, cfg]) => ({ name, ...cfg })),
+      ).pipe(
+        Effect.mapError(
+          (error) =>
+            new ChannelSessionInitError({
+              message: "Failed to configure MCP servers",
+              cause: error,
+            }),
+        ),
+      );
+    }
 
-      const discordTools = createDiscordTools(options.originMessage, output.runDiscordAction, {
-        enableAgenticWorkspace: options.enableAgenticWorkspace,
-        workspaceDir: options.hostWorkspaceDir,
-      });
+    const allTools = [...discordTools, ...mcpTools];
 
-      let mcpTools: ToolDefinition[] = [];
-      if (Object.keys(options.mcpServers).length > 0) {
-        const mcpAdapter = new McpAdapter({
-          servers: Object.entries(options.mcpServers).map(([name, cfg]) => ({ name, ...cfg })),
-        });
-        mcpTools = yield* mcpAdapter.connect().pipe(
-          Effect.provideService(Scope.Scope, scope),
-          Effect.mapError(
-            (error) =>
-              new ChannelSessionInitError({
-                message: "Failed to configure MCP servers",
-                cause: error,
-              }),
-          ),
+    const { session } = yield* Effect.tryPromise({
+      try: () =>
+        createAgentSession({
+          agentDir: piContext.agentDir,
+          authStorage: piContext.authStorage,
+          customTools: allTools,
+          cwd: WORKSPACE_CWD,
+          model: piContext.model,
+          modelRegistry: piContext.modelRegistry,
+          resourceLoader,
+          sessionManager: options.sessionManager,
+          settingsManager,
+          thinkingLevel: config.thinkingLevel,
+        }),
+      catch: (error) =>
+        new ChannelSessionInitError({ message: "Failed to create agent session", cause: error }),
+    });
+    yield* Effect.addFinalizer(() => Effect.sync(() => session.dispose()));
+
+    if (!config.enableAgenticWorkspace) {
+      session.setActiveToolsByName(allTools.map((tool) => tool.name));
+    }
+
+    const operationLock = Semaphore.makeUnsafe(1);
+    let pendingQueue: Array<{ text: string; replyToMessageId: string }> = [];
+
+    const prepareForClose = () =>
+      Effect.gen(function* () {
+        yield* Effect.tryPromise(() => session.abort()).pipe(
+          Effect.timeout(SHUTDOWN_ABORT_TIMEOUT),
+          Effect.ignore({ log: "Warn", message: "Session abort for shutdown failed" }),
         );
-      }
-
-      const allTools = [...discordTools, ...mcpTools];
-
-      const { session } = yield* Effect.tryPromise({
-        try: () =>
-          createAgentSession({
-            agentDir: options.agentDir,
-            authStorage: options.authStorage,
-            customTools: allTools,
-            cwd: WORKSPACE_CWD,
-            model: options.model,
-            modelRegistry: options.modelRegistry,
-            resourceLoader,
-            sessionManager: options.sessionManager,
-            settingsManager,
-            thinkingLevel: options.thinkingLevel,
-          }),
-        catch: (error) =>
-          new ChannelSessionInitError({ message: "Failed to create agent session", cause: error }),
-      });
-      yield* Scope.addFinalizer(
-        scope,
-        Effect.sync(() => session.dispose()),
-      );
-
-      if (!options.enableAgenticWorkspace) {
-        session.setActiveToolsByName(allTools.map((tool) => tool.name));
-      }
-
-      const piSession = new PiChannelSession(session, output, scope);
-
-      yield* Effect.forkIn(output.run(), scope);
-      yield* Scope.addFinalizer(scope, output.shutdownQueues());
-
-      const unsubscribe = session.subscribe((event) => output.handleSessionEvent(event));
-      yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe));
-
-      const unsubscribeInternal = session.subscribe((event) =>
-        piSession.#handleSessionEvent(event),
-      );
-      yield* Scope.addFinalizer(scope, Effect.sync(unsubscribeInternal));
-
-      return piSession;
-    });
-  }
-
-  get isCompacting(): boolean {
-    return this.#session.isCompacting;
-  }
-
-  get isStreaming(): boolean {
-    return this.#session.isStreaming;
-  }
-
-  get isRetrying(): boolean {
-    return this.#session.isRetrying;
-  }
-
-  /**
-   * Start compaction and resolve once the session acknowledges it
-   * (isCompacting = true). The optional onSettled callback runs after compaction completes.
-   */
-  requestCompaction(customInstructions?: string, onSettled?: () => void): Promise<void> {
-    return new Promise<void>((resolve) => {
-      const unsub = this.#session.subscribe((event) => {
-        if (event.type === "compaction_start") {
-          unsub();
-          resolve();
-        }
+        session.abortCompaction();
+        output.enqueueRunEnd();
+        yield* Effect.yieldNow;
+        yield* output.drain();
       });
 
-      this.#executor
-        .run(() => this.#session.compact(customInstructions))
-        .catch(() => {}) // Output sink handles showing failed compaction in card
-        .finally(() => {
-          unsub();
-          resolve();
-          onSettled?.();
-        });
-    });
-  }
+    const handleSessionEvent = (event: AgentSessionEvent): void => {
+      if (event.type !== "compaction_end") return;
 
-  activate(input: string, replyToMessageId: string): Promise<void> {
-    return this.#executor.run(async () => {
-      this.#output.setReplyToMessageId(replyToMessageId);
-
-      if (this.#session.isStreaming) {
-        await this.#session.steer(input);
-        return;
-      }
-
-      if (this.#session.isCompacting) {
-        this.#pendingQueue.push({ text: input, replyToMessageId });
-        return;
-      }
-
-      if (this.#session.isRetrying) {
-        await this.#session.steer(input);
-        return;
-      }
-
-      void this.#session.prompt(input).catch((error) => {
-        this.#output.enqueueUnexpectedError(error);
-      });
-    });
-  }
-
-  shutdown(): Effect.Effect<void> {
-    return Effect.gen({ self: this }, function* () {
-      if (this.#isDisposed || this.#isShuttingDown) {
-        return;
-      }
-
-      this.#isShuttingDown = true;
-
-      yield* this.#abortForShutdown();
-      this.#session.abortCompaction();
-      this.#output.enqueueRunEnd(); // Ensure typing indicator shuts down, even in edge-case error states
-      yield* Effect.yieldNow; // Let abort-triggered microtasks (e.g. compaction_end) flush before draining output
-      yield* this.#output.drain();
-      yield* this.dispose();
-    });
-  }
-
-  dispose(): Effect.Effect<void> {
-    return Effect.suspend(() => (this.#isDisposed ? Effect.void : this.#dispose()));
-  }
-
-  #handleSessionEvent(event: AgentSessionEvent): void {
-    if (event.type === "compaction_end") {
-      const messages = this.#pendingQueue;
-      this.#pendingQueue = [];
+      const messages = pendingQueue;
+      pendingQueue = [];
       if (messages.length === 0) return;
 
       for (const { text, replyToMessageId } of messages) {
-        this.#output.setReplyToMessageId(replyToMessageId);
-        this.#session.steer(text);
+        output.setReplyToMessageId(replyToMessageId);
+        void session.steer(text);
       }
 
       if (event.result === undefined && !event.willRetry) {
-        this.#session.agent.continue();
+        session.agent.continue();
       }
-    }
-  }
+    };
 
-  #abortForShutdown(): Effect.Effect<void> {
-    return Effect.tryPromise(() => this.#session.abort()).pipe(
-      Effect.timeout(SHUTDOWN_ABORT_TIMEOUT),
-      Effect.ignore({ log: "Warn", message: "Session abort for shutdown failed" }),
-    );
-  }
+    const activate = (input: string, replyToMessageId: string) =>
+      operationLock.withPermit(
+        Effect.tryPromise({
+          try: async () => {
+            output.setReplyToMessageId(replyToMessageId);
 
-  #dispose(): Effect.Effect<void> {
-    return Effect.gen({ self: this }, function* () {
-      this.#isDisposed = true;
-      // Work around Effect tsgo false-positive TS2683 on `this` in directly yielded expressions: https://github.com/Effect-TS/tsgo/issues/173
-      const scope = this.#scope;
-      yield* Scope.close(scope, Exit.void);
-    });
-  }
-}
+            if (session.isStreaming) {
+              await session.steer(input);
+              return;
+            }
+
+            if (session.isCompacting) {
+              pendingQueue.push({ text: input, replyToMessageId });
+              return;
+            }
+
+            if (session.isRetrying) {
+              await session.steer(input);
+              return;
+            }
+
+            void session.prompt(input).catch((error) => {
+              output.enqueueUnexpectedError(error);
+            });
+          },
+          catch: (cause) => new ChannelSessionOperationError({ operation: "activate", cause }),
+        }),
+      );
+
+    const requestCompaction = (customInstructions?: string) =>
+      operationLock.withPermit(
+        Effect.tryPromise({
+          try: () => session.compact(customInstructions),
+          catch: (cause) => new ChannelSessionOperationError({ operation: "compact", cause }),
+        }).pipe(Effect.asVoid),
+      );
+
+    yield* Effect.forkScoped(output.run());
+    yield* Effect.addFinalizer(() => output.shutdownQueues());
+
+    const unsubscribe = session.subscribe((event) => output.handleSessionEvent(event));
+    yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+    const unsubscribeInternal = session.subscribe(handleSessionEvent);
+    yield* Effect.addFinalizer(() => Effect.sync(unsubscribeInternal));
+    yield* Effect.addFinalizer(prepareForClose);
+
+    return {
+      activate,
+      requestCompaction,
+      get isCompacting() {
+        return session.isCompacting;
+      },
+      get isStreaming() {
+        return session.isStreaming;
+      },
+      get isRetrying() {
+        return session.isRetrying;
+      },
+    };
+  });

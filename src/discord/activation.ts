@@ -1,10 +1,9 @@
 import { Events, type Client, type Message } from "discord.js";
 import { Effect, Layer } from "effect";
 
-import { ChannelSessions, type ChannelSessionManager } from "../sessions.ts";
+import { ChannelSessions, type ChannelSessionsShape } from "../sessions.ts";
 import { Discord } from "./client.ts";
 import { createPromptContext, isGuildTextChannel } from "./utils.ts";
-import { formatMessageForPrompt } from "./message-formatting.ts";
 
 export interface ActivationContext {
   readonly mentionsBot: boolean;
@@ -53,10 +52,10 @@ export const ActivationLive = Layer.effectDiscard(
 
 const handleGuildMessage = (
   client: Client<true>,
-  sessions: ChannelSessionManager,
+  sessions: ChannelSessionsShape,
   message: Message<true>,
 ) =>
-  Effect.tryPromise(async () => {
+  Effect.gen(function* () {
     if (!isGuildTextChannel(message.channel)) {
       return;
     }
@@ -66,18 +65,17 @@ const handleGuildMessage = (
       return;
     }
 
-    const activation = await checkGuildMessageActivation(message, client.user.id);
+    const activation = yield* Effect.tryPromise(() =>
+      checkGuildMessageActivation(message, client.user.id),
+    );
     if (!isActivationMessage(activation)) {
       return;
     }
 
-    const normalizedContent = formatMessageForPrompt(message);
-    await sessions.activate(
-      {
-        channel: message.channel,
-        originMessage: message,
-        promptContext: createPromptContext(client, message.channel, message.guild.name),
-      },
-      normalizedContent,
-    );
+    const runtime = yield* sessions.get(message.channel.id);
+    yield* runtime.activate({
+      channel: message.channel,
+      originMessage: message,
+      promptContext: createPromptContext(client, message.channel, message.guild.name),
+    });
   });

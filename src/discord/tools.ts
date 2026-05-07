@@ -3,7 +3,7 @@ import { basename, relative, resolve } from "node:path";
 
 import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
-import type { Message } from "discord.js";
+import type { Client, Guild, GuildTextBasedChannel } from "discord.js";
 
 import {
   formatCustomEmojiMessageSyntax,
@@ -11,6 +11,7 @@ import {
   listUsableCustomEmojis,
   listUsableStickers,
   normalizeReactionEmoji,
+  type DiscordAssetContext,
 } from "./assets.ts";
 import { formatMessageForPrompt } from "./message-formatting.ts";
 import { WORKSPACE_CWD } from "../pi/workspace.ts";
@@ -22,8 +23,8 @@ const UPLOAD_FILE_TOOL = "discord_upload_file";
 const REACT_TOOL = "discord_react";
 const FETCH_MESSAGE_TOOL = "discord_fetch_message";
 
-const formatEmojiList = (message: Message<true>): string => {
-  const emojis = listUsableCustomEmojis(message);
+const formatEmojiList = (context: DiscordToolContext): string => {
+  const emojis = listUsableCustomEmojis(context);
   if (emojis.length === 0) {
     return "No custom emojis are available here.";
   }
@@ -39,8 +40,8 @@ const formatEmojiList = (message: Message<true>): string => {
   ].join("\n");
 };
 
-const formatStickerList = async (message: Message<true>): Promise<string> => {
-  const stickers = await listUsableStickers(message);
+const formatStickerList = async (context: DiscordToolContext): Promise<string> => {
+  const stickers = await listUsableStickers(context);
   if (stickers.length === 0) {
     return "No stickers are available here.";
   }
@@ -110,8 +111,8 @@ const resolveWorkspaceFile = async (
   };
 };
 
-const getGuildUploadLimit = (message: Message<true>): number => {
-  switch (message.guild.premiumTier) {
+const getGuildUploadLimit = (context: DiscordToolContext): number => {
+  switch (context.guild.premiumTier) {
     case 3:
       return 100 * 1000 * 1000;
     case 2:
@@ -126,8 +127,14 @@ export interface DiscordToolOptions {
   readonly workspaceDir: string;
 }
 
+export type DiscordToolContext = DiscordAssetContext & {
+  readonly channel: GuildTextBasedChannel;
+  readonly client: Client<true>;
+  readonly guild: Guild;
+};
+
 export const createDiscordTools = (
-  originMessage: Message<true>,
+  context: DiscordToolContext,
   runDiscordAction: <T>(operation: () => Promise<T>) => Promise<T>,
   options: DiscordToolOptions,
 ): ToolDefinition[] => {
@@ -142,7 +149,7 @@ export const createDiscordTools = (
       ],
       parameters: Type.Object({}),
       execute: async () => ({
-        content: [{ type: "text", text: formatEmojiList(originMessage) }],
+        content: [{ type: "text", text: formatEmojiList(context) }],
         details: {},
       }),
     }),
@@ -153,7 +160,7 @@ export const createDiscordTools = (
       promptSnippet: "List stickers usable here",
       parameters: Type.Object({}),
       execute: async () => ({
-        content: [{ type: "text", text: await formatStickerList(originMessage) }],
+        content: [{ type: "text", text: await formatStickerList(context) }],
         details: {},
       }),
     }),
@@ -171,7 +178,7 @@ export const createDiscordTools = (
         stickerId: Type.String({ description: "Sticker ID" }),
       }),
       execute: async (_toolCallId, params) => {
-        const stickers = await listUsableStickers(originMessage);
+        const stickers = await listUsableStickers(context);
         const sticker = stickers.find((candidate) => candidate.sticker.id === params.stickerId);
 
         if (sticker === undefined) {
@@ -179,7 +186,7 @@ export const createDiscordTools = (
         }
 
         await runDiscordAction(() =>
-          originMessage.channel.send({
+          context.channel.send({
             content: params.caption,
             stickers: [sticker.sticker.id],
           }),
@@ -207,18 +214,18 @@ export const createDiscordTools = (
       }),
       execute: async (_toolCallId, params) => {
         if (
-          !("messages" in originMessage.channel) ||
-          typeof originMessage.channel.messages.fetch !== "function"
+          !("messages" in context.channel) ||
+          typeof context.channel.messages.fetch !== "function"
         ) {
           throw new Error("This Discord channel does not support fetching messages for reactions.");
         }
 
-        const targetMessage = await originMessage.channel.messages.fetch(params.messageId);
+        const targetMessage = await context.channel.messages.fetch(params.messageId);
 
         const failures: string[] = [];
 
         for (const input of params.emojis) {
-          const emoji = normalizeReactionEmoji(originMessage, input);
+          const emoji = normalizeReactionEmoji(context, input);
           if (emoji === null) {
             failures.push(`${input}: invalid or not available`);
             continue;
@@ -255,13 +262,13 @@ export const createDiscordTools = (
       }),
       execute: async (_toolCallId, params) => {
         if (
-          !("messages" in originMessage.channel) ||
-          typeof originMessage.channel.messages.fetch !== "function"
+          !("messages" in context.channel) ||
+          typeof context.channel.messages.fetch !== "function"
         ) {
           throw new Error("This Discord channel does not support fetching messages.");
         }
 
-        const fetchedMessage = await originMessage.channel.messages.fetch(params.messageId);
+        const fetchedMessage = await context.channel.messages.fetch(params.messageId);
 
         return {
           content: [{ type: "text", text: formatMessageForPrompt(fetchedMessage) }],
@@ -296,7 +303,7 @@ export const createDiscordTools = (
         execute: async (_toolCallId, params) => {
           const resolved = await resolveWorkspaceFile(options.workspaceDir, params.path);
 
-          const limit = getGuildUploadLimit(originMessage);
+          const limit = getGuildUploadLimit(context);
           if (resolved.size > limit) {
             throw new Error(
               `File size ${resolved.size} exceeds this server's upload limit of ${limit} bytes.`,
@@ -305,7 +312,7 @@ export const createDiscordTools = (
 
           const fileName = params.fileName?.trim() || basename(resolved.hostPath);
           await runDiscordAction(() =>
-            originMessage.channel.send({
+            context.channel.send({
               content: params.caption,
               files: [{ attachment: resolved.hostPath, name: fileName }],
             }),

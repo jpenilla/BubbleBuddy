@@ -23,9 +23,19 @@ export interface SessionSink {
   readonly onThinking: (text: string) => Promise<void>;
 }
 
+export interface DiscordOutputPump {
+  readonly drain: () => Effect.Effect<void>;
+  readonly enqueueRunEnd: () => void;
+  readonly enqueueUnexpectedError: (error: unknown) => void;
+  readonly handleSessionEvent: (event: AgentSessionEvent) => void;
+  readonly run: () => Effect.Effect<void>;
+  readonly runDiscordAction: RunDiscordAction;
+  readonly setReplyToMessageId: (replyToMessageId: string) => void;
+  readonly shutdownQueues: () => Effect.Effect<void>;
+}
+
 interface DiscordOutputPumpOptions {
   readonly getChannelSettings: () => Readonly<ChannelSettings>;
-  readonly initialReplyToMessageId: string;
   readonly sink: SessionSink;
 }
 
@@ -38,237 +48,228 @@ const SUPPRESSED_TOOL_STATUS = new Set([
   "discord_upload_file",
 ]);
 
-export class DiscordOutputPump {
-  readonly #mutationQueue: Queue.Queue<DiscordAction>;
-  readonly #sink: SessionSink;
-  readonly #statusQueue: Queue.Queue<DiscordAction>;
-  readonly #getChannelSettings: () => Readonly<ChannelSettings>;
-  #latestTriggerMessageId: string;
-  #currentTurnReplyTo: string = "";
+const formatUnexpectedError = (error: unknown): string =>
+  error instanceof Error && error.message.length > 0
+    ? `The model request failed: ${error.message}`
+    : "The model request failed.";
 
-  private constructor(
-    options: DiscordOutputPumpOptions,
-    statusQueue: Queue.Queue<DiscordAction>,
-    mutationQueue: Queue.Queue<DiscordAction>,
-  ) {
-    this.#getChannelSettings = options.getChannelSettings;
-    this.#mutationQueue = mutationQueue;
-    this.#latestTriggerMessageId = options.initialReplyToMessageId;
-    this.#sink = options.sink;
-    this.#statusQueue = statusQueue;
+const offerDiscordAction = (queue: Queue.Queue<DiscordAction>, action: DiscordAction): boolean => {
+  try {
+    return Effect.runSync(Queue.offer(queue, action));
+  } catch {
+    return false;
   }
+};
 
-  static make(options: DiscordOutputPumpOptions): Effect.Effect<DiscordOutputPump> {
-    return Effect.gen(function* () {
-      const statusQueue = yield* Queue.unbounded<DiscordAction>();
-      const mutationQueue = yield* Queue.unbounded<DiscordAction>();
-      return new DiscordOutputPump(options, statusQueue, mutationQueue);
-    });
-  }
+export const makeDiscordOutputPump = (
+  options: DiscordOutputPumpOptions,
+): Effect.Effect<DiscordOutputPump> =>
+  Effect.gen(function* () {
+    const statusQueue = yield* Queue.unbounded<DiscordAction>();
+    const mutationQueue = yield* Queue.unbounded<DiscordAction>();
+    const getChannelSettings = options.getChannelSettings;
+    const sink = options.sink;
+    const ctx = yield* Effect.context();
 
-  drain(): Effect.Effect<void> {
-    return Effect.promise(() =>
-      Promise.all([
-        new Promise<void>((resolve) => {
-          if (!this.#offerDiscordAction(this.#statusQueue, async () => resolve())) {
-            resolve();
-          }
-        }),
-        new Promise<void>((resolve) => {
-          if (!this.#offerDiscordAction(this.#mutationQueue, async () => resolve())) {
-            resolve();
-          }
-        }),
-      ]).then(() => undefined),
-    );
-  }
+    let latestTriggerMessageId = "";
+    let currentTurnReplyTo = "";
 
-  enqueueRunEnd(): void {
-    this.#enqueueStatusAction(() => this.#sink.onRunEnd());
-  }
+    const enqueueStatusAction = (action: DiscordAction): void => {
+      offerDiscordAction(statusQueue, action);
+    };
 
-  enqueueUnexpectedError(error: unknown): void {
-    void Effect.runFork(Effect.logError(this.#formatUnexpectedError(error)));
-  }
+    const setReplyToMessageId = (replyToMessageId: string): void => {
+      latestTriggerMessageId = replyToMessageId;
+    };
 
-  handleSessionEvent(event: AgentSessionEvent): void {
-    switch (event.type) {
-      case "agent_start":
-        this.#enqueueStatusAction(() => this.#sink.onRunStart());
-        break;
-      case "agent_end":
-        this.#enqueueStatusAction(() => this.#sink.onRunEnd());
-        break;
-      case "turn_start":
-        this.#currentTurnReplyTo = this.#latestTriggerMessageId;
-        break;
-      case "compaction_start":
-        this.#enqueueStatusAction(() =>
-          this.#sink.onCompactionStatus({
-            phase: "start",
-            reason: event.reason,
-          }),
-        );
-        break;
-      case "compaction_end":
-        if (event.errorMessage !== undefined) {
-          void Effect.runFork(Effect.logWarning(event.errorMessage));
-        }
-        this.#enqueueStatusAction(() =>
-          this.#sink.onCompactionStatus({
-            phase: event.aborted ? "aborted" : event.result === undefined ? "error" : "success",
-            reason: event.reason,
-            tokensBefore: event.result?.tokensBefore,
-          }),
-        );
-        break;
-      case "message_end":
-        if (event.message.role === "assistant") {
-          const msg = event.message;
-          if (msg.stopReason === "error") {
-            this.#enqueueStatusAction(() =>
-              this.#sink.onRunError(msg.errorMessage ?? "The model request failed."),
-            );
-            break;
-          }
-          if (msg.stopReason === "aborted") {
-            this.#enqueueStatusAction(() => this.#sink.onRunAborted());
-            break;
-          }
-          const text = extractAssistantText(msg);
-          if (text.trim().length === 0) {
-            break;
-          }
-          if (msg.stopReason === "toolUse") {
-            // More turns are guaranteed — send now as non-pinging reply
-            this.#enqueueStatusAction(() =>
-              this.#sink.onIntermediate(text, this.#currentTurnReplyTo),
-            );
-          } else {
-            // stop or length — almost certainly the final answer — send as pinging reply
-            this.#enqueueStatusAction(() => this.#sink.onFinal(text, this.#currentTurnReplyTo));
-          }
-        }
-        break;
-      case "message_update":
-        if (event.assistantMessageEvent.type === "thinking_end") {
-          if (this.#getChannelSettings().showThinking ?? SHOW_THINKING_DEFAULT) {
-            const thinking = event.assistantMessageEvent.content.trim();
-            if (thinking.length > 0) {
-              this.#enqueueStatusAction(() => this.#sink.onThinking(thinking));
-            }
-          }
-        }
-        break;
-      case "tool_execution_end":
-      case "tool_execution_start":
-        if (!SUPPRESSED_TOOL_STATUS.has(event.toolName)) {
-          this.#enqueueStatusAction(() =>
-            this.#sink.onStatus({
-              phase:
-                event.type === "tool_execution_start"
-                  ? "start"
-                  : event.isError
-                    ? "error"
-                    : "success",
-              toolCallId: event.toolCallId,
-              toolName: event.toolName,
+    const handleSessionEvent = (event: AgentSessionEvent): void => {
+      switch (event.type) {
+        case "agent_start":
+          enqueueStatusAction(() => sink.onRunStart());
+          break;
+        case "agent_end":
+          enqueueStatusAction(() => sink.onRunEnd());
+          break;
+        case "turn_start":
+          currentTurnReplyTo = latestTriggerMessageId;
+          break;
+        case "compaction_start":
+          enqueueStatusAction(() =>
+            sink.onCompactionStatus({
+              phase: "start",
+              reason: event.reason,
             }),
           );
-        }
-        break;
-      case "auto_retry_start":
-        this.#enqueueStatusAction(() =>
-          this.#sink.onRetryStatus({
-            phase: "retrying",
-            attempt: event.attempt,
-          }),
-        );
-        break;
-      case "auto_retry_end":
-        this.#enqueueStatusAction(() =>
-          this.#sink.onRetryStatus(
-            event.success
-              ? { phase: "success" }
-              : { phase: "failure", finalError: event.finalError },
-          ),
-        );
-        break;
-    }
-  }
-
-  run(): Effect.Effect<void> {
-    const statusQueue = this.#statusQueue;
-    const mutationQueue = this.#mutationQueue;
-
-    const loop = (): Effect.Effect<void> =>
-      Effect.gen(function* () {
-        let action = yield* Queue.poll(statusQueue).pipe(Effect.map(Option.getOrNull));
-        if (action === null) {
-          action = yield* Queue.poll(mutationQueue).pipe(Effect.map(Option.getOrNull));
-        }
-        if (action === null) {
-          action = yield* Effect.raceFirst(Queue.take(statusQueue), Queue.take(mutationQueue)).pipe(
-            Effect.catchCause((cause) =>
-              Cause.hasInterruptsOnly(cause) ? Effect.succeed(null) : Effect.failCause(cause),
+          break;
+        case "compaction_end":
+          if (event.errorMessage !== undefined) {
+            void Effect.runForkWith(ctx)(Effect.logWarning(event.errorMessage));
+          }
+          enqueueStatusAction(() =>
+            sink.onCompactionStatus({
+              phase: event.aborted ? "aborted" : event.result === undefined ? "error" : "success",
+              reason: event.reason,
+              tokensBefore: event.result?.tokensBefore,
+            }),
+          );
+          break;
+        case "message_end":
+          if (event.message.role === "assistant") {
+            const msg = event.message;
+            if (msg.stopReason === "error") {
+              enqueueStatusAction(() =>
+                sink.onRunError(msg.errorMessage ?? "The model request failed."),
+              );
+              break;
+            }
+            if (msg.stopReason === "aborted") {
+              enqueueStatusAction(() => sink.onRunAborted());
+              break;
+            }
+            const text = extractAssistantText(msg);
+            if (text.trim().length === 0) {
+              break;
+            }
+            if (msg.stopReason === "toolUse") {
+              // More turns are guaranteed — send now as non-pinging reply
+              enqueueStatusAction(() => sink.onIntermediate(text, currentTurnReplyTo));
+            } else {
+              // stop or length — almost certainly the final answer — send as pinging reply
+              enqueueStatusAction(() => sink.onFinal(text, currentTurnReplyTo));
+            }
+          }
+          break;
+        case "message_update":
+          if (event.assistantMessageEvent.type === "thinking_end") {
+            if (getChannelSettings().showThinking ?? SHOW_THINKING_DEFAULT) {
+              const thinking = event.assistantMessageEvent.content.trim();
+              if (thinking.length > 0) {
+                enqueueStatusAction(() => sink.onThinking(thinking));
+              }
+            }
+          }
+          break;
+        case "tool_execution_end":
+        case "tool_execution_start":
+          if (!SUPPRESSED_TOOL_STATUS.has(event.toolName)) {
+            enqueueStatusAction(() =>
+              sink.onStatus({
+                phase:
+                  event.type === "tool_execution_start"
+                    ? "start"
+                    : event.isError
+                      ? "error"
+                      : "success",
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+              }),
+            );
+          }
+          break;
+        case "auto_retry_start":
+          enqueueStatusAction(() =>
+            sink.onRetryStatus({
+              phase: "retrying",
+              attempt: event.attempt,
+            }),
+          );
+          break;
+        case "auto_retry_end":
+          enqueueStatusAction(() =>
+            sink.onRetryStatus(
+              event.success
+                ? { phase: "success" }
+                : { phase: "failure", finalError: event.finalError },
             ),
           );
-          if (action === null) {
-            return;
-          }
-        }
-
-        yield* Effect.tryPromise(() => action()).pipe(
-          Effect.ignore({ log: "Warn", message: "Discord output action failed" }),
-        );
-
-        yield* Effect.suspend(loop);
-      });
-
-    return loop();
-  }
-
-  readonly runDiscordAction: RunDiscordAction = <T>(operation: () => Promise<T>): Promise<T> =>
-    new Promise<T>((resolve, reject) => {
-      const enqueued = this.#offerDiscordAction(this.#mutationQueue, async () => {
-        try {
-          resolve(await operation());
-        } catch (error) {
-          reject(error);
-        }
-      });
-
-      if (!enqueued) {
-        reject(new Error("Discord action queue is unavailable."));
+          break;
       }
-    });
+    };
 
-  setReplyToMessageId(replyToMessageId: string): void {
-    this.#latestTriggerMessageId = replyToMessageId;
-  }
+    const enqueueRunEnd = (): void => {
+      enqueueStatusAction(() => sink.onRunEnd());
+    };
 
-  shutdownQueues(): Effect.Effect<void> {
-    return Effect.gen({ self: this }, function* () {
-      yield* Queue.shutdown(this.#statusQueue);
-      yield* Queue.shutdown(this.#mutationQueue);
-    });
-  }
+    const enqueueUnexpectedError = (error: unknown): void => {
+      enqueueStatusAction(() => sink.onRunError(formatUnexpectedError(error)));
+    };
 
-  #enqueueStatusAction(action: DiscordAction): void {
-    this.#offerDiscordAction(this.#statusQueue, action);
-  }
+    const drain = (): Effect.Effect<void> =>
+      Effect.promise(() =>
+        Promise.all([
+          new Promise<void>((resolve) => {
+            if (!offerDiscordAction(statusQueue, async () => resolve())) {
+              resolve();
+            }
+          }),
+          new Promise<void>((resolve) => {
+            if (!offerDiscordAction(mutationQueue, async () => resolve())) {
+              resolve();
+            }
+          }),
+        ]).then(() => undefined),
+      );
 
-  #formatUnexpectedError(error: unknown): string {
-    return error instanceof Error && error.message.length > 0
-      ? `The model request failed: ${error.message}`
-      : "The model request failed.";
-  }
+    const run = (): Effect.Effect<void> => {
+      const loop = (): Effect.Effect<void> =>
+        Effect.gen(function* () {
+          let action = yield* Queue.poll(statusQueue).pipe(Effect.map(Option.getOrNull));
+          if (action === null) {
+            action = yield* Queue.poll(mutationQueue).pipe(Effect.map(Option.getOrNull));
+          }
+          if (action === null) {
+            action = yield* Effect.raceFirst(
+              Queue.take(statusQueue),
+              Queue.take(mutationQueue),
+            ).pipe(
+              Effect.catchCause((cause) =>
+                Cause.hasInterruptsOnly(cause) ? Effect.succeed(null) : Effect.failCause(cause),
+              ),
+            );
+            if (action === null) {
+              return;
+            }
+          }
 
-  #offerDiscordAction(queue: Queue.Queue<DiscordAction>, action: DiscordAction): boolean {
-    try {
-      return Effect.runSync(Queue.offer(queue, action));
-    } catch {
-      return false;
-    }
-  }
-}
+          yield* Effect.tryPromise(() => action()).pipe(
+            Effect.ignore({ log: "Warn", message: "Discord output action failed" }),
+          );
+
+          yield* Effect.suspend(loop);
+        });
+
+      return loop();
+    };
+
+    const runDiscordAction: RunDiscordAction = <T>(operation: () => Promise<T>): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const enqueued = offerDiscordAction(mutationQueue, async () => {
+          try {
+            resolve(await operation());
+          } catch (error) {
+            reject(error);
+          }
+        });
+
+        if (!enqueued) {
+          reject(new Error("Discord action queue is unavailable."));
+        }
+      });
+
+    const shutdownQueues = (): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        yield* Queue.shutdown(statusQueue);
+        yield* Queue.shutdown(mutationQueue);
+      });
+
+    return {
+      drain,
+      enqueueRunEnd,
+      enqueueUnexpectedError,
+      handleSessionEvent,
+      run,
+      runDiscordAction,
+      setReplyToMessageId,
+      shutdownQueues,
+    };
+  });

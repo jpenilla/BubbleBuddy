@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Fiber } from "effect";
 
-import { DiscordOutputPump } from "../src/pi/discord-output-pump.ts";
+import { makeDiscordOutputPump, type DiscordOutputPump } from "../src/pi/discord-output-pump.ts";
 import { makeSink } from "./utils/session-sink.ts";
 
 type SessionEvent = Parameters<DiscordOutputPump["handleSessionEvent"]>[0];
@@ -18,9 +18,8 @@ const runPump = async <T>(output: DiscordOutputPump, use: () => Promise<T>): Pro
 
 const makeOutput = (sink: ReturnType<typeof makeSink>) =>
   Effect.runPromise(
-    DiscordOutputPump.make({
+    makeDiscordOutputPump({
       getChannelSettings: () => ({}),
-      initialReplyToMessageId: "message-1",
       sink,
     }),
   );
