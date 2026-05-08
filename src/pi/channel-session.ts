@@ -6,7 +6,7 @@ import {
   type ExtensionFactory,
 } from "@mariozechner/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
-import { Data, Effect, Exit, Scope, Semaphore } from "effect";
+import { Data, Effect, FiberHandle, Exit, Scope, Semaphore } from "effect";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 import { createDiscordTools } from "../discord/tools.ts";
@@ -15,6 +15,7 @@ import { connectMcpServers } from "../mcp/adapter.ts";
 import { AppConfig } from "../config.ts";
 import type { PromptTemplateContext } from "../domain/prompt.ts";
 import { LoadedResources } from "../resources.ts";
+import type { SessionKeepAliveFactory } from "../sessions.ts";
 import { createChannelWorkspaceResourceLoader } from "./channel-workspace-resource-loader.ts";
 import { createGondolinExtension } from "./gondolin-extension.ts";
 import { makeDiscordOutputPump, type SessionSink } from "./discord-output-pump.ts";
@@ -29,6 +30,7 @@ export interface PiChannelSessionOptions {
   readonly promptContext: PromptTemplateContext;
   readonly sessionManager: SessionManager;
   readonly sink: SessionSink;
+  readonly makeKeepAlive: SessionKeepAliveFactory;
 }
 
 const SHUTDOWN_ABORT_TIMEOUT = "8 seconds";
@@ -50,7 +52,7 @@ export interface PiChannelSession {
   activate(
     input: string,
     replyToMessageId: string,
-  ): Effect.Effect<void, ChannelSessionOperationError>;
+  ): Effect.Effect<void, ChannelSessionOperationError, Scope.Scope>;
   requestCompaction(customInstructions?: string): Effect.Effect<void, ChannelSessionOperationError>;
 }
 
@@ -191,7 +193,10 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
     }
 
     const operationLock = yield* Semaphore.make(1);
+    const activationFiber = yield* FiberHandle.make<void, never>();
     let pendingQueue: Array<{ text: string; replyToMessageId: string }> = [];
+
+    const isActivating = () => FiberHandle.getUnsafe(activationFiber)._tag === "Some";
 
     const prepareForClose = () =>
       Effect.gen(function* () {
@@ -224,30 +229,44 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
 
     const activate = (input: string, replyToMessageId: string) =>
       operationLock.withPermit(
-        Effect.tryPromise({
-          try: async () => {
-            output.setReplyToMessageId(replyToMessageId);
+        Effect.gen(function* () {
+          output.setReplyToMessageId(replyToMessageId);
 
-            if (session.isStreaming) {
-              await session.steer(input);
-              return;
-            }
-
-            if (session.isCompacting) {
-              pendingQueue.push({ text: input, replyToMessageId });
-              return;
-            }
-
-            if (session.isRetrying) {
-              await session.steer(input);
-              return;
-            }
-
-            void session.prompt(input).catch((error) => {
-              output.enqueueUnexpectedError(error);
+          if (session.isStreaming || isActivating()) {
+            yield* Effect.tryPromise({
+              try: () => session.steer(input),
+              catch: (cause) => new ChannelSessionOperationError({ operation: "activate", cause }),
             });
-          },
-          catch: (cause) => new ChannelSessionOperationError({ operation: "activate", cause }),
+            return;
+          }
+
+          if (session.isCompacting) {
+            pendingQueue.push({ text: input, replyToMessageId });
+            return;
+          }
+
+          if (session.isRetrying) {
+            yield* Effect.tryPromise({
+              try: () => session.steer(input),
+              catch: (cause) => new ChannelSessionOperationError({ operation: "activate", cause }),
+            });
+            return;
+          }
+
+          const keepAlive = yield* options.makeKeepAlive();
+          yield* FiberHandle.run(
+            activationFiber,
+            Effect.tryPromise({
+              try: () =>
+                session.prompt(input).catch((error) => {
+                  output.enqueueUnexpectedError(error);
+                }),
+              catch: (cause) => new ChannelSessionOperationError({ operation: "activate", cause }),
+            }).pipe(
+              Effect.ensuring(keepAlive.release),
+              Effect.ignore({ log: "Warn", message: "Session activation failed" }),
+            ),
+          );
         }),
       );
 
@@ -276,7 +295,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
         return session.isCompacting;
       },
       get isStreaming() {
-        return session.isStreaming;
+        return session.isStreaming || isActivating();
       },
       get isRetrying() {
         return session.isRetrying;

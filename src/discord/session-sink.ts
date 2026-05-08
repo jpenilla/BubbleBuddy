@@ -7,7 +7,6 @@ import type {
 import { EmbedBuilder } from "discord.js";
 
 import type { AppConfigShape } from "../config.ts";
-import type { ChannelState } from "../channel-state.ts";
 import { type SessionSink } from "../pi/discord-output-pump.ts";
 import {
   createCompactionStatusEmbed,
@@ -63,7 +62,6 @@ const sendChunkedMessage = async (opts: {
 export const createSessionSink = (
   channel: GuildTextBasedChannel,
   config: AppConfigShape,
-  channelState: ChannelState,
 ): SessionSink => {
   let typingTimer: ReturnType<typeof setInterval> | undefined;
   let compactionStatusMessage: Message<true> | undefined;
@@ -129,7 +127,6 @@ export const createSessionSink = (
     onRunEnd: async () => {
       resetRunToolStatusMessages();
       stopTypingLoop();
-      channelState.touchActivity();
     },
     onRunError: async (errorMessage: string) => {
       await channel.send({ embeds: [createRunErrorEmbed({ errorMessage })] });

@@ -48,7 +48,7 @@ const testLayer = (config: AppConfigShape) =>
   );
 
 describe("channel session manager", () => {
-  test("keeps idle channel entries after the idle timeout", async () => {
+  test("evicts and recreates idle channel entries after the idle timeout", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
     const config = makeConfig(tmpDir);
 
@@ -56,11 +56,40 @@ describe("channel session manager", () => {
       await Effect.runPromise(
         Effect.gen(function* () {
           const manager = yield* ChannelSessions;
-          const runtime = yield* manager.get("ch-1");
-          yield* runtime.toggleShowThinking();
 
-          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 25)));
-          expect(yield* manager.get("ch-1")).toBe(runtime);
+          // Acquire in a closed scope → refCount drops to 0 → idle timer starts.
+          const runtime1 = yield* Effect.scoped(manager.get("ch-1"));
+          yield* runtime1.toggleShowThinking();
+
+          // Wait past the idle timeout so the entry is evicted.
+          yield* Effect.sleep(config.channelIdleTimeoutMs + 50);
+
+          // Should be a different runtime — the original was evicted and recreated.
+          const runtime2 = yield* Effect.scoped(manager.get("ch-1"));
+          expect(runtime2).not.toBe(runtime1);
+        }).pipe(Effect.scoped, Effect.provide(testLayer(config))),
+      );
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps channel entry when re-acquired within the idle timeout", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
+    // Use a longer idle timeout so the re-acquire lands before eviction.
+    const config = { ...makeConfig(tmpDir), channelIdleTimeoutMs: 5000 };
+
+    try {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const manager = yield* ChannelSessions;
+
+          const runtime1 = yield* Effect.scoped(manager.get("ch-2"));
+
+          // Re-acquire well before the 5s idle timeout — should be the same runtime.
+          yield* Effect.sleep(10);
+          const runtime2 = yield* Effect.scoped(manager.get("ch-2"));
+          expect(runtime2).toBe(runtime1);
         }).pipe(Effect.scoped, Effect.provide(testLayer(config))),
       );
     } finally {
@@ -76,7 +105,7 @@ describe("channel session manager", () => {
       await Effect.runPromise(
         Effect.gen(function* () {
           const manager = yield* ChannelSessions;
-          const runtime = yield* manager.get("ch-2");
+          const runtime = yield* manager.get("ch-3");
           const newValue = yield* runtime.toggleShowThinking();
 
           expect(newValue).toBe(true);

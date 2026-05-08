@@ -29,7 +29,6 @@ describe("channel state", () => {
 
     expect(state.activeSession).toBeUndefined();
     expect(state.settings).toEqual({});
-    expect(state.lastActivity).toBeGreaterThan(0);
   });
 
   test("persists settings when dirty", async () => {
@@ -58,14 +57,5 @@ describe("channel state", () => {
       threw = true;
     }
     expect(threw).toBe(true);
-  });
-
-  test("touchActivity updates lastActivity", async () => {
-    const dir = join(tmpdir(), `bb-test-${Date.now()}`);
-    const state = await loadState(dir, "abc");
-    const before = state.lastActivity;
-    await new Promise((r) => setTimeout(r, 10));
-    state.touchActivity();
-    expect(state.lastActivity).toBeGreaterThan(before);
   });
 });

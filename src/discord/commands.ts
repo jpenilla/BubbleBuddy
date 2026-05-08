@@ -7,7 +7,7 @@ import {
   SharedSlashCommand,
   SlashCommandBuilder,
 } from "discord.js";
-import { Cause, Effect, Layer } from "effect";
+import { Cause, Effect, Layer, Scope } from "effect";
 
 import {
   ChannelSessions,
@@ -28,7 +28,7 @@ export interface CommandHandler {
   readonly execute: (
     interaction: ChatInputCommandInteraction,
     context: CommandContext,
-  ) => Effect.Effect<void, Cause.UnknownError | ChannelRuntimeError>;
+  ) => Effect.Effect<void, Cause.UnknownError | ChannelRuntimeError, Scope.Scope>;
 }
 
 // --- compact ---
@@ -90,7 +90,7 @@ const newCommand: CommandHandler = {
     Effect.gen(function* () {
       yield* Effect.tryPromise(() => interaction.deferReply());
       const runtime = yield* sessions.get(interaction.channelId);
-      const result = yield* runtime.discard();
+      const result = yield* runtime.discardPiSession();
       if (result === "rejected-busy") {
         yield* Effect.tryPromise(() =>
           interaction.editReply("A response is already in progress for this channel."),
@@ -149,6 +149,7 @@ export const handleCommand = (
           }
         }),
       ),
+      Effect.scoped,
       Effect.ignore({ log: "Warn", message: "Error handling slash command" }),
     );
   });

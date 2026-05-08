@@ -44,7 +44,7 @@ export const ActivationLive = Layer.effectDiscard(
         }
 
         const sessions = yield* ChannelSessions;
-        return yield* handleGuildMessage(discord.client, sessions, message);
+        return yield* Effect.scoped(handleGuildMessage(discord.client, sessions, message));
       }),
     );
   }),

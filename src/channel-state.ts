@@ -9,12 +9,10 @@ import type {
 
 export interface ChannelState {
   readonly settings: Readonly<ChannelSettings>;
-  readonly lastActivity: number;
   readonly activeSession: string | undefined;
   setActiveSession(sessionFileName: string): void;
   clearActiveSession(): void;
   modifySettings(mutator: (draft: ChannelSettings) => void): void;
-  touchActivity(): void;
   persistIfDirty(): Effect.Effect<void, ChannelRepositoryError>;
 }
 
@@ -24,14 +22,10 @@ export const makeChannelState = (
   persistent: PersistentChannelState,
 ): ChannelState => {
   let dirty = false;
-  let lastActivity = Date.now();
 
   return {
     get settings() {
       return persistent.settings;
-    },
-    get lastActivity() {
-      return lastActivity;
     },
     get activeSession() {
       return persistent.activeSession;
@@ -49,9 +43,6 @@ export const makeChannelState = (
     modifySettings(mutator) {
       mutator(persistent.settings);
       dirty = true;
-    },
-    touchActivity() {
-      lastActivity = Date.now();
     },
     persistIfDirty() {
       if (!dirty) {
