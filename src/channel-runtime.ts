@@ -1,13 +1,10 @@
 import type { GuildTextBasedChannel, Message } from "discord.js";
 import { Data, Effect, Option, Ref, Scope, Semaphore } from "effect";
 
-import {
-  ChannelStateRepository,
-  type ChannelStateRepositoryError,
-} from "./channel-state-repository.ts";
+import { ChannelStateRepository } from "./channel-state-repository.ts";
 import { formatMessageForPrompt } from "./discord/message-formatting.ts";
 import type { PromptTemplateContext } from "./domain/prompt.ts";
-import type { ChannelSessionOperationError, ScopedPiChannelSession } from "./pi/channel-session.ts";
+import type { ScopedPiChannelSession } from "./pi/channel-session.ts";
 import { PiChannelSessionFactory } from "./pi/channel-session-factory.ts";
 import type { SessionKeepAliveFactory } from "./session-keep-alive.ts";
 
@@ -28,16 +25,10 @@ export type CompactResult = "done" | "no-session" | "rejected-busy" | "rejected-
 
 export type DiscardResult = "discarded" | "rejected-busy";
 
-export class ChannelRuntimeOperationError extends Data.TaggedError("ChannelRuntimeOperationError")<{
+export class ChannelRuntimeError extends Data.TaggedError("ChannelRuntimeError")<{
   readonly channelId: string;
-  readonly operation: "session";
   readonly cause: unknown;
 }> {}
-
-export type ChannelRuntimeError =
-  | ChannelStateRepositoryError
-  | ChannelRuntimeOperationError
-  | ChannelSessionOperationError;
 
 export interface ChannelRuntime {
   readonly activate: (
@@ -59,31 +50,39 @@ export const makeChannelRuntime = (
   options: ChannelRuntimeOptions,
 ): Effect.Effect<
   ChannelRuntime,
-  ChannelStateRepositoryError,
+  ChannelRuntimeError,
   ChannelStateRepository | PiChannelSessionFactory | Scope.Scope
 > =>
   Effect.gen(function* () {
     const repository = yield* ChannelStateRepository;
     const sessionFactory = yield* PiChannelSessionFactory;
     const lock = yield* Semaphore.make(1);
-    const activeSessionRef = yield* Ref.make(yield* repository.getActiveSession(options.channelId));
-    const showThinkingRef = yield* Ref.make(yield* repository.getShowThinking(options.channelId));
+    const wrapRuntimeError = <E>() =>
+      Effect.mapError(
+        (cause: E) => new ChannelRuntimeError({ channelId: options.channelId, cause }),
+      );
+    const activeSessionRef = yield* Ref.make(
+      yield* repository.getActiveSession(options.channelId).pipe(wrapRuntimeError()),
+    );
+    const showThinkingRef = yield* Ref.make(
+      yield* repository.getShowThinking(options.channelId).pipe(wrapRuntimeError()),
+    );
     const piRef = yield* Ref.make<ScopedPiChannelSession | undefined>(undefined);
 
     const getShowThinking = () => Ref.getUnsafe(showThinkingRef);
     const setShowThinking = (value: boolean) =>
       Effect.gen(function* () {
-        yield* repository.setShowThinking(options.channelId, value);
+        yield* repository.setShowThinking(options.channelId, value).pipe(wrapRuntimeError());
         yield* Ref.set(showThinkingRef, value);
       });
     const setActiveSession = (value: string) =>
       Effect.gen(function* () {
-        yield* repository.setActiveSession(options.channelId, value);
+        yield* repository.setActiveSession(options.channelId, value).pipe(wrapRuntimeError());
         yield* Ref.set(activeSessionRef, value);
       });
     const clearActiveSession = () =>
       Effect.gen(function* () {
-        yield* repository.clearActiveSession(options.channelId);
+        yield* repository.clearActiveSession(options.channelId).pipe(wrapRuntimeError());
         yield* Ref.set(activeSessionRef, undefined);
       });
 
@@ -104,16 +103,9 @@ export const makeChannelRuntime = (
           return current;
         }
 
-        const pi = yield* sessionFactory.create(input, options.makeKeepAlive, getShowThinking).pipe(
-          Effect.mapError(
-            (cause) =>
-              new ChannelRuntimeOperationError({
-                channelId: input.channel.id,
-                operation: "session",
-                cause,
-              }),
-          ),
-        );
+        const pi = yield* sessionFactory
+          .create(input, options.makeKeepAlive, getShowThinking)
+          .pipe(wrapRuntimeError());
         yield* Ref.set(piRef, pi);
 
         const activeSessionName = pi.getActiveSessionName();
@@ -133,10 +125,9 @@ export const makeChannelRuntime = (
       lock.withPermit(
         Effect.gen(function* () {
           const session = yield* getOrCreatePi(input);
-          yield* session.activate(
-            formatMessageForPrompt(input.originMessage),
-            input.originMessage.id,
-          );
+          yield* session
+            .activate(formatMessageForPrompt(input.originMessage), input.originMessage.id)
+            .pipe(wrapRuntimeError());
         }),
       );
 
@@ -170,7 +161,10 @@ export const makeChannelRuntime = (
             const session = yield* getOrCreatePi(input);
             yield* session
               .requestCompaction(input.customInstructions)
-              .pipe(Effect.ignore({ log: "Warn", message: "Session compaction failed" }));
+              .pipe(
+                wrapRuntimeError(),
+                Effect.ignore({ log: "Warn", message: "Session compaction failed" }),
+              );
             return "done";
           }),
         )

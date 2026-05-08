@@ -1,6 +1,5 @@
 import { Context, Deferred, Effect, Exit, Layer, RcMap, Scope } from "effect";
 
-import { type ChannelStateRepositoryError } from "./channel-state-repository.ts";
 import { AppConfig } from "./config.ts";
 import {
   makeChannelRuntime,
@@ -13,7 +12,7 @@ const makeChannelRuntimes = () => {
   return Effect.gen(function* () {
     const config = yield* AppConfig;
     const runtimesDeferred =
-      yield* Deferred.make<RcMap.RcMap<string, ChannelRuntime, ChannelStateRepositoryError>>();
+      yield* Deferred.make<RcMap.RcMap<string, ChannelRuntime, ChannelRuntimeError>>();
 
     const makeKeepAlive = (channelId: string): Effect.Effect<SessionKeepAlive> =>
       Effect.gen(function* () {
