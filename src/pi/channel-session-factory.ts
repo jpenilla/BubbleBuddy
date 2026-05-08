@@ -100,9 +100,6 @@ const makeFactory = () =>
             sessionManager,
             makeKeepAlive,
           }).pipe(
-            Effect.provideService(AppConfig, config),
-            Effect.provideService(LoadedResources, resources),
-            Effect.provideService(PiContext, piContext),
             Effect.mapError(
               (cause) =>
                 new PiChannelSessionFactoryError({
@@ -114,7 +111,11 @@ const makeFactory = () =>
           );
 
           return { pi, sessionManager };
-        }),
+        }).pipe(
+          Effect.provideService(AppConfig, config),
+          Effect.provideService(LoadedResources, resources),
+          Effect.provideService(PiContext, piContext),
+        ),
     });
   });
 
