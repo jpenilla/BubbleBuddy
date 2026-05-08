@@ -1,41 +1,39 @@
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
-import { Cause, Effect, Option, Queue } from "effect";
+import type { GuildTextBasedChannel, Message } from "discord.js";
+import { Deferred, Effect, Scope } from "effect";
 
-import type { CompactionStatusEmbed } from "../discord/compaction-status-embed.ts";
-import type { RetryStatusEmbed } from "../discord/run-status-embed.ts";
-import type { ToolStatusEmbed } from "../discord/tool-status-embed.ts";
-import { extractAssistantText } from "../domain/text.ts";
+import type { AppConfigShape } from "../config.ts";
+import {
+  createCompactionStatusEmbed,
+  type CompactionStatusEmbed,
+} from "../discord/compaction-status-embed.ts";
+import {
+  createRetryStatusEmbed,
+  createRunAbortedEmbed,
+  createRunErrorEmbed,
+  type RetryStatusEmbed,
+} from "../discord/run-status-embed.ts";
+import { createToolStatusEmbed, type ToolStatusEmbed } from "../discord/tool-status-embed.ts";
+import { sendChunkedMessage, sendOrEditStatusCard } from "../discord/utils.ts";
+import { extractAssistantText, splitThinkingStatus } from "../domain/text.ts";
+import { makePriorityDrainableWorker } from "./priority-drainable-worker.ts";
 
-type DiscordAction = () => Promise<void>;
-export type RunDiscordAction = <T>(operation: () => Promise<T>) => Promise<T>;
-
-export interface SessionSink {
-  readonly onCompactionStatus: (status: CompactionStatusEmbed) => Promise<void>;
-  readonly onFinal: (text: string, replyToMessageId: string) => Promise<void>;
-  readonly onIntermediate: (text: string, replyToMessageId: string) => Promise<void>;
-  readonly onRetryStatus: (status: RetryStatusEmbed) => Promise<void>;
-  readonly onRunAborted: () => Promise<void>;
-  readonly onRunEnd: () => Promise<void>;
-  readonly onRunError: (errorMessage: string) => Promise<void>;
-  readonly onRunStart: () => Promise<void>;
-  readonly onStatus: (status: ToolStatusEmbed) => Promise<void>;
-  readonly onThinking: (text: string) => Promise<void>;
-}
+export type RunDiscordAction = <T>(
+  operation: Effect.Effect<T, unknown>,
+) => Effect.Effect<T, unknown>;
 
 export interface DiscordOutputPump {
-  readonly drain: () => Effect.Effect<void>;
-  readonly enqueueRunEnd: () => void;
-  readonly enqueueUnexpectedError: (error: unknown) => void;
   readonly handleSessionEvent: (event: AgentSessionEvent) => void;
-  readonly run: () => Effect.Effect<void>;
+  readonly reportUnexpectedError: (error: unknown) => void;
   readonly runDiscordAction: RunDiscordAction;
   readonly setReplyToMessageId: (replyToMessageId: string) => void;
-  readonly shutdownQueues: () => Effect.Effect<void>;
+  readonly shutdown: Effect.Effect<void>;
 }
 
 interface DiscordOutputPumpOptions {
+  readonly channel: GuildTextBasedChannel;
+  readonly config: AppConfigShape;
   readonly getShowThinking: () => boolean;
-  readonly sink: SessionSink;
 }
 
 const SUPPRESSED_TOOL_STATUS = new Set([
@@ -52,29 +50,125 @@ const formatUnexpectedError = (error: unknown): string =>
     ? `The model request failed: ${error.message}`
     : "The model request failed.";
 
-const offerDiscordAction = (queue: Queue.Queue<DiscordAction>, action: DiscordAction): boolean => {
-  try {
-    return Effect.runSync(Queue.offer(queue, action));
-  } catch {
-    return false;
-  }
-};
-
 export const makeDiscordOutputPump = (
   options: DiscordOutputPumpOptions,
-): Effect.Effect<DiscordOutputPump> =>
+): Effect.Effect<DiscordOutputPump, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const statusQueue = yield* Queue.unbounded<DiscordAction>();
-    const mutationQueue = yield* Queue.unbounded<DiscordAction>();
+    const worker = yield* makePriorityDrainableWorker((job: Effect.Effect<void>) =>
+      job.pipe(Effect.ignore({ log: "Warn", message: "Discord output action failed" })),
+    );
+    const channel = options.channel;
+    const config = options.config;
     const getShowThinking = options.getShowThinking;
-    const sink = options.sink;
     const ctx = yield* Effect.context();
 
     let latestTriggerMessageId = "";
     let currentTurnReplyTo = "";
+    let typingTimer: ReturnType<typeof setInterval> | undefined;
+    let compactionStatusMessage: Message<true> | undefined;
+    let runRetryMessage: Message<true> | undefined;
+    let toolStatusMessages = new Map<string, Message<true>>();
 
-    const enqueueStatusAction = (action: DiscordAction): void => {
-      offerDiscordAction(statusQueue, action);
+    const stopTypingLoop = (): void => {
+      if (typingTimer !== undefined) {
+        clearInterval(typingTimer);
+        typingTimer = undefined;
+      }
+    };
+
+    const resetRunToolStatusMessages = (): void => {
+      toolStatusMessages = new Map<string, Message<true>>();
+    };
+
+    const resetRunState = (): void => {
+      resetRunToolStatusMessages();
+      stopTypingLoop();
+    };
+
+    const enqueueStatusAction = (job: Effect.Effect<void>): void => {
+      void Effect.runForkWith(ctx)(worker.enqueueHigh(job).pipe(Effect.ignore));
+    };
+
+    const onCompactionStatus = async (status: CompactionStatusEmbed): Promise<void> => {
+      const embed = createCompactionStatusEmbed(status);
+      compactionStatusMessage = await sendOrEditStatusCard(channel, compactionStatusMessage, embed);
+      if (status.phase !== "start") {
+        compactionStatusMessage = undefined;
+      }
+    };
+
+    const onFinal = async (text: string, replyToMessageId: string): Promise<void> => {
+      await sendChunkedMessage({
+        channel,
+        content: text,
+        reply: {
+          messageReference: replyToMessageId,
+          failIfNotExists: false,
+        },
+      });
+    };
+
+    const onIntermediate = async (text: string, replyToMessageId: string): Promise<void> => {
+      await sendChunkedMessage({
+        channel,
+        content: text,
+        reply: {
+          messageReference: replyToMessageId,
+          failIfNotExists: false,
+        },
+        allowedMentions: { repliedUser: false },
+      });
+    };
+
+    const onRetryStatus = async (status: RetryStatusEmbed): Promise<void> => {
+      const embed = createRetryStatusEmbed(status);
+      runRetryMessage = await sendOrEditStatusCard(channel, runRetryMessage, embed);
+      if (status.phase === "success" || status.phase === "failure" || status.phase === "aborted") {
+        runRetryMessage = undefined;
+      }
+    };
+
+    const onRunAborted = async (): Promise<void> => {
+      if (runRetryMessage !== undefined) {
+        const embed = createRetryStatusEmbed({ phase: "aborted" });
+        runRetryMessage = await sendOrEditStatusCard(channel, runRetryMessage, embed);
+        runRetryMessage = undefined;
+        return;
+      }
+      await channel.send({ embeds: [createRunAbortedEmbed()] });
+    };
+
+    const onRunError = async (errorMessage: string): Promise<void> => {
+      await channel.send({ embeds: [createRunErrorEmbed({ errorMessage })] });
+    };
+
+    const onRunStart = async (): Promise<void> => {
+      resetRunToolStatusMessages();
+      if (typingTimer !== undefined) {
+        return;
+      }
+
+      await channel.sendTyping();
+      typingTimer = setInterval(() => {
+        void channel.sendTyping().catch(() => undefined);
+      }, config.typingIndicatorIntervalMs);
+    };
+
+    const onStatus = async (status: ToolStatusEmbed): Promise<void> => {
+      const embed = createToolStatusEmbed(status);
+      const existing = toolStatusMessages.get(status.toolCallId);
+      const sent = await sendOrEditStatusCard(channel, existing, embed);
+      if (status.phase === "start") {
+        toolStatusMessages.set(status.toolCallId, sent);
+      } else {
+        toolStatusMessages.delete(status.toolCallId);
+      }
+    };
+
+    const onThinking = async (text: string): Promise<void> => {
+      for (const chunk of splitThinkingStatus(text)) {
+        await channel.send(chunk);
+      }
     };
 
     const setReplyToMessageId = (replyToMessageId: string): void => {
@@ -84,45 +178,51 @@ export const makeDiscordOutputPump = (
     const handleSessionEvent = (event: AgentSessionEvent): void => {
       switch (event.type) {
         case "agent_start":
-          enqueueStatusAction(() => sink.onRunStart());
+          enqueueStatusAction(Effect.tryPromise(() => onRunStart()));
           break;
         case "agent_end":
-          enqueueStatusAction(() => sink.onRunEnd());
+          enqueueStatusAction(Effect.sync(resetRunState));
           break;
         case "turn_start":
           currentTurnReplyTo = latestTriggerMessageId;
           break;
         case "compaction_start":
-          enqueueStatusAction(() =>
-            sink.onCompactionStatus({
-              phase: "start",
-              reason: event.reason,
-            }),
+          enqueueStatusAction(
+            Effect.tryPromise(() =>
+              onCompactionStatus({
+                phase: "start",
+                reason: event.reason,
+              }),
+            ),
           );
           break;
         case "compaction_end":
           if (event.errorMessage !== undefined) {
             void Effect.runForkWith(ctx)(Effect.logWarning(event.errorMessage));
           }
-          enqueueStatusAction(() =>
-            sink.onCompactionStatus({
-              phase: event.aborted ? "aborted" : event.result === undefined ? "error" : "success",
-              reason: event.reason,
-              tokensBefore: event.result?.tokensBefore,
-            }),
+          enqueueStatusAction(
+            Effect.tryPromise(() =>
+              onCompactionStatus({
+                phase: event.aborted ? "aborted" : event.result === undefined ? "error" : "success",
+                reason: event.reason,
+                tokensBefore: event.result?.tokensBefore,
+              }),
+            ),
           );
           break;
         case "message_end":
           if (event.message.role === "assistant") {
             const msg = event.message;
             if (msg.stopReason === "error") {
-              enqueueStatusAction(() =>
-                sink.onRunError(msg.errorMessage ?? "The model request failed."),
+              enqueueStatusAction(
+                Effect.tryPromise(() =>
+                  onRunError(msg.errorMessage ?? "The model request failed."),
+                ),
               );
               break;
             }
             if (msg.stopReason === "aborted") {
-              enqueueStatusAction(() => sink.onRunAborted());
+              enqueueStatusAction(Effect.tryPromise(() => onRunAborted()));
               break;
             }
             const text = extractAssistantText(msg);
@@ -130,11 +230,11 @@ export const makeDiscordOutputPump = (
               break;
             }
             if (msg.stopReason === "toolUse") {
-              // More turns are guaranteed — send now as non-pinging reply
-              enqueueStatusAction(() => sink.onIntermediate(text, currentTurnReplyTo));
+              enqueueStatusAction(
+                Effect.tryPromise(() => onIntermediate(text, currentTurnReplyTo)),
+              );
             } else {
-              // stop or length — almost certainly the final answer — send as pinging reply
-              enqueueStatusAction(() => sink.onFinal(text, currentTurnReplyTo));
+              enqueueStatusAction(Effect.tryPromise(() => onFinal(text, currentTurnReplyTo)));
             }
           }
           break;
@@ -143,7 +243,7 @@ export const makeDiscordOutputPump = (
             if (getShowThinking()) {
               const thinking = event.assistantMessageEvent.content.trim();
               if (thinking.length > 0) {
-                enqueueStatusAction(() => sink.onThinking(thinking));
+                enqueueStatusAction(Effect.tryPromise(() => onThinking(thinking)));
               }
             }
           }
@@ -151,124 +251,67 @@ export const makeDiscordOutputPump = (
         case "tool_execution_end":
         case "tool_execution_start":
           if (!SUPPRESSED_TOOL_STATUS.has(event.toolName)) {
-            enqueueStatusAction(() =>
-              sink.onStatus({
-                phase:
-                  event.type === "tool_execution_start"
-                    ? "start"
-                    : event.isError
-                      ? "error"
-                      : "success",
-                toolCallId: event.toolCallId,
-                toolName: event.toolName,
-              }),
+            enqueueStatusAction(
+              Effect.tryPromise(() =>
+                onStatus({
+                  phase:
+                    event.type === "tool_execution_start"
+                      ? "start"
+                      : event.isError
+                        ? "error"
+                        : "success",
+                  toolCallId: event.toolCallId,
+                  toolName: event.toolName,
+                }),
+              ),
             );
           }
           break;
         case "auto_retry_start":
-          enqueueStatusAction(() =>
-            sink.onRetryStatus({
-              phase: "retrying",
-              attempt: event.attempt,
-            }),
+          enqueueStatusAction(
+            Effect.tryPromise(() =>
+              onRetryStatus({
+                phase: "retrying",
+                attempt: event.attempt,
+              }),
+            ),
           );
           break;
         case "auto_retry_end":
-          enqueueStatusAction(() =>
-            sink.onRetryStatus(
-              event.success
-                ? { phase: "success" }
-                : { phase: "failure", finalError: event.finalError },
+          enqueueStatusAction(
+            Effect.tryPromise(() =>
+              onRetryStatus(
+                event.success
+                  ? { phase: "success" }
+                  : { phase: "failure", finalError: event.finalError },
+              ),
             ),
           );
           break;
       }
     };
 
-    const enqueueRunEnd = (): void => {
-      enqueueStatusAction(() => sink.onRunEnd());
+    const reportUnexpectedError = (error: unknown): void => {
+      enqueueStatusAction(Effect.tryPromise(() => onRunError(formatUnexpectedError(error))));
     };
 
-    const enqueueUnexpectedError = (error: unknown): void => {
-      enqueueStatusAction(() => sink.onRunError(formatUnexpectedError(error)));
-    };
-
-    const drain = (): Effect.Effect<void> =>
-      Effect.promise(() =>
-        Promise.all([
-          new Promise<void>((resolve) => {
-            if (!offerDiscordAction(statusQueue, async () => resolve())) {
-              resolve();
-            }
-          }),
-          new Promise<void>((resolve) => {
-            if (!offerDiscordAction(mutationQueue, async () => resolve())) {
-              resolve();
-            }
-          }),
-        ]).then(() => undefined),
-      );
-
-    const run = (): Effect.Effect<void> => {
-      const loop = (): Effect.Effect<void> =>
-        Effect.gen(function* () {
-          let action = yield* Queue.poll(statusQueue).pipe(Effect.map(Option.getOrNull));
-          if (action === null) {
-            action = yield* Queue.poll(mutationQueue).pipe(Effect.map(Option.getOrNull));
-          }
-          if (action === null) {
-            action = yield* Effect.raceFirst(
-              Queue.take(statusQueue),
-              Queue.take(mutationQueue),
-            ).pipe(
-              Effect.catchCause((cause) =>
-                Cause.hasInterruptsOnly(cause) ? Effect.succeed(null) : Effect.failCause(cause),
-              ),
-            );
-            if (action === null) {
-              return;
-            }
-          }
-
-          yield* Effect.tryPromise(() => action()).pipe(
-            Effect.ignore({ log: "Warn", message: "Discord output action failed" }),
-          );
-
-          yield* Effect.suspend(loop);
-        });
-
-      return loop();
-    };
-
-    const runDiscordAction: RunDiscordAction = <T>(operation: () => Promise<T>): Promise<T> =>
-      new Promise<T>((resolve, reject) => {
-        const enqueued = offerDiscordAction(mutationQueue, async () => {
-          try {
-            resolve(await operation());
-          } catch (error) {
-            reject(error);
-          }
-        });
-
-        if (!enqueued) {
-          reject(new Error("Discord action queue is unavailable."));
-        }
-      });
-
-    const shutdownQueues = (): Effect.Effect<void> =>
+    const runDiscordAction: RunDiscordAction = <T>(operation: Effect.Effect<T, unknown>) =>
       Effect.gen(function* () {
-        yield* Queue.shutdown(statusQueue);
-        yield* Queue.shutdown(mutationQueue);
+        const deferred = yield* Deferred.make<T, unknown>();
+        yield* worker.enqueueLow(Deferred.completeWith(deferred, operation));
+        return yield* Deferred.await(deferred);
       });
+
+    const shutdown = Effect.gen(function* () {
+      yield* worker.drain;
+      yield* Effect.sync(resetRunState);
+    });
 
     return {
-      drain,
-      enqueueRunEnd,
-      enqueueUnexpectedError,
       handleSessionEvent,
-      run,
+      reportUnexpectedError,
       runDiscordAction,
       setReplyToMessageId,
-      shutdownQueues,
+      shutdown,
     };
   });

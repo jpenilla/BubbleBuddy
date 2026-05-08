@@ -4,6 +4,7 @@ import { basename, relative, resolve } from "node:path";
 import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { Client, Guild, GuildTextBasedChannel } from "discord.js";
+import { Effect } from "effect";
 
 import {
   formatCustomEmojiMessageSyntax,
@@ -135,7 +136,7 @@ export type DiscordToolContext = DiscordAssetContext & {
 
 export const createDiscordTools = (
   context: DiscordToolContext,
-  runDiscordAction: <T>(operation: () => Promise<T>) => Promise<T>,
+  runDiscordAction: <T>(operation: Effect.Effect<T, unknown>) => Effect.Effect<T, unknown>,
   options: DiscordToolOptions,
 ): ToolDefinition[] => {
   const tools: ToolDefinition[] = [
@@ -185,11 +186,17 @@ export const createDiscordTools = (
           throw new Error(`Sticker ${params.stickerId} is not available here.`);
         }
 
-        await runDiscordAction(() =>
-          context.channel.send({
-            content: params.caption,
-            stickers: [sticker.sticker.id],
-          }),
+        await Effect.runPromise(
+          runDiscordAction(
+            Effect.tryPromise({
+              try: () =>
+                context.channel.send({
+                  content: params.caption,
+                  stickers: [sticker.sticker.id],
+                }),
+              catch: (cause) => cause,
+            }),
+          ),
         );
 
         return {
@@ -232,7 +239,14 @@ export const createDiscordTools = (
           }
 
           try {
-            await runDiscordAction(() => targetMessage.react(emoji));
+            await Effect.runPromise(
+              runDiscordAction(
+                Effect.tryPromise({
+                  try: () => targetMessage.react(emoji),
+                  catch: (cause) => cause,
+                }),
+              ),
+            );
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             failures.push(`${emoji}: ${message}`);
@@ -311,11 +325,17 @@ export const createDiscordTools = (
           }
 
           const fileName = params.fileName?.trim() || basename(resolved.hostPath);
-          await runDiscordAction(() =>
-            context.channel.send({
-              content: params.caption,
-              files: [{ attachment: resolved.hostPath, name: fileName }],
-            }),
+          await Effect.runPromise(
+            runDiscordAction(
+              Effect.tryPromise({
+                try: () =>
+                  context.channel.send({
+                    content: params.caption,
+                    files: [{ attachment: resolved.hostPath, name: fileName }],
+                  }),
+                catch: (cause) => cause,
+              }),
+            ),
           );
 
           return {

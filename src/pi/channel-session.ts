@@ -17,7 +17,7 @@ import { LoadedResources } from "../resources.ts";
 import type { SessionKeepAliveFactory } from "../session-keep-alive.ts";
 import { createChannelWorkspaceResourceLoader } from "./channel-workspace-resource-loader.ts";
 import { createGondolinExtension } from "./gondolin-extension.ts";
-import { makeDiscordOutputPump, type SessionSink } from "./discord-output-pump.ts";
+import { makeDiscordOutputPump } from "./discord-output-pump.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
 import { WORKSPACE_CWD } from "./workspace.ts";
@@ -28,7 +28,6 @@ export interface PiChannelSessionOptions {
   readonly hostWorkspaceDir: string;
   readonly promptContext: PromptTemplateContext;
   readonly sessionManager: SessionManager;
-  readonly sink: SessionSink;
   readonly makeKeepAlive: SessionKeepAliveFactory;
 }
 
@@ -132,8 +131,9 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
     });
 
     const output = yield* makeDiscordOutputPump({
+      channel: options.channel,
+      config,
       getShowThinking: options.getShowThinking,
-      sink: options.sink,
     });
 
     const discordTools = createDiscordTools(
@@ -204,9 +204,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
           Effect.ignore({ log: "Warn", message: "Session abort for shutdown failed" }),
         );
         session.abortCompaction();
-        output.enqueueRunEnd();
-        yield* Effect.yieldNow;
-        yield* output.drain();
+        yield* output.shutdown;
       });
 
     const handleSessionEvent = (event: AgentSessionEvent): void => {
@@ -258,7 +256,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
             Effect.tryPromise({
               try: () =>
                 session.prompt(input).catch((error) => {
-                  output.enqueueUnexpectedError(error);
+                  output.reportUnexpectedError(error);
                 }),
               catch: (cause) => new ChannelSessionOperationError({ operation: "activate", cause }),
             }).pipe(
@@ -276,9 +274,6 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
           catch: (cause) => new ChannelSessionOperationError({ operation: "compact", cause }),
         }).pipe(Effect.asVoid),
       );
-
-    yield* Effect.forkScoped(output.run());
-    yield* Effect.addFinalizer(() => output.shutdownQueues());
 
     const unsubscribe = session.subscribe((event) => output.handleSessionEvent(event));
     yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));

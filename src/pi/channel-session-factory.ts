@@ -6,7 +6,6 @@ import { Context, Data, Effect, FileSystem, Layer, Scope } from "effect";
 import { ChannelStateRepository } from "../channel-state-repository.ts";
 import type { CreateSessionParams } from "../channel-runtime.ts";
 import { AppConfig } from "../config.ts";
-import { createSessionSink } from "../discord/session-sink.ts";
 import { LoadedResources } from "../resources.ts";
 import type { SessionKeepAliveFactory } from "../session-keep-alive.ts";
 import { createPiChannelSession, type ScopedPiChannelSession } from "./channel-session.ts";
@@ -113,7 +112,6 @@ const makeFactory = (): Effect.Effect<
             ),
           );
           const sessionManager = yield* loadSessionManager(input.channel.id, activeSession);
-          const sink = createSessionSink(input.channel, config);
 
           const pi = yield* createPiChannelSession({
             channel: input.channel,
@@ -121,7 +119,6 @@ const makeFactory = (): Effect.Effect<
             hostWorkspaceDir: workspaceDir(input.channel.id),
             promptContext: input.promptContext,
             sessionManager,
-            sink,
             makeKeepAlive,
           }).pipe(
             Effect.provideService(AppConfig, config),

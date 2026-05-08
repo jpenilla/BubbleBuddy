@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Message } from "discord.js";
+import { Effect } from "effect";
 
 import { createDiscordTools } from "../src/discord/tools.ts";
 
@@ -22,8 +23,9 @@ type UploadToolResult = {
   isError?: boolean;
 };
 
-const passthroughDiscordAction = async <T>(operation: () => Promise<T>): Promise<T> =>
-  await operation();
+const passthroughDiscordAction = <T>(
+  operation: Effect.Effect<T, unknown>,
+): Effect.Effect<T, unknown> => operation;
 
 const makeOriginMessage = (
   premiumTier: number,
@@ -191,10 +193,11 @@ describe("discord upload tool", () => {
     const tool = findUploadTool(
       createDiscordTools(
         originMessage,
-        async (operation) => {
-          runDiscordActionCalls++;
-          return await operation();
-        },
+        (operation) =>
+          Effect.gen(function* () {
+            runDiscordActionCalls++;
+            return yield* operation;
+          }),
         {
           enableAgenticWorkspace: true,
           workspaceDir,

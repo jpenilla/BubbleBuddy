@@ -1,6 +1,14 @@
-import type { Client, GuildTextBasedChannel } from "discord.js";
+import type {
+  Client,
+  GuildTextBasedChannel,
+  Message,
+  MessageMentionOptions,
+  ReplyOptions,
+} from "discord.js";
+import type { EmbedBuilder } from "discord.js";
 
 import type { PromptTemplateContext } from "../domain/prompt.ts";
+import { splitDiscordMessage } from "../domain/text.ts";
 
 export const isGuildTextChannel = (channel: unknown): channel is GuildTextBasedChannel =>
   typeof channel === "object" &&
@@ -25,3 +33,41 @@ export const createPromptContext = (
       : "none",
   guildName,
 });
+
+export const sendOrEditStatusCard = async (
+  channel: GuildTextBasedChannel,
+  existing: Message<true> | undefined,
+  embed: EmbedBuilder,
+): Promise<Message<true>> => {
+  if (existing !== undefined) {
+    await existing.edit({ embeds: [embed] });
+    return existing;
+  }
+
+  return await channel.send({ embeds: [embed] });
+};
+
+export const sendChunkedMessage = async (opts: {
+  channel: GuildTextBasedChannel;
+  content: string;
+  reply?: ReplyOptions;
+  allowedMentions?: MessageMentionOptions;
+}): Promise<void> => {
+  const chunks = splitDiscordMessage(opts.content);
+
+  for (const [index, chunk] of chunks.entries()) {
+    if (index === 0 && opts.reply !== undefined) {
+      await opts.channel.send({
+        content: chunk,
+        reply: opts.reply,
+        allowedMentions: opts.allowedMentions,
+      });
+      continue;
+    }
+
+    await opts.channel.send({
+      content: chunk,
+      allowedMentions: opts.allowedMentions,
+    });
+  }
+};

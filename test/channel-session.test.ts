@@ -1,41 +1,65 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber } from "effect";
+import { Effect, Exit, Scope } from "effect";
 
 import { makeDiscordOutputPump, type DiscordOutputPump } from "../src/pi/discord-output-pump.ts";
-import { makeSink } from "./utils/session-sink.ts";
 
 type SessionEvent = Parameters<DiscordOutputPump["handleSessionEvent"]>[0];
 
-const runPump = async <T>(output: DiscordOutputPump, use: () => Promise<T>): Promise<T> => {
-  const worker = Effect.runFork(output.run());
+const runPump = async <T>(
+  setup: { output: DiscordOutputPump; close: () => Promise<void> },
+  use: (output: DiscordOutputPump) => Promise<T>,
+): Promise<T> => {
   try {
-    return await use();
+    return await use(setup.output);
   } finally {
-    await Effect.runPromise(output.shutdownQueues());
-    await Effect.runPromise(Fiber.interrupt(worker));
+    await setup.close();
   }
 };
 
-const makeOutput = (sink: ReturnType<typeof makeSink>) =>
-  Effect.runPromise(
+const embedDescription = (payload: unknown): string => {
+  const embed = (payload as { embeds?: Array<{ data?: { description?: string } }> }).embeds?.[0];
+  return embed?.data?.description ?? "";
+};
+
+const makeOutput = async (onDiscordOutput: (description: string) => void) => {
+  const scope = await Effect.runPromise(Scope.make());
+  const channel = {
+    sendTyping: async () => undefined,
+    send: async (payload: unknown) => {
+      onDiscordOutput(embedDescription(payload));
+      return {
+        edit: async (editPayload: unknown) => {
+          onDiscordOutput(embedDescription(editPayload));
+        },
+      };
+    },
+  };
+  const output = await Effect.runPromise(
     makeDiscordOutputPump({
+      channel: channel as never,
+      config: { typingIndicatorIntervalMs: 60_000 } as never,
       getShowThinking: () => false,
-      sink,
-    }),
+    }).pipe(Effect.provideService(Scope.Scope, scope)),
   );
+  return {
+    output,
+    close: async () => {
+      await Effect.runPromise(output.shutdown);
+      await Effect.runPromise(Scope.close(scope, Exit.void));
+    },
+  };
+};
 
 describe("channel session Discord output ordering", () => {
   test("processes tool completion statuses between queued Discord mutations", async () => {
     const observed: string[] = [];
-    const output = await makeOutput(
-      makeSink({
-        onStatus: async (status) => {
-          observed.push(`${status.phase}:${status.toolCallId}`);
-        },
-      }),
-    );
+    const setup = await makeOutput((description) => {
+      if (description.includes("**bash**")) {
+        observed.push(description.includes("⏳") ? "start" : "success");
+      }
+    });
 
-    await runPump(output, async () => {
+    await runPump(setup, async (output) => {
       const emit = (event: SessionEvent): void => {
         output.handleSessionEvent(event);
       };
@@ -52,9 +76,13 @@ describe("channel session Discord output ordering", () => {
       await Promise.all(
         toolIds.map((toolCallId) =>
           (async () => {
-            await output.runDiscordAction(async () => {
-              observed.push(`mutate:${toolCallId}`);
-            });
+            await Effect.runPromise(
+              output.runDiscordAction(
+                Effect.sync(() => {
+                  observed.push(`mutate:${toolCallId}`);
+                }),
+              ),
+            );
             emit({
               type: "tool_execution_end",
               toolCallId,
@@ -63,82 +91,54 @@ describe("channel session Discord output ordering", () => {
           })(),
         ),
       );
-
-      await Effect.runPromise(output.drain());
     });
 
     expect(observed).toEqual([
-      "start:tool-1",
-      "start:tool-2",
-      "start:tool-3",
+      "start",
+      "start",
+      "start",
       "mutate:tool-1",
-      "success:tool-1",
+      "success",
       "mutate:tool-2",
-      "success:tool-2",
+      "success",
       "mutate:tool-3",
-      "success:tool-3",
+      "success",
     ]);
   });
 
-  test("dispatches onRunError for message_end with error stopReason", async () => {
+  test("dispatches run error output for message_end with error stopReason", async () => {
     const observed: string[] = [];
-    const output = await makeOutput(
-      makeSink({
-        onRunError: async (msg) => {
-          observed.push(`run-error:${msg}`);
-        },
-      }),
-    );
+    const setup = await makeOutput((description) => observed.push(description));
 
-    await runPump(output, async () => {
+    await runPump(setup, async (output) => {
       output.handleSessionEvent({
         type: "message_end",
         message: { role: "assistant", stopReason: "error", errorMessage: "API timeout" },
       } as SessionEvent);
-      await Effect.runPromise(output.drain());
     });
 
-    expect(observed).toEqual(["run-error:API timeout"]);
+    expect(observed).toEqual(["❌ **Run failed**\nAPI timeout"]);
   });
 
-  test("dispatches onRunAborted for message_end with aborted stopReason", async () => {
+  test("dispatches run aborted output for message_end with aborted stopReason", async () => {
     const observed: string[] = [];
-    const output = await makeOutput(
-      makeSink({
-        onRunAborted: async () => {
-          observed.push("run-aborted");
-        },
-      }),
-    );
+    const setup = await makeOutput((description) => observed.push(description));
 
-    await runPump(output, async () => {
+    await runPump(setup, async (output) => {
       output.handleSessionEvent({
         type: "message_end",
         message: { role: "assistant", stopReason: "aborted" },
       } as SessionEvent);
-      await Effect.runPromise(output.drain());
     });
 
-    expect(observed).toEqual(["run-aborted"]);
+    expect(observed).toEqual(["🛑 **Run aborted**"]);
   });
 
-  test("dispatches onRetryStatus for auto_retry_start and auto_retry_end", async () => {
+  test("dispatches retry status output for auto_retry_start and auto_retry_end", async () => {
     const observed: string[] = [];
-    const output = await makeOutput(
-      makeSink({
-        onRetryStatus: async (status) => {
-          const detail =
-            status.phase === "retrying"
-              ? `:${status.attempt}`
-              : status.phase === "failure" && status.finalError !== undefined
-                ? `:${status.finalError}`
-                : "";
-          observed.push(`retry:${status.phase}${detail}`);
-        },
-      }),
-    );
+    const setup = await makeOutput((description) => observed.push(description));
 
-    await runPump(output, async () => {
+    await runPump(setup, async (output) => {
       output.handleSessionEvent({
         type: "auto_retry_start",
         attempt: 1,
@@ -167,15 +167,13 @@ describe("channel session Discord output ordering", () => {
         success: true,
         attempt: 2,
       } as SessionEvent);
-
-      await Effect.runPromise(output.drain());
     });
 
     expect(observed).toEqual([
-      "retry:retrying:1",
-      "retry:failure:Still rate limited",
-      "retry:retrying:2",
-      "retry:success",
+      "🔄 **Retrying** (attempt 1)",
+      "❌ **Retry failed** — Still rate limited",
+      "🔄 **Retrying** (attempt 2)",
+      "✅ **Retry succeeded**",
     ]);
   });
 });
