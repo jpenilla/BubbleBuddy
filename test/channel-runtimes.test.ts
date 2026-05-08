@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, it } from "@effect/vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +9,7 @@ import { ChannelStateRepository } from "../src/channel-state-repository.ts";
 import { PiChannelSessionFactory } from "../src/pi/channel-session-factory.ts";
 import { ChannelRuntimes } from "../src/channel-runtimes.ts";
 import { AppConfig, type AppConfigShape } from "../src/config.ts";
+import { DatabaseLive } from "../src/database.ts";
 import { LoadedResources, type LoadedResourcesShape } from "../src/resources.ts";
 
 const makeConfig = (storageDir: string): AppConfigShape => ({
@@ -31,6 +32,7 @@ const resources: LoadedResourcesShape = {
 const testLayer = (config: AppConfigShape) =>
   ChannelRuntimes.layer.pipe(
     Layer.provideMerge(ChannelStateRepository.layer),
+    Layer.provideMerge(DatabaseLive),
     Layer.provideMerge(Layer.succeed(AppConfig, config)),
     Layer.provideMerge(Layer.succeed(LoadedResources, resources)),
     Layer.provideMerge(
@@ -42,7 +44,7 @@ const testLayer = (config: AppConfigShape) =>
   );
 
 describe("channel runtimes", () => {
-  test("evicts and recreates idle channel entries after the idle timeout", async () => {
+  it("evicts and recreates idle channel entries after the idle timeout", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
     const config = makeConfig(tmpDir);
 
@@ -68,7 +70,7 @@ describe("channel runtimes", () => {
     }
   });
 
-  test("keeps channel entry when re-acquired within the idle timeout", async () => {
+  it("keeps channel entry when re-acquired within the idle timeout", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
     // Use a longer idle timeout so the re-acquire lands before eviction.
     const config = { ...makeConfig(tmpDir), channelIdleTimeoutMs: 5000 };
@@ -91,7 +93,7 @@ describe("channel runtimes", () => {
     }
   });
 
-  test("toggleShowThinking persists showThinking", async () => {
+  it("toggleShowThinking persists showThinking", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
     const config = makeConfig(tmpDir);
 

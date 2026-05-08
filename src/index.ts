@@ -4,6 +4,7 @@ import { Layer } from "effect";
 
 import { AppConfig } from "./config.ts";
 import { ActivationLive } from "./discord/activation.ts";
+import { DatabaseLive } from "./database.ts";
 import { Discord } from "./discord/client.ts";
 import { SlashCommandsLive } from "./discord/commands.ts";
 import { LoadedResources } from "./resources.ts";
@@ -17,6 +18,7 @@ const AppLayer = Layer.mergeAll(ActivationLive, SlashCommandsLive).pipe(
   Layer.provideMerge(PiChannelSessionFactory.layer),
   Layer.provideMerge(LoadedResources.layer),
   Layer.provideMerge(ChannelStateRepository.layer),
+  Layer.provideMerge(DatabaseLive),
   Layer.provideMerge(PiContext.layer),
   Layer.provideMerge(AppConfig.layer),
   Layer.provideMerge(Discord.layer),

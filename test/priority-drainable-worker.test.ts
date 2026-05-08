@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { Deferred, Effect } from "effect";
 
 import { makePriorityDrainableWorker } from "../src/pi/priority-drainable-worker.ts";

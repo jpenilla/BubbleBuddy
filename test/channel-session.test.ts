@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
 
 import { makeDiscordOutputPump, type DiscordOutputPump } from "../src/pi/discord-output-pump.ts";

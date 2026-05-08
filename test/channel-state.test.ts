@@ -1,78 +1,57 @@
-import { describe, expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { describe, expect, it } from "@effect/vitest";
+import { access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
-import {
-  ChannelStateRepository,
-  type ChannelStateRepositoryError,
-  type ChannelStateRepositoryShape,
-} from "../src/channel-state-repository.ts";
+import { ChannelStateRepository } from "../src/channel-state-repository.ts";
 import { AppConfig, type AppConfigShape } from "../src/config.ts";
+import { DatabaseLive } from "../src/database.ts";
 
 const makeRepoLayer = (storageDirectory: string) =>
   ChannelStateRepository.layer.pipe(
+    Layer.provideMerge(DatabaseLive),
     Layer.provide(Layer.succeed(AppConfig, { storageDirectory } as AppConfigShape)),
     Layer.provide(NodeServices.layer),
   );
 
-const withRepo = <A>(
-  storageDirectory: string,
-  use: (repo: ChannelStateRepositoryShape) => Effect.Effect<A, ChannelStateRepositoryError>,
-) =>
-  Effect.gen(function* () {
-    const repo = yield* ChannelStateRepository;
-    return yield* use(repo);
-  }).pipe(Effect.provide(makeRepoLayer(storageDirectory)), Effect.runPromise);
-
 describe("channel state", () => {
-  test("loads defaults for missing channel", async () => {
+  it.effect("loads defaults for missing channel", () => {
     const dir = join(tmpdir(), `bb-test-${Date.now()}`);
-    await withRepo(dir, (repo) =>
-      Effect.gen(function* () {
-        expect(yield* repo.getActiveSession("123")).toBeUndefined();
-        expect(yield* repo.getShowThinking("123")).toBe(false);
-      }),
-    );
+    return Effect.gen(function* () {
+      const repo = yield* ChannelStateRepository;
+      expect(yield* repo.getActiveSession("123")).toBeUndefined();
+      expect(yield* repo.getShowThinking("123")).toBe(false);
+    }).pipe(Effect.provide(makeRepoLayer(dir)));
   });
 
-  test("persists flattened fields", async () => {
+  it.effect("persists flattened fields", () => {
     const dir = join(tmpdir(), `bb-test-${Date.now()}`);
-    await withRepo(dir, (repo) =>
-      Effect.gen(function* () {
-        yield* repo.setActiveSession("456", "session.json");
-        yield* repo.setShowThinking("456", true);
-      }),
-    );
+    return Effect.gen(function* () {
+      const repo = yield* ChannelStateRepository;
+      yield* repo.setActiveSession("456", "session.json");
+      yield* repo.setShowThinking("456", true);
 
-    await withRepo(dir, (repo) =>
-      Effect.gen(function* () {
-        expect(yield* repo.getActiveSession("456")).toBe("session.json");
-        expect(yield* repo.getShowThinking("456")).toBe(true);
-      }),
-    );
-
-    const raw = await readFile(join(dir, "channel", "456", "channel.json"), "utf8");
-    expect(JSON.parse(raw)).toEqual({
-      activeSession: "session.json",
-      showThinking: true,
-    });
+      expect(yield* repo.getActiveSession("456")).toBe("session.json");
+      expect(yield* repo.getShowThinking("456")).toBe(true);
+      yield* Effect.promise(() =>
+        expect(access(join(dir, "bubblebuddy.sqlite"))).resolves.toBeUndefined(),
+      );
+    }).pipe(Effect.provide(makeRepoLayer(dir)));
   });
 
-  test("clears default-valued fields from storage", async () => {
+  it.effect("clears default-valued fields from storage", () => {
     const dir = join(tmpdir(), `bb-test-${Date.now()}`);
-    await withRepo(dir, (repo) =>
-      Effect.gen(function* () {
-        yield* repo.setActiveSession("789", "session.json");
-        yield* repo.setShowThinking("789", true);
-        yield* repo.clearActiveSession("789");
-        yield* repo.setShowThinking("789", false);
-      }),
-    );
+    return Effect.gen(function* () {
+      const repo = yield* ChannelStateRepository;
+      yield* repo.setActiveSession("789", "session.json");
+      yield* repo.setShowThinking("789", true);
+      yield* repo.clearActiveSession("789");
+      yield* repo.setShowThinking("789", false);
 
-    const raw = await readFile(join(dir, "channel", "789", "channel.json"), "utf8");
-    expect(JSON.parse(raw)).toEqual({});
+      expect(yield* repo.getActiveSession("789")).toBeUndefined();
+      expect(yield* repo.getShowThinking("789")).toBe(false);
+    }).pipe(Effect.provide(makeRepoLayer(dir)));
   });
 });

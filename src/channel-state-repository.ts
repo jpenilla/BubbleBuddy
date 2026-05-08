@@ -1,17 +1,7 @@
-import { join } from "node:path";
-
-import { Context, Data, Effect, FileSystem, Layer, RcMap } from "effect";
-
-import { AppConfig } from "./config.ts";
-
-const CHANNEL_FILE_NAME = "channel.json";
+import { Context, Data, Effect, Layer } from "effect";
+import { SqlClient } from "effect/unstable/sql";
 
 export const SHOW_THINKING_DEFAULT = false;
-
-export interface PersistentChannelState {
-  activeSession?: string;
-  showThinking?: boolean;
-}
 
 export class ChannelStateRepositoryError extends Data.TaggedError("ChannelStateRepositoryError")<{
   readonly channelId: string;
@@ -42,90 +32,65 @@ export class ChannelStateRepository extends Context.Service<
   static readonly layer = Layer.effect(
     ChannelStateRepository,
     Effect.gen(function* () {
-      const config = yield* AppConfig;
-      const fs = yield* FileSystem.FileSystem;
+      const sql = yield* SqlClient.SqlClient;
 
-      const channelDir = (channelId: string) => join(config.storageDirectory, "channel", channelId);
-      const channelFilePath = (channelId: string) => join(channelDir(channelId), CHANNEL_FILE_NAME);
-
-      const load = (
-        channelId: string,
-      ): Effect.Effect<PersistentChannelState, ChannelStateRepositoryError> =>
-        Effect.gen(function* () {
-          const path = channelFilePath(channelId);
-          const exists = yield* fs
-            .exists(path)
-            .pipe(
-              Effect.mapError(
-                (cause) => new ChannelStateRepositoryError({ channelId, operation: "load", cause }),
-              ),
-            );
-          if (!exists) {
-            return {};
-          }
-          const raw = yield* fs
-            .readFileString(path, "utf8")
-            .pipe(
-              Effect.mapError(
-                (cause) => new ChannelStateRepositoryError({ channelId, operation: "load", cause }),
-              ),
-            );
-          return yield* Effect.try({
-            try: () => JSON.parse(raw) as PersistentChannelState,
-            catch: (cause) =>
-              new ChannelStateRepositoryError({ channelId, operation: "load", cause }),
-          });
-        });
-
-      const save = (
-        channelId: string,
-        state: PersistentChannelState,
-      ): Effect.Effect<void, ChannelStateRepositoryError> =>
-        Effect.gen(function* () {
-          yield* fs.makeDirectory(channelDir(channelId), { recursive: true });
-          yield* fs.writeFileString(channelFilePath(channelId), JSON.stringify(state, null, 2));
-        }).pipe(
-          Effect.mapError(
-            (cause) => new ChannelStateRepositoryError({ channelId, operation: "save", cause }),
-          ),
+      const mapLoadError = (channelId: string) =>
+        Effect.mapError(
+          (cause) => new ChannelStateRepositoryError({ channelId, operation: "load", cause }),
+        );
+      const mapSaveError = (channelId: string) =>
+        Effect.mapError(
+          (cause) => new ChannelStateRepositoryError({ channelId, operation: "save", cause }),
         );
 
-      const states = yield* RcMap.make({
-        lookup: (channelId: string) =>
-          Effect.acquireRelease(load(channelId), (state) =>
-            save(channelId, state).pipe(
-              Effect.ignore({
-                log: "Error",
-                message: `Failed to persist channel ${channelId}`,
-              }),
-            ),
-          ),
-        idleTimeToLive: "30 seconds",
-      });
+      const deleteDefaultSettings = (channelId: string) =>
+        sql`DELETE FROM channel_settings WHERE channel_id = ${channelId} AND show_thinking IS NULL`;
 
-      const withState = <A>(channelId: string, f: (state: PersistentChannelState) => A) =>
-        Effect.scoped(RcMap.get(states, channelId).pipe(Effect.map(f)));
+      const deleteDefaultSession = (channelId: string) =>
+        sql`DELETE FROM channel_sessions WHERE channel_id = ${channelId} AND active_session IS NULL`;
 
       return ChannelStateRepository.of({
-        getActiveSession: (channelId) => withState(channelId, (state) => state.activeSession),
+        getActiveSession: (channelId) =>
+          Effect.gen(function* () {
+            const rows = yield* sql<{ active_session: string | null }>`
+              SELECT active_session FROM channel_sessions WHERE channel_id = ${channelId}
+            `;
+            return rows[0]?.active_session ?? undefined;
+          }).pipe(mapLoadError(channelId)),
+
         setActiveSession: (channelId, value) =>
-          withState(channelId, (state) => {
-            state.activeSession = value;
-          }),
+          sql`
+            INSERT INTO channel_sessions (channel_id, active_session)
+            VALUES (${channelId}, ${value})
+            ON CONFLICT(channel_id) DO UPDATE SET active_session = excluded.active_session
+          `.pipe(mapSaveError(channelId)),
+
         clearActiveSession: (channelId) =>
-          withState(channelId, (state) => {
-            delete state.activeSession;
-          }),
+          Effect.gen(function* () {
+            yield* sql`
+              UPDATE channel_sessions SET active_session = NULL WHERE channel_id = ${channelId}
+            `;
+            yield* deleteDefaultSession(channelId);
+          }).pipe(mapSaveError(channelId)),
+
         getShowThinking: (channelId) =>
-          withState(channelId, (state) => state.showThinking ?? SHOW_THINKING_DEFAULT),
+          Effect.gen(function* () {
+            const rows = yield* sql<{ show_thinking: number | null }>`
+              SELECT show_thinking FROM channel_settings WHERE channel_id = ${channelId}
+            `;
+            return rows[0]?.show_thinking === 1 ? true : SHOW_THINKING_DEFAULT;
+          }).pipe(mapLoadError(channelId)),
+
         setShowThinking: (channelId, value) =>
-          withState(channelId, (state) => {
-            if (value === SHOW_THINKING_DEFAULT) {
-              delete state.showThinking;
-            } else {
-              state.showThinking = value;
-            }
-          }),
+          Effect.gen(function* () {
+            const storedValue = value === SHOW_THINKING_DEFAULT ? null : Number(value);
+            yield* sql`
+              INSERT INTO channel_settings (channel_id, show_thinking)
+              VALUES (${channelId}, ${storedValue})
+              ON CONFLICT(channel_id) DO UPDATE SET show_thinking = excluded.show_thinking
+            `;
+            yield* deleteDefaultSettings(channelId);
+          }).pipe(mapSaveError(channelId)),
       });
     }),
   );
