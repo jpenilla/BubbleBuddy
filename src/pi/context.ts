@@ -1,5 +1,5 @@
-import { AuthStorage, getAgentDir, ModelRegistry } from "@mariozechner/pi-coding-agent";
-import type { Api, Model } from "@mariozechner/pi-ai";
+import { AuthStorage, getAgentDir, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import { Context, Effect, Layer } from "effect";
 
 import { AppConfig } from "../config.ts";

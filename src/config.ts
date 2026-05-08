@@ -1,10 +1,10 @@
 import { resolve } from "node:path";
 
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { Config, ConfigProvider, Context, Data, Effect, Schema, Layer } from "effect";
 import { readTextFile } from "./resources.ts";
 
-// Matches @mariozechner/pi-agent-core's ThinkingLevel type.
+// Matches @earendil-works/pi-agent-core's ThinkingLevel type.
 const THINKING_LEVELS: readonly ThinkingLevel[] = [
   "off",
   "minimal",

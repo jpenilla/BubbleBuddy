@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { SessionManager } from "@mariozechner/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Context, Data, Effect, FileSystem, Layer, Scope } from "effect";
 
 import { ChannelStateRepository } from "../channel-state-repository.ts";

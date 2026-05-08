@@ -6,10 +6,10 @@ import {
   SettingsManager,
   type AgentSessionEvent,
   type ExtensionFactory,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
 import { Data, Effect, FiberHandle, Exit, Scope, Semaphore } from "effect";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import { createDiscordTools } from "../discord/tools.ts";
 import { connectMcpServers } from "../mcp/adapter.ts";

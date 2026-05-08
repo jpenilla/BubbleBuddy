@@ -6,7 +6,7 @@ import {
   type ExtensionFactory,
   type ResourceLoader,
   type SettingsManager,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 import { WORKSPACE_CWD } from "./workspace.ts";
 

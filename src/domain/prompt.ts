@@ -1,7 +1,7 @@
 import {
   formatSkillsForPrompt,
   type BuildSystemPromptOptions,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 export interface PromptTemplateContext {
   readonly botName: string;

@@ -2,7 +2,7 @@ import { realpath, stat } from "node:fs/promises";
 import { basename, relative, resolve } from "node:path";
 
 import { Type } from "typebox";
-import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { Client, Guild, GuildTextBasedChannel } from "discord.js";
 import { Effect } from "effect";
 

@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@mariozechner/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 export const DISCORD_SAFE_MESSAGE_LIMIT = 1_900;
 
