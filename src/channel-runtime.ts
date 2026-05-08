@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 
 import type { GuildTextBasedChannel, Message } from "discord.js";
-import { Data, Effect, MutableRef, Option, Ref, Scope, Semaphore } from "effect";
+import { Data, Effect, Option, Ref, Scope, Semaphore } from "effect";
 
 import {
   ChannelStateRepository,
@@ -68,25 +68,25 @@ export const makeChannelRuntime = (
     const repository = yield* ChannelStateRepository;
     const sessionFactory = yield* PiChannelSessionFactory;
     const lock = yield* Semaphore.make(1);
-    const activeSessionRef = MutableRef.make(yield* repository.getActiveSession(options.channelId));
-    const showThinkingRef = MutableRef.make(yield* repository.getShowThinking(options.channelId));
+    const activeSessionRef = yield* Ref.make(yield* repository.getActiveSession(options.channelId));
+    const showThinkingRef = yield* Ref.make(yield* repository.getShowThinking(options.channelId));
     const piRef = yield* Ref.make<ScopedPiChannelSession | undefined>(undefined);
 
-    const getShowThinking = () => MutableRef.get(showThinkingRef);
+    const getShowThinking = () => Ref.getUnsafe(showThinkingRef);
     const setShowThinking = (value: boolean) =>
       Effect.gen(function* () {
         yield* repository.setShowThinking(options.channelId, value);
-        MutableRef.set(showThinkingRef, value);
+        yield* Ref.set(showThinkingRef, value);
       });
     const setActiveSession = (value: string) =>
       Effect.gen(function* () {
         yield* repository.setActiveSession(options.channelId, value);
-        MutableRef.set(activeSessionRef, value);
+        yield* Ref.set(activeSessionRef, value);
       });
     const clearActiveSession = () =>
       Effect.gen(function* () {
         yield* repository.clearActiveSession(options.channelId);
-        MutableRef.set(activeSessionRef, undefined);
+        yield* Ref.set(activeSessionRef, undefined);
       });
 
     const closeAndClearPi = (): Effect.Effect<void> =>
@@ -123,7 +123,8 @@ export const makeChannelRuntime = (
         const sessionFile = created.sessionManager.getSessionFile();
         if (sessionFile !== undefined) {
           const newActiveSession = basename(sessionFile);
-          if (MutableRef.get(activeSessionRef) !== newActiveSession) {
+          const activeSession = yield* Ref.get(activeSessionRef);
+          if (activeSession !== newActiveSession) {
             yield* setActiveSession(newActiveSession);
           }
         }
@@ -166,7 +167,8 @@ export const makeChannelRuntime = (
             if (currentPi?.session.isStreaming || currentPi?.session.isRetrying) {
               return "rejected-busy";
             }
-            if (currentPi === undefined && MutableRef.get(activeSessionRef) === undefined) {
+            const activeSession = yield* Ref.get(activeSessionRef);
+            if (currentPi === undefined && activeSession === undefined) {
               return "no-session";
             }
 
@@ -199,7 +201,8 @@ export const makeChannelRuntime = (
 
     const toggleShowThinking = (): Effect.Effect<boolean, ChannelRuntimeError> =>
       Effect.gen(function* () {
-        const value = !MutableRef.get(showThinkingRef);
+        const showThinking = yield* Ref.get(showThinkingRef);
+        const value = !showThinking;
         yield* setShowThinking(value);
         return value;
       });
