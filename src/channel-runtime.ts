@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 
 import type { GuildTextBasedChannel, Message } from "discord.js";
-import { Data, Effect, MutableRef, Option, Scope, Semaphore } from "effect";
+import { Data, Effect, MutableRef, Option, Ref, Scope, Semaphore } from "effect";
 
 import {
   ChannelStateRepository,
@@ -70,7 +70,7 @@ export const makeChannelRuntime = (
     const lock = yield* Semaphore.make(1);
     const activeSessionRef = MutableRef.make(yield* repository.getActiveSession(options.channelId));
     const showThinkingRef = MutableRef.make(yield* repository.getShowThinking(options.channelId));
-    let pi: ScopedPiChannelSession | undefined;
+    const piRef = yield* Ref.make<ScopedPiChannelSession | undefined>(undefined);
 
     const getShowThinking = () => MutableRef.get(showThinkingRef);
     const setShowThinking = (value: boolean) =>
@@ -89,12 +89,21 @@ export const makeChannelRuntime = (
         MutableRef.set(activeSessionRef, undefined);
       });
 
+    const closeAndClearPi = (): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const session = yield* Ref.getAndSet(piRef, undefined);
+        if (session !== undefined) {
+          yield* session.close;
+        }
+      });
+
     const getOrCreatePi = (
       input: CreateSessionParams,
     ): Effect.Effect<ScopedPiChannelSession, ChannelRuntimeError, Scope.Scope> =>
       Effect.gen(function* () {
-        if (pi !== undefined) {
-          return pi;
+        const current = yield* Ref.get(piRef);
+        if (current !== undefined) {
+          return current;
         }
 
         const created = yield* sessionFactory
@@ -109,7 +118,7 @@ export const makeChannelRuntime = (
                 }),
             ),
           );
-        pi = created.pi;
+        yield* Ref.set(piRef, created.pi);
 
         const sessionFile = created.sessionManager.getSessionFile();
         if (sessionFile !== undefined) {
@@ -119,7 +128,7 @@ export const makeChannelRuntime = (
           }
         }
 
-        return pi;
+        return created.pi;
       });
 
     const activate = (
@@ -138,6 +147,7 @@ export const makeChannelRuntime = (
     const compact = (
       input: CompactionParams,
     ): Effect.Effect<CompactResult, ChannelRuntimeError, Scope.Scope> => {
+      const pi = Ref.getUnsafe(piRef);
       if (pi?.session.isCompacting) {
         return Effect.succeed("rejected-compacting");
       }
@@ -149,13 +159,14 @@ export const makeChannelRuntime = (
         .withPermitsIfAvailable(1)(
           Effect.gen(function* () {
             // Best-effort guard for auto-compaction edge cases; lock races may still report busy.
-            if (pi?.session.isCompacting) {
+            const currentPi = yield* Ref.get(piRef);
+            if (currentPi?.session.isCompacting) {
               return "rejected-compacting";
             }
-            if (pi?.session.isStreaming || pi?.session.isRetrying) {
+            if (currentPi?.session.isStreaming || currentPi?.session.isRetrying) {
               return "rejected-busy";
             }
-            if (pi === undefined && MutableRef.get(activeSessionRef) === undefined) {
+            if (currentPi === undefined && MutableRef.get(activeSessionRef) === undefined) {
               return "no-session";
             }
 
@@ -173,15 +184,12 @@ export const makeChannelRuntime = (
       lock
         .withPermitsIfAvailable(1)(
           Effect.gen(function* () {
+            const pi = yield* Ref.get(piRef);
             if (pi?.session.isStreaming || pi?.session.isCompacting || pi?.session.isRetrying) {
               return "rejected-busy" as const;
             }
 
-            const session = pi;
-            pi = undefined;
-            if (session !== undefined) {
-              yield* session.close;
-            }
+            yield* closeAndClearPi();
 
             yield* clearActiveSession();
             return "discarded" as const;
@@ -205,15 +213,7 @@ export const makeChannelRuntime = (
       }),
       () =>
         lock
-          .withPermit(
-            Effect.gen(function* () {
-              const session = pi;
-              pi = undefined;
-              if (session !== undefined) {
-                yield* session.close;
-              }
-            }),
-          )
+          .withPermit(closeAndClearPi())
           .pipe(Effect.ignore({ log: "Error", message: "Runtime cleanup failed" })),
     );
   });
