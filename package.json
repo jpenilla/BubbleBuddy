@@ -5,8 +5,13 @@
   "engines": {
     "node": ">=25.9.0"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
+  },
   "scripts": {
-    "check": "bun run fmt:check && bun run lint && bun run typecheck && bun run test",
+    "check": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test",
     "dev": "node --env-file-if-exists=.env --watch src/index.ts",
     "start": "node --env-file-if-exists=.env src/index.ts",
     "test": "vitest run ./test/",
@@ -32,7 +37,6 @@
   "devDependencies": {
     "@effect/tsgo": "^0.5.2",
     "@effect/vitest": "4.0.0-beta.64",
-    "@types/bun": "^1.3.13",
     "@types/node": "^25.6.2",
     "@typescript/native-preview": "^7.0.0-dev.20260508.1",
     "oxfmt": "^0.48.0",

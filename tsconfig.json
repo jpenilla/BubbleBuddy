@@ -8,7 +8,7 @@
     "noEmit": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "types": ["bun", "node"],
+    "types": ["node"],
     "lib": ["ESNext", "DOM"],
     "plugins": [
       {
