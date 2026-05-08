@@ -140,14 +140,15 @@ const loginClient = (
 
       return yield* Deferred.await(readyClient).pipe(
         Effect.tap((c) => Effect.logInfo(`Connected to Discord as ${c.user.tag}`)),
-        Effect.timeout("30 seconds"),
-        Effect.catchTag("TimeoutError", (timeout) =>
-          Effect.fail(
-            new DiscordLoginError({ message: "Timed out connecting to Discord", cause: timeout }),
-          ),
-        ),
       );
-    }),
+    }).pipe(
+      Effect.timeout("30 seconds"),
+      Effect.catchTag("TimeoutError", (timeout) =>
+        Effect.fail(
+          new DiscordLoginError({ message: "Timed out connecting to Discord", cause: timeout }),
+        ),
+      ),
+    ),
   );
 
 const registerForkedEvent = <Event extends keyof ClientEvents, A, E, R>(
