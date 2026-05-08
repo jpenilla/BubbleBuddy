@@ -91,7 +91,6 @@ export const makeChannelRuntime = (
 
     const getOrCreatePi = (
       input: CreateSessionParams,
-      mode: "create" | "resume",
     ): Effect.Effect<ScopedPiChannelSession, ChannelRuntimeError, Scope.Scope> =>
       Effect.gen(function* () {
         if (pi !== undefined) {
@@ -112,13 +111,11 @@ export const makeChannelRuntime = (
           );
         pi = created.pi;
 
-        if (mode === "create") {
-          const sessionFile = created.sessionManager.getSessionFile();
-          if (sessionFile !== undefined) {
-            const newActiveSession = basename(sessionFile);
-            if (MutableRef.get(activeSessionRef) !== newActiveSession) {
-              yield* setActiveSession(newActiveSession);
-            }
+        const sessionFile = created.sessionManager.getSessionFile();
+        if (sessionFile !== undefined) {
+          const newActiveSession = basename(sessionFile);
+          if (MutableRef.get(activeSessionRef) !== newActiveSession) {
+            yield* setActiveSession(newActiveSession);
           }
         }
 
@@ -130,7 +127,7 @@ export const makeChannelRuntime = (
     ): Effect.Effect<void, ChannelRuntimeError, Scope.Scope> =>
       lock.withPermit(
         Effect.gen(function* () {
-          const session = yield* getOrCreatePi(input, "create");
+          const session = yield* getOrCreatePi(input);
           yield* session.session.activate(
             formatMessageForPrompt(input.originMessage),
             input.originMessage.id,
@@ -162,7 +159,7 @@ export const makeChannelRuntime = (
               return "no-session";
             }
 
-            const session = yield* getOrCreatePi(input, "resume");
+            const session = yield* getOrCreatePi(input);
             yield* session.session
               .requestCompaction(input.customInstructions)
               .pipe(Effect.ignore({ log: "Warn", message: "Session compaction failed" }));
