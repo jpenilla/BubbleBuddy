@@ -110,7 +110,7 @@ const makeFactory = () =>
             ),
           );
 
-          return { pi, sessionManager };
+          return pi;
         }).pipe(
           Effect.provideService(AppConfig, config),
           Effect.provideService(LoadedResources, resources),
@@ -126,11 +126,7 @@ export class PiChannelSessionFactory extends Context.Service<
       input: CreateSessionParams,
       makeKeepAlive: SessionKeepAliveFactory,
       getShowThinking: () => boolean,
-    ) => Effect.Effect<
-      { pi: ScopedPiChannelSession; sessionManager: SessionManager },
-      PiChannelSessionFactoryError,
-      Scope.Scope
-    >;
+    ) => Effect.Effect<ScopedPiChannelSession, PiChannelSessionFactoryError, Scope.Scope>;
   }
 >()("bubblebuddy/pi/PiChannelSessionFactory") {
   static readonly layer = Layer.effect(PiChannelSessionFactory, makeFactory());

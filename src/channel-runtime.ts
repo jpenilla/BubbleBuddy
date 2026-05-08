@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import type { GuildTextBasedChannel, Message } from "discord.js";
 import { Data, Effect, Option, Ref, Scope, Semaphore } from "effect";
 
@@ -106,30 +104,27 @@ export const makeChannelRuntime = (
           return current;
         }
 
-        const created = yield* sessionFactory
-          .create(input, options.makeKeepAlive, getShowThinking)
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new ChannelRuntimeOperationError({
-                  channelId: input.channel.id,
-                  operation: "session",
-                  cause,
-                }),
-            ),
-          );
-        yield* Ref.set(piRef, created.pi);
+        const pi = yield* sessionFactory.create(input, options.makeKeepAlive, getShowThinking).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ChannelRuntimeOperationError({
+                channelId: input.channel.id,
+                operation: "session",
+                cause,
+              }),
+          ),
+        );
+        yield* Ref.set(piRef, pi);
 
-        const sessionFile = created.sessionManager.getSessionFile();
-        if (sessionFile !== undefined) {
-          const newActiveSession = basename(sessionFile);
+        const activeSessionName = pi.getActiveSessionName();
+        if (activeSessionName !== undefined) {
           const activeSession = yield* Ref.get(activeSessionRef);
-          if (activeSession !== newActiveSession) {
-            yield* setActiveSession(newActiveSession);
+          if (activeSession !== activeSessionName) {
+            yield* setActiveSession(activeSessionName);
           }
         }
 
-        return created.pi;
+        return pi;
       });
 
     const activate = (
@@ -138,7 +133,7 @@ export const makeChannelRuntime = (
       lock.withPermit(
         Effect.gen(function* () {
           const session = yield* getOrCreatePi(input);
-          yield* session.session.activate(
+          yield* session.activate(
             formatMessageForPrompt(input.originMessage),
             input.originMessage.id,
           );
@@ -149,10 +144,10 @@ export const makeChannelRuntime = (
       input: CompactionParams,
     ): Effect.Effect<CompactResult, ChannelRuntimeError, Scope.Scope> => {
       const pi = Ref.getUnsafe(piRef);
-      if (pi?.session.isCompacting) {
+      if (pi?.isCompacting()) {
         return Effect.succeed("rejected-compacting");
       }
-      if (pi?.session.isStreaming || pi?.session.isRetrying) {
+      if (pi?.isStreaming() || pi?.isRetrying()) {
         return Effect.succeed("rejected-busy");
       }
 
@@ -161,10 +156,10 @@ export const makeChannelRuntime = (
           Effect.gen(function* () {
             // Best-effort guard for auto-compaction edge cases; lock races may still report busy.
             const currentPi = yield* Ref.get(piRef);
-            if (currentPi?.session.isCompacting) {
+            if (currentPi?.isCompacting()) {
               return "rejected-compacting";
             }
-            if (currentPi?.session.isStreaming || currentPi?.session.isRetrying) {
+            if (currentPi?.isStreaming() || currentPi?.isRetrying()) {
               return "rejected-busy";
             }
             const activeSession = yield* Ref.get(activeSessionRef);
@@ -173,7 +168,7 @@ export const makeChannelRuntime = (
             }
 
             const session = yield* getOrCreatePi(input);
-            yield* session.session
+            yield* session
               .requestCompaction(input.customInstructions)
               .pipe(Effect.ignore({ log: "Warn", message: "Session compaction failed" }));
             return "done";
@@ -187,7 +182,7 @@ export const makeChannelRuntime = (
         .withPermitsIfAvailable(1)(
           Effect.gen(function* () {
             const pi = yield* Ref.get(piRef);
-            if (pi?.session.isStreaming || pi?.session.isCompacting || pi?.session.isRetrying) {
+            if (pi?.isStreaming() || pi?.isCompacting() || pi?.isRetrying()) {
               return "rejected-busy" as const;
             }
 

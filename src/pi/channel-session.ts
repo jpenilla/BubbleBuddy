@@ -1,3 +1,5 @@
+import { basename } from "node:path";
+
 import {
   createAgentSession,
   SessionManager,
@@ -44,9 +46,10 @@ export class ChannelSessionOperationError extends Data.TaggedError("ChannelSessi
 }> {}
 
 export interface PiChannelSession {
-  readonly isCompacting: boolean;
-  readonly isStreaming: boolean;
-  readonly isRetrying: boolean;
+  readonly isCompacting: () => boolean;
+  readonly isStreaming: () => boolean;
+  readonly isRetrying: () => boolean;
+  readonly getActiveSessionName: () => string | undefined;
   activate(
     input: string,
     replyToMessageId: string,
@@ -54,8 +57,7 @@ export interface PiChannelSession {
   requestCompaction(customInstructions?: string): Effect.Effect<void, ChannelSessionOperationError>;
 }
 
-export interface ScopedPiChannelSession {
-  readonly session: PiChannelSession;
+export interface ScopedPiChannelSession extends PiChannelSession {
   readonly close: Effect.Effect<void>;
 }
 
@@ -73,7 +75,7 @@ export const createPiChannelSession = (
       Effect.onError((cause) => Scope.close(scope, Exit.failCause(cause))),
     );
     return {
-      session,
+      ...session,
       close: Scope.close(scope, Exit.void),
     };
   });
@@ -285,14 +287,12 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
     return {
       activate,
       requestCompaction,
-      get isCompacting() {
-        return session.isCompacting;
-      },
-      get isStreaming() {
-        return session.isStreaming || isActivating();
-      },
-      get isRetrying() {
-        return session.isRetrying;
+      isCompacting: () => session.isCompacting,
+      isStreaming: () => session.isStreaming || isActivating(),
+      isRetrying: () => session.isRetrying,
+      getActiveSessionName: () => {
+        const sessionFile = options.sessionManager.getSessionFile();
+        return sessionFile === undefined ? undefined : basename(sessionFile);
       },
     };
   });
