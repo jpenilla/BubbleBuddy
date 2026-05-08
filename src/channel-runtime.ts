@@ -1,15 +1,18 @@
 import { basename } from "node:path";
 
-import { SessionManager } from "@mariozechner/pi-coding-agent";
 import type { GuildTextBasedChannel, Message } from "discord.js";
 import { Data, Effect, Option, Scope, Semaphore } from "effect";
 
-import { SHOW_THINKING_DEFAULT, type ChannelRepositoryError } from "./channel-repository.ts";
-import type { ChannelState } from "./channel-state.ts";
+import {
+  ChannelStateRepository,
+  SHOW_THINKING_DEFAULT,
+  type ChannelStateRepositoryError,
+} from "./channel-state-repository.ts";
 import { formatMessageForPrompt } from "./discord/message-formatting.ts";
 import type { PromptTemplateContext } from "./domain/prompt.ts";
 import type { ChannelSessionOperationError, ScopedPiChannelSession } from "./pi/channel-session.ts";
-import type { SessionKeepAliveFactory } from "./sessions.ts";
+import { PiChannelSessionFactory } from "./pi/channel-session-factory.ts";
+import type { SessionKeepAliveFactory } from "./session-keep-alive.ts";
 
 export type CreateSessionParams = {
   channel: GuildTextBasedChannel;
@@ -30,23 +33,14 @@ export type DiscardResult = "discarded" | "rejected-busy";
 
 export class ChannelRuntimeOperationError extends Data.TaggedError("ChannelRuntimeOperationError")<{
   readonly channelId: string;
-  readonly operation: "session" | "storage";
+  readonly operation: "session";
   readonly cause: unknown;
 }> {}
 
 export type ChannelRuntimeError =
-  | ChannelRepositoryError
+  | ChannelStateRepositoryError
   | ChannelRuntimeOperationError
   | ChannelSessionOperationError;
-
-export type CreatePiSession = (
-  input: CreateSessionParams,
-  channel: ChannelState,
-  makeKeepAlive: SessionKeepAliveFactory,
-) => Effect.Effect<
-  { pi: ScopedPiChannelSession; sessionManager: SessionManager },
-  ChannelRuntimeError
->;
 
 export interface ChannelRuntime {
   readonly activate: (
@@ -61,17 +55,21 @@ export interface ChannelRuntime {
 
 export interface ChannelRuntimeOptions {
   readonly channelId: string;
-  readonly createPiSession: CreatePiSession;
-  readonly state: ChannelState;
   readonly makeKeepAlive: SessionKeepAliveFactory;
 }
 
 export const makeChannelRuntime = (
   options: ChannelRuntimeOptions,
-): Effect.Effect<ChannelRuntime, never, Scope.Scope> =>
+): Effect.Effect<
+  ChannelRuntime,
+  ChannelStateRepositoryError,
+  ChannelStateRepository | PiChannelSessionFactory | Scope.Scope
+> =>
   Effect.gen(function* () {
+    const repository = yield* ChannelStateRepository;
+    const sessionFactory = yield* PiChannelSessionFactory;
     const lock = yield* Semaphore.make(1);
-    const state = options.state;
+    const state = yield* repository.getState(options.channelId);
     let pi: ScopedPiChannelSession | undefined;
 
     const getOrCreatePi = (
@@ -83,7 +81,16 @@ export const makeChannelRuntime = (
           return pi;
         }
 
-        const created = yield* options.createPiSession(input, state, options.makeKeepAlive);
+        const created = yield* sessionFactory.create(input, options.makeKeepAlive).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ChannelRuntimeOperationError({
+                channelId: input.channel.id,
+                operation: "session",
+                cause,
+              }),
+          ),
+        );
         pi = created.pi;
 
         if (mode === "create") {
@@ -94,7 +101,6 @@ export const makeChannelRuntime = (
               state.setActiveSession(newActiveSession);
             }
           }
-          yield* state.persistIfDirty();
         }
 
         return pi;
@@ -141,7 +147,6 @@ export const makeChannelRuntime = (
             yield* session.session
               .requestCompaction(input.customInstructions)
               .pipe(Effect.ignore({ log: "Warn", message: "Session compaction failed" }));
-            yield* state.persistIfDirty();
             return "done";
           }),
         )
@@ -163,19 +168,17 @@ export const makeChannelRuntime = (
             }
 
             state.clearActiveSession();
-            yield* state.persistIfDirty();
             return "discarded" as const;
           }),
         )
         .pipe(Effect.map(Option.getOrElse(() => "rejected-busy" as const)));
 
     const toggleShowThinking = (): Effect.Effect<boolean, ChannelRuntimeError> =>
-      Effect.gen(function* () {
+      Effect.sync(() => {
         const value = !(state.settings.showThinking ?? SHOW_THINKING_DEFAULT);
         state.modifySettings((settings) => {
           settings.showThinking = value === SHOW_THINKING_DEFAULT ? undefined : value;
         });
-        yield* state.persistIfDirty();
         return value;
       });
 
@@ -195,8 +198,6 @@ export const makeChannelRuntime = (
               if (session !== undefined) {
                 yield* session.close;
               }
-
-              yield* state.persistIfDirty();
             }),
           )
           .pipe(Effect.ignore({ log: "Error", message: "Runtime cleanup failed" })),

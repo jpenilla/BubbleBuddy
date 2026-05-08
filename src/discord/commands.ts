@@ -9,17 +9,14 @@ import {
 } from "discord.js";
 import { Cause, Effect, Layer, Scope } from "effect";
 
-import {
-  ChannelSessions,
-  type ChannelRuntimeError,
-  type ChannelSessionsShape,
-} from "../sessions.ts";
+import type { ChannelRuntimeError } from "../channel-runtime.ts";
+import { ChannelRuntimes, type ChannelRuntimesShape } from "../channel-runtimes.ts";
 import { createPromptContext, isGuildTextChannel } from "./utils.ts";
 import { Discord } from "./client.ts";
 
 export interface CommandContext {
   readonly client: Client<true>;
-  readonly sessions: ChannelSessionsShape;
+  readonly sessions: ChannelRuntimesShape;
   readonly guild: Guild;
 }
 
@@ -187,7 +184,7 @@ const handleInteraction = (interaction: Interaction) =>
     }
 
     const discord = yield* Discord;
-    const sessions = yield* ChannelSessions;
+    const sessions = yield* ChannelRuntimes;
     yield* handleCommand(interaction, {
       client: discord.client,
       sessions,

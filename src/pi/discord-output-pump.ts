@@ -1,7 +1,7 @@
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import { Cause, Effect, Option, Queue } from "effect";
 
-import { SHOW_THINKING_DEFAULT, type ChannelSettings } from "../channel-repository.ts";
+import { SHOW_THINKING_DEFAULT, type ChannelSettings } from "../channel-state-repository.ts";
 import type { CompactionStatusEmbed } from "../discord/compaction-status-embed.ts";
 import type { RetryStatusEmbed } from "../discord/run-status-embed.ts";
 import type { ToolStatusEmbed } from "../discord/tool-status-embed.ts";

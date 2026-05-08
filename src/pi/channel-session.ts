@@ -10,12 +10,12 @@ import { Data, Effect, FiberHandle, Exit, Scope, Semaphore } from "effect";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 import { createDiscordTools } from "../discord/tools.ts";
-import type { ChannelSettings } from "../channel-repository.ts";
+import type { ChannelSettings } from "../channel-state-repository.ts";
 import { connectMcpServers } from "../mcp/adapter.ts";
 import { AppConfig } from "../config.ts";
 import type { PromptTemplateContext } from "../domain/prompt.ts";
 import { LoadedResources } from "../resources.ts";
-import type { SessionKeepAliveFactory } from "../sessions.ts";
+import type { SessionKeepAliveFactory } from "../session-keep-alive.ts";
 import { createChannelWorkspaceResourceLoader } from "./channel-workspace-resource-loader.ts";
 import { createGondolinExtension } from "./gondolin-extension.ts";
 import { makeDiscordOutputPump, type SessionSink } from "./discord-output-pump.ts";

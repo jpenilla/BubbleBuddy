@@ -1,26 +1,15 @@
-import { Effect } from "effect";
-
-import type {
-  ChannelRepositoryError,
-  ChannelRepositoryShape,
-  ChannelSettings,
-  PersistentChannelState,
-} from "./channel-repository.ts";
+import type { ChannelSettings, PersistentChannelState } from "./channel-state-repository.ts";
 
 export interface ChannelState {
   readonly settings: Readonly<ChannelSettings>;
   readonly activeSession: string | undefined;
+  readonly dirty: boolean;
   setActiveSession(sessionFileName: string): void;
   clearActiveSession(): void;
   modifySettings(mutator: (draft: ChannelSettings) => void): void;
-  persistIfDirty(): Effect.Effect<void, ChannelRepositoryError>;
 }
 
-export const makeChannelState = (
-  channelId: string,
-  repository: ChannelRepositoryShape,
-  persistent: PersistentChannelState,
-): ChannelState => {
+export const makeChannelState = (persistent: PersistentChannelState): ChannelState => {
   let dirty = false;
 
   return {
@@ -29,6 +18,9 @@ export const makeChannelState = (
     },
     get activeSession() {
       return persistent.activeSession;
+    },
+    get dirty() {
+      return dirty;
     },
     setActiveSession(sessionFileName) {
       persistent.activeSession = sessionFileName;
@@ -44,25 +36,5 @@ export const makeChannelState = (
       mutator(persistent.settings);
       dirty = true;
     },
-    persistIfDirty() {
-      if (!dirty) {
-        return Effect.void;
-      }
-      return repository.save(channelId, persistent).pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            dirty = false;
-          }),
-        ),
-      );
-    },
   };
 };
-
-export const loadChannelState = (
-  channelId: string,
-  repository: ChannelRepositoryShape,
-): Effect.Effect<ChannelState, ChannelRepositoryError> =>
-  repository
-    .load(channelId)
-    .pipe(Effect.map((persistent) => makeChannelState(channelId, repository, persistent)));

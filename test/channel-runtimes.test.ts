@@ -2,15 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AuthStorage } from "@mariozechner/pi-coding-agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
-import type { Model } from "@mariozechner/pi-ai";
-import type { ModelRegistry } from "@mariozechner/pi-coding-agent";
 
-import { ChannelRepository } from "../src/channel-repository.ts";
-import { PiContext } from "../src/pi/context.ts";
-import { ChannelSessions } from "../src/sessions.ts";
+import { ChannelStateRepository } from "../src/channel-state-repository.ts";
+import { PiChannelSessionFactory } from "../src/pi/channel-session-factory.ts";
+import { ChannelRuntimes } from "../src/channel-runtimes.ts";
 import { AppConfig, type AppConfigShape } from "../src/config.ts";
 import { LoadedResources, type LoadedResourcesShape } from "../src/resources.ts";
 
@@ -32,22 +29,19 @@ const resources: LoadedResourcesShape = {
 };
 
 const testLayer = (config: AppConfigShape) =>
-  ChannelSessions.layer.pipe(
-    Layer.provideMerge(ChannelRepository.layer),
+  ChannelRuntimes.layer.pipe(
+    Layer.provideMerge(ChannelStateRepository.layer),
     Layer.provideMerge(Layer.succeed(AppConfig, config)),
     Layer.provideMerge(Layer.succeed(LoadedResources, resources)),
     Layer.provideMerge(
-      Layer.succeed(PiContext, {
-        agentDir: "",
-        authStorage: AuthStorage.create(),
-        model: {} as unknown as Model<never>,
-        modelRegistry: {} as unknown as ModelRegistry,
+      Layer.succeed(PiChannelSessionFactory, {
+        create: () => Effect.die("Pi session creation is not expected in these tests"),
       }),
     ),
     Layer.provideMerge(NodeServices.layer),
   );
 
-describe("channel session manager", () => {
+describe("channel runtimes", () => {
   test("evicts and recreates idle channel entries after the idle timeout", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
     const config = makeConfig(tmpDir);
@@ -55,7 +49,7 @@ describe("channel session manager", () => {
     try {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const manager = yield* ChannelSessions;
+          const manager = yield* ChannelRuntimes;
 
           // Acquire in a closed scope → refCount drops to 0 → idle timer starts.
           const runtime1 = yield* Effect.scoped(manager.get("ch-1"));
@@ -82,7 +76,7 @@ describe("channel session manager", () => {
     try {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const manager = yield* ChannelSessions;
+          const manager = yield* ChannelRuntimes;
 
           const runtime1 = yield* Effect.scoped(manager.get("ch-2"));
 
@@ -104,7 +98,7 @@ describe("channel session manager", () => {
     try {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const manager = yield* ChannelSessions;
+          const manager = yield* ChannelRuntimes;
           const runtime = yield* manager.get("ch-3");
           const newValue = yield* runtime.toggleShowThinking();
 

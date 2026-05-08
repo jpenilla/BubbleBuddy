@@ -1,7 +1,7 @@
 import { Events, type Client, type Message } from "discord.js";
 import { Effect, Layer } from "effect";
 
-import { ChannelSessions, type ChannelSessionsShape } from "../sessions.ts";
+import { ChannelRuntimes, type ChannelRuntimesShape } from "../channel-runtimes.ts";
 import { Discord } from "./client.ts";
 import { createPromptContext, isGuildTextChannel } from "./utils.ts";
 
@@ -43,7 +43,7 @@ export const ActivationLive = Layer.effectDiscard(
           return;
         }
 
-        const sessions = yield* ChannelSessions;
+        const sessions = yield* ChannelRuntimes;
         return yield* Effect.scoped(handleGuildMessage(discord.client, sessions, message));
       }),
     );
@@ -52,7 +52,7 @@ export const ActivationLive = Layer.effectDiscard(
 
 const handleGuildMessage = (
   client: Client<true>,
-  sessions: ChannelSessionsShape,
+  sessions: ChannelRuntimesShape,
   message: Message<true>,
 ) =>
   Effect.gen(function* () {
