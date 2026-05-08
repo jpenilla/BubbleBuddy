@@ -144,7 +144,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
         client: options.channel.client,
         guild: options.channel.guild,
       },
-      output.runDiscordAction,
+      output.awaitToolDiscordAction,
       {
         enableAgenticWorkspace: config.enableAgenticWorkspace,
         workspaceDir: options.hostWorkspaceDir,
@@ -206,7 +206,6 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
           Effect.ignore({ log: "Warn", message: "Session abort for shutdown failed" }),
         );
         session.abortCompaction();
-        yield* output.shutdown;
       });
 
     const handleSessionEvent = (event: AgentSessionEvent): void => {
@@ -217,7 +216,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
       if (messages.length === 0) return;
 
       for (const { text, replyToMessageId } of messages) {
-        output.setReplyToMessageId(replyToMessageId);
+        output.pushActivationMessageId(replyToMessageId);
         void session.steer(text);
       }
 
@@ -229,7 +228,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
     const activate = (input: string, replyToMessageId: string) =>
       operationLock.withPermit(
         Effect.gen(function* () {
-          output.setReplyToMessageId(replyToMessageId);
+          output.pushActivationMessageId(replyToMessageId);
 
           if (session.isStreaming || isActivating()) {
             yield* Effect.tryPromise({

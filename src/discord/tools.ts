@@ -16,6 +16,7 @@ import {
 } from "./assets.ts";
 import { formatMessageForPrompt } from "./message-formatting.ts";
 import { WORKSPACE_CWD } from "../pi/workspace.ts";
+import type { AwaitToolDiscordAction } from "../pi/discord-output-pump.ts";
 
 const LIST_CUSTOM_EMOJIS_TOOL = "discord_list_custom_emojis";
 const LIST_STICKERS_TOOL = "discord_list_stickers";
@@ -136,7 +137,7 @@ export type DiscordToolContext = DiscordAssetContext & {
 
 export const createDiscordTools = (
   context: DiscordToolContext,
-  runDiscordAction: <T>(operation: Effect.Effect<T, unknown>) => Effect.Effect<T, unknown>,
+  awaitToolDiscordAction: AwaitToolDiscordAction,
   options: DiscordToolOptions,
 ): ToolDefinition[] => {
   const tools: ToolDefinition[] = [
@@ -187,7 +188,7 @@ export const createDiscordTools = (
         }
 
         await Effect.runPromise(
-          runDiscordAction(
+          awaitToolDiscordAction(
             Effect.tryPromise({
               try: () =>
                 context.channel.send({
@@ -240,7 +241,7 @@ export const createDiscordTools = (
 
           try {
             await Effect.runPromise(
-              runDiscordAction(
+              awaitToolDiscordAction(
                 Effect.tryPromise({
                   try: () => targetMessage.react(emoji),
                   catch: (cause) => cause,
@@ -326,7 +327,7 @@ export const createDiscordTools = (
 
           const fileName = params.fileName?.trim() || basename(resolved.hostPath);
           await Effect.runPromise(
-            runDiscordAction(
+            awaitToolDiscordAction(
               Effect.tryPromise({
                 try: () =>
                   context.channel.send({

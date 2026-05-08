@@ -44,7 +44,6 @@ const makeOutput = async (onDiscordOutput: (description: string) => void) => {
   return {
     output,
     close: async () => {
-      await Effect.runPromise(output.shutdown);
       await Effect.runPromise(Scope.close(scope, Exit.void));
     },
   };
@@ -77,7 +76,7 @@ describe("channel session Discord output ordering", () => {
         toolIds.map((toolCallId) =>
           (async () => {
             await Effect.runPromise(
-              output.runDiscordAction(
+              output.awaitToolDiscordAction(
                 Effect.sync(() => {
                   observed.push(`mutate:${toolCallId}`);
                 }),
