@@ -207,16 +207,15 @@ export const makeChannelRuntime = (
         return value;
       });
 
-    return yield* Effect.acquireRelease(
-      Effect.succeed({
-        activate,
-        compact,
-        discardPiSession,
-        toggleShowThinking,
-      }),
-      () =>
-        lock
-          .withPermit(closeAndClearPi())
-          .pipe(Effect.ignore({ log: "Error", message: "Runtime cleanup failed" })),
+    yield* Effect.addFinalizer(() =>
+      lock
+        .withPermit(closeAndClearPi())
+        .pipe(Effect.ignore({ log: "Error", message: "Runtime cleanup failed" })),
     );
+    return {
+      activate,
+      compact,
+      discardPiSession,
+      toggleShowThinking,
+    };
   });
