@@ -20,9 +20,9 @@
   "dependencies": {
     "@earendil-works/gondolin": "^0.9.1",
     "@effect/platform-node": "4.0.0-beta.64",
-    "@mariozechner/pi-agent-core": "0.73.1",
-    "@mariozechner/pi-ai": "0.73.1",
-    "@mariozechner/pi-coding-agent": "0.73.1",
+    "@earendil-works/pi-agent-core": "0.74.0",
+    "@earendil-works/pi-ai": "0.74.0",
+    "@earendil-works/pi-coding-agent": "0.74.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "discord.js": "^14.26.4",
     "effect": "^4.0.0-beta.64",
