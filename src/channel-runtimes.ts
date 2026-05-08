@@ -1,29 +1,15 @@
 import { Context, Deferred, Effect, Exit, Layer, RcMap, Scope } from "effect";
 
-import {
-  ChannelStateRepository,
-  type ChannelStateRepositoryError,
-} from "./channel-state-repository.ts";
+import { type ChannelStateRepositoryError } from "./channel-state-repository.ts";
 import { AppConfig } from "./config.ts";
 import {
   makeChannelRuntime,
   type ChannelRuntime,
   type ChannelRuntimeError,
 } from "./channel-runtime.ts";
-import { PiChannelSessionFactory } from "./pi/channel-session-factory.ts";
 import type { SessionKeepAlive } from "./session-keep-alive.ts";
 
-export interface ChannelRuntimesShape {
-  readonly get: (
-    channelId: string,
-  ) => Effect.Effect<ChannelRuntime, ChannelRuntimeError, Scope.Scope>;
-}
-
-const makeChannelRuntimes = (): Effect.Effect<
-  ChannelRuntimesShape,
-  never,
-  AppConfig | ChannelStateRepository | PiChannelSessionFactory | Scope.Scope
-> => {
+const makeChannelRuntimes = () => {
   return Effect.gen(function* () {
     const config = yield* AppConfig;
     const runtimesDeferred =
@@ -51,14 +37,19 @@ const makeChannelRuntimes = (): Effect.Effect<
     });
     yield* Deferred.complete(runtimesDeferred, Effect.succeed(runtimes));
 
-    return {
+    return ChannelRuntimes.of({
       get: (channelId: string) => RcMap.get(runtimes, channelId),
-    };
+    });
   });
 };
 
-export class ChannelRuntimes extends Context.Service<ChannelRuntimes, ChannelRuntimesShape>()(
-  "bubblebuddy/ChannelRuntimes",
-) {
+export class ChannelRuntimes extends Context.Service<
+  ChannelRuntimes,
+  {
+    readonly get: (
+      channelId: string,
+    ) => Effect.Effect<ChannelRuntime, ChannelRuntimeError, Scope.Scope>;
+  }
+>()("bubblebuddy/ChannelRuntimes") {
   static readonly layer = Layer.effect(ChannelRuntimes, makeChannelRuntimes());
 }

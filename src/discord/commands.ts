@@ -10,13 +10,12 @@ import {
 import { Cause, Effect, Layer, Scope } from "effect";
 
 import type { ChannelRuntimeError } from "../channel-runtime.ts";
-import { ChannelRuntimes, type ChannelRuntimesShape } from "../channel-runtimes.ts";
+import { ChannelRuntimes } from "../channel-runtimes.ts";
 import { createPromptContext, isGuildTextChannel } from "./utils.ts";
 import { Discord } from "./client.ts";
 
 export interface CommandContext {
   readonly client: Client<true>;
-  readonly sessions: ChannelRuntimesShape;
   readonly guild: Guild;
 }
 
@@ -25,7 +24,7 @@ export interface CommandHandler {
   readonly execute: (
     interaction: ChatInputCommandInteraction,
     context: CommandContext,
-  ) => Effect.Effect<void, Cause.UnknownError | ChannelRuntimeError, Scope.Scope>;
+  ) => Effect.Effect<void, Cause.UnknownError | ChannelRuntimeError, ChannelRuntimes | Scope.Scope>;
 }
 
 // --- compact ---
@@ -40,7 +39,7 @@ const compactCommand: CommandHandler = {
         .setDescription("Custom instructions for the compaction summary")
         .setRequired(false),
     ),
-  execute: (interaction, { client, sessions, guild }) =>
+  execute: (interaction, { client, guild }) =>
     Effect.gen(function* () {
       if (!isGuildTextChannel(interaction.channel)) {
         yield* Effect.tryPromise(() =>
@@ -51,6 +50,7 @@ const compactCommand: CommandHandler = {
 
       const customInstructions = interaction.options.getString("instructions")?.trim() || undefined;
       yield* Effect.tryPromise(() => interaction.deferReply());
+      const sessions = yield* ChannelRuntimes;
       const runtime = yield* sessions.get(interaction.channelId);
       yield* Effect.tryPromise(() => interaction.editReply("Compaction requested."));
       const result = yield* runtime.compact({
@@ -83,9 +83,10 @@ const newCommand: CommandHandler = {
   data: new SlashCommandBuilder()
     .setName("new")
     .setDescription("Discard this channel's current pi session."),
-  execute: (interaction, { sessions }) =>
+  execute: (interaction) =>
     Effect.gen(function* () {
       yield* Effect.tryPromise(() => interaction.deferReply());
+      const sessions = yield* ChannelRuntimes;
       const runtime = yield* sessions.get(interaction.channelId);
       const result = yield* runtime.discardPiSession();
       if (result === "rejected-busy") {
@@ -107,9 +108,10 @@ const thinkingCommand: CommandHandler = {
   data: new SlashCommandBuilder()
     .setName("thinking")
     .setDescription("Toggle thinking messages in this channel."),
-  execute: (interaction, { sessions }) =>
+  execute: (interaction) =>
     Effect.gen(function* () {
       yield* Effect.tryPromise(() => interaction.deferReply());
+      const sessions = yield* ChannelRuntimes;
       const runtime = yield* sessions.get(interaction.channelId);
       const newValue = yield* runtime.toggleShowThinking();
       yield* Effect.tryPromise(() =>
@@ -131,7 +133,7 @@ const commandRegistry = new Map<string, CommandHandler>([
 export const handleCommand = (
   interaction: ChatInputCommandInteraction,
   context: CommandContext,
-): Effect.Effect<void, never> =>
+): Effect.Effect<void, never, ChannelRuntimes> =>
   Effect.gen(function* () {
     const handler = commandRegistry.get(interaction.commandName);
     if (handler === undefined) return;
@@ -184,10 +186,8 @@ const handleInteraction = (interaction: Interaction) =>
     }
 
     const discord = yield* Discord;
-    const sessions = yield* ChannelRuntimes;
     yield* handleCommand(interaction, {
       client: discord.client,
-      sessions,
       guild: interaction.guild,
     });
   });
