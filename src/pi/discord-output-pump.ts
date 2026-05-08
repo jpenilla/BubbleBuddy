@@ -1,7 +1,6 @@
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import { Cause, Effect, Option, Queue } from "effect";
 
-import { SHOW_THINKING_DEFAULT, type ChannelSettings } from "../channel-state-repository.ts";
 import type { CompactionStatusEmbed } from "../discord/compaction-status-embed.ts";
 import type { RetryStatusEmbed } from "../discord/run-status-embed.ts";
 import type { ToolStatusEmbed } from "../discord/tool-status-embed.ts";
@@ -35,7 +34,7 @@ export interface DiscordOutputPump {
 }
 
 interface DiscordOutputPumpOptions {
-  readonly getChannelSettings: () => Readonly<ChannelSettings>;
+  readonly getShowThinking: () => boolean;
   readonly sink: SessionSink;
 }
 
@@ -67,7 +66,7 @@ export const makeDiscordOutputPump = (
   Effect.gen(function* () {
     const statusQueue = yield* Queue.unbounded<DiscordAction>();
     const mutationQueue = yield* Queue.unbounded<DiscordAction>();
-    const getChannelSettings = options.getChannelSettings;
+    const getShowThinking = options.getShowThinking;
     const sink = options.sink;
     const ctx = yield* Effect.context();
 
@@ -141,7 +140,7 @@ export const makeDiscordOutputPump = (
           break;
         case "message_update":
           if (event.assistantMessageEvent.type === "thinking_end") {
-            if (getChannelSettings().showThinking ?? SHOW_THINKING_DEFAULT) {
+            if (getShowThinking()) {
               const thinking = event.assistantMessageEvent.content.trim();
               if (thinking.length > 0) {
                 enqueueStatusAction(() => sink.onThinking(thinking));

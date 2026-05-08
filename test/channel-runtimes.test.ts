@@ -91,7 +91,7 @@ describe("channel runtimes", () => {
     }
   });
 
-  test("toggleShowThinking persists dirty state", async () => {
+  test("toggleShowThinking persists showThinking", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
     const config = makeConfig(tmpDir);
 

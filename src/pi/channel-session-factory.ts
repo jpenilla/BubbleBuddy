@@ -23,6 +23,7 @@ export interface PiChannelSessionFactoryShape {
   readonly create: (
     input: CreateSessionParams,
     makeKeepAlive: SessionKeepAliveFactory,
+    getShowThinking: () => boolean,
   ) => Effect.Effect<
     { pi: ScopedPiChannelSession; sessionManager: SessionManager },
     PiChannelSessionFactoryError,
@@ -89,9 +90,9 @@ const makeFactory = (): Effect.Effect<
     };
 
     return {
-      create: (input, makeKeepAlive) =>
+      create: (input, makeKeepAlive, getShowThinking) =>
         Effect.gen(function* () {
-          const channel = yield* stateRepository.getState(input.channel.id).pipe(
+          const activeSession = yield* stateRepository.getActiveSession(input.channel.id).pipe(
             Effect.mapError(
               (cause) =>
                 new PiChannelSessionFactoryError({
@@ -111,12 +112,12 @@ const makeFactory = (): Effect.Effect<
                 }),
             ),
           );
-          const sessionManager = yield* loadSessionManager(input.channel.id, channel.activeSession);
+          const sessionManager = yield* loadSessionManager(input.channel.id, activeSession);
           const sink = createSessionSink(input.channel, config);
 
           const pi = yield* createPiChannelSession({
             channel: input.channel,
-            getChannelSettings: () => channel.settings,
+            getShowThinking,
             hostWorkspaceDir: workspaceDir(input.channel.id),
             promptContext: input.promptContext,
             sessionManager,

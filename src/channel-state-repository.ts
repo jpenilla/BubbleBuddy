@@ -1,21 +1,16 @@
 import { join } from "node:path";
 
-import { Context, Data, Effect, FileSystem, Layer, RcMap, Scope } from "effect";
+import { Context, Data, Effect, FileSystem, Layer, RcMap } from "effect";
 
-import { makeChannelState, type ChannelState } from "./channel-state.ts";
 import { AppConfig } from "./config.ts";
 
 const CHANNEL_FILE_NAME = "channel.json";
 
 export const SHOW_THINKING_DEFAULT = false;
 
-export interface ChannelSettings {
-  showThinking?: boolean;
-}
-
 export interface PersistentChannelState {
   activeSession?: string;
-  settings: ChannelSettings;
+  showThinking?: boolean;
 }
 
 export class ChannelStateRepositoryError extends Data.TaggedError("ChannelStateRepositoryError")<{
@@ -25,9 +20,19 @@ export class ChannelStateRepositoryError extends Data.TaggedError("ChannelStateR
 }> {}
 
 export interface ChannelStateRepositoryShape {
-  getState(
+  getActiveSession(
     channelId: string,
-  ): Effect.Effect<ChannelState, ChannelStateRepositoryError, Scope.Scope>;
+  ): Effect.Effect<string | undefined, ChannelStateRepositoryError>;
+  setActiveSession(
+    channelId: string,
+    value: string,
+  ): Effect.Effect<void, ChannelStateRepositoryError>;
+  clearActiveSession(channelId: string): Effect.Effect<void, ChannelStateRepositoryError>;
+  getShowThinking(channelId: string): Effect.Effect<boolean, ChannelStateRepositoryError>;
+  setShowThinking(
+    channelId: string,
+    value: boolean,
+  ): Effect.Effect<void, ChannelStateRepositoryError>;
 }
 
 export class ChannelStateRepository extends Context.Service<
@@ -56,7 +61,7 @@ export class ChannelStateRepository extends Context.Service<
               ),
             );
           if (!exists) {
-            return { settings: {} };
+            return {};
           }
           const raw = yield* fs
             .readFileString(path, "utf8")
@@ -87,25 +92,40 @@ export class ChannelStateRepository extends Context.Service<
 
       const states = yield* RcMap.make({
         lookup: (channelId: string) =>
-          Effect.acquireRelease(
-            load(channelId).pipe(
-              Effect.map((persistent) => ({ persistent, state: makeChannelState(persistent) })),
+          Effect.acquireRelease(load(channelId), (state) =>
+            save(channelId, state).pipe(
+              Effect.ignore({
+                log: "Error",
+                message: `Failed to persist channel ${channelId}`,
+              }),
             ),
-            ({ persistent, state }) =>
-              state.dirty
-                ? save(channelId, persistent).pipe(
-                    Effect.ignore({
-                      log: "Error",
-                      message: `Failed to persist channel ${channelId}`,
-                    }),
-                  )
-                : Effect.void,
-          ).pipe(Effect.map(({ state }) => state)),
-        idleTimeToLive: config.channelIdleTimeoutMs,
+          ),
+        idleTimeToLive: "30 seconds",
       });
 
+      const withState = <A>(channelId: string, f: (state: PersistentChannelState) => A) =>
+        Effect.scoped(RcMap.get(states, channelId).pipe(Effect.map(f)));
+
       return ChannelStateRepository.of({
-        getState: (channelId) => RcMap.get(states, channelId),
+        getActiveSession: (channelId) => withState(channelId, (state) => state.activeSession),
+        setActiveSession: (channelId, value) =>
+          withState(channelId, (state) => {
+            state.activeSession = value;
+          }),
+        clearActiveSession: (channelId) =>
+          withState(channelId, (state) => {
+            delete state.activeSession;
+          }),
+        getShowThinking: (channelId) =>
+          withState(channelId, (state) => state.showThinking ?? SHOW_THINKING_DEFAULT),
+        setShowThinking: (channelId, value) =>
+          withState(channelId, (state) => {
+            if (value === SHOW_THINKING_DEFAULT) {
+              delete state.showThinking;
+            } else {
+              state.showThinking = value;
+            }
+          }),
       });
     }),
   );

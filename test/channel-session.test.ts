@@ -19,7 +19,7 @@ const runPump = async <T>(output: DiscordOutputPump, use: () => Promise<T>): Pro
 const makeOutput = (sink: ReturnType<typeof makeSink>) =>
   Effect.runPromise(
     makeDiscordOutputPump({
-      getChannelSettings: () => ({}),
+      getShowThinking: () => false,
       sink,
     }),
   );

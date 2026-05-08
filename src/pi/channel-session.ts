@@ -10,7 +10,6 @@ import { Data, Effect, FiberHandle, Exit, Scope, Semaphore } from "effect";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 import { createDiscordTools } from "../discord/tools.ts";
-import type { ChannelSettings } from "../channel-state-repository.ts";
 import { connectMcpServers } from "../mcp/adapter.ts";
 import { AppConfig } from "../config.ts";
 import type { PromptTemplateContext } from "../domain/prompt.ts";
@@ -25,7 +24,7 @@ import { WORKSPACE_CWD } from "./workspace.ts";
 
 export interface PiChannelSessionOptions {
   readonly channel: GuildTextBasedChannel;
-  readonly getChannelSettings: () => Readonly<ChannelSettings>;
+  readonly getShowThinking: () => boolean;
   readonly hostWorkspaceDir: string;
   readonly promptContext: PromptTemplateContext;
   readonly sessionManager: SessionManager;
@@ -133,7 +132,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
     });
 
     const output = yield* makeDiscordOutputPump({
-      getChannelSettings: options.getChannelSettings,
+      getShowThinking: options.getShowThinking,
       sink: options.sink,
     });
 

@@ -1,11 +1,10 @@
 import { basename } from "node:path";
 
 import type { GuildTextBasedChannel, Message } from "discord.js";
-import { Data, Effect, Option, Scope, Semaphore } from "effect";
+import { Data, Effect, MutableRef, Option, Scope, Semaphore } from "effect";
 
 import {
   ChannelStateRepository,
-  SHOW_THINKING_DEFAULT,
   type ChannelStateRepositoryError,
 } from "./channel-state-repository.ts";
 import { formatMessageForPrompt } from "./discord/message-formatting.ts";
@@ -69,8 +68,26 @@ export const makeChannelRuntime = (
     const repository = yield* ChannelStateRepository;
     const sessionFactory = yield* PiChannelSessionFactory;
     const lock = yield* Semaphore.make(1);
-    const state = yield* repository.getState(options.channelId);
+    const activeSessionRef = MutableRef.make(yield* repository.getActiveSession(options.channelId));
+    const showThinkingRef = MutableRef.make(yield* repository.getShowThinking(options.channelId));
     let pi: ScopedPiChannelSession | undefined;
+
+    const getShowThinking = () => MutableRef.get(showThinkingRef);
+    const setShowThinking = (value: boolean) =>
+      Effect.gen(function* () {
+        yield* repository.setShowThinking(options.channelId, value);
+        MutableRef.set(showThinkingRef, value);
+      });
+    const setActiveSession = (value: string) =>
+      Effect.gen(function* () {
+        yield* repository.setActiveSession(options.channelId, value);
+        MutableRef.set(activeSessionRef, value);
+      });
+    const clearActiveSession = () =>
+      Effect.gen(function* () {
+        yield* repository.clearActiveSession(options.channelId);
+        MutableRef.set(activeSessionRef, undefined);
+      });
 
     const getOrCreatePi = (
       input: CreateSessionParams,
@@ -81,24 +98,26 @@ export const makeChannelRuntime = (
           return pi;
         }
 
-        const created = yield* sessionFactory.create(input, options.makeKeepAlive).pipe(
-          Effect.mapError(
-            (cause) =>
-              new ChannelRuntimeOperationError({
-                channelId: input.channel.id,
-                operation: "session",
-                cause,
-              }),
-          ),
-        );
+        const created = yield* sessionFactory
+          .create(input, options.makeKeepAlive, getShowThinking)
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ChannelRuntimeOperationError({
+                  channelId: input.channel.id,
+                  operation: "session",
+                  cause,
+                }),
+            ),
+          );
         pi = created.pi;
 
         if (mode === "create") {
           const sessionFile = created.sessionManager.getSessionFile();
           if (sessionFile !== undefined) {
             const newActiveSession = basename(sessionFile);
-            if (state.activeSession !== newActiveSession) {
-              state.setActiveSession(newActiveSession);
+            if (MutableRef.get(activeSessionRef) !== newActiveSession) {
+              yield* setActiveSession(newActiveSession);
             }
           }
         }
@@ -139,7 +158,7 @@ export const makeChannelRuntime = (
             if (pi?.session.isStreaming || pi?.session.isRetrying) {
               return "rejected-busy";
             }
-            if (pi === undefined && state.activeSession === undefined) {
+            if (pi === undefined && MutableRef.get(activeSessionRef) === undefined) {
               return "no-session";
             }
 
@@ -167,18 +186,16 @@ export const makeChannelRuntime = (
               yield* session.close;
             }
 
-            state.clearActiveSession();
+            yield* clearActiveSession();
             return "discarded" as const;
           }),
         )
         .pipe(Effect.map(Option.getOrElse(() => "rejected-busy" as const)));
 
     const toggleShowThinking = (): Effect.Effect<boolean, ChannelRuntimeError> =>
-      Effect.sync(() => {
-        const value = !(state.settings.showThinking ?? SHOW_THINKING_DEFAULT);
-        state.modifySettings((settings) => {
-          settings.showThinking = value === SHOW_THINKING_DEFAULT ? undefined : value;
-        });
+      Effect.gen(function* () {
+        const value = !MutableRef.get(showThinkingRef);
+        yield* setShowThinking(value);
         return value;
       });
 
