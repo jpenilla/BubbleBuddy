@@ -18,28 +18,7 @@ export class PiChannelSessionFactoryError extends Data.TaggedError("PiChannelSes
   readonly cause: unknown;
 }> {}
 
-export interface PiChannelSessionFactoryShape {
-  readonly create: (
-    input: CreateSessionParams,
-    makeKeepAlive: SessionKeepAliveFactory,
-    getShowThinking: () => boolean,
-  ) => Effect.Effect<
-    { pi: ScopedPiChannelSession; sessionManager: SessionManager },
-    PiChannelSessionFactoryError,
-    Scope.Scope
-  >;
-}
-
-const makeFactory = (): Effect.Effect<
-  PiChannelSessionFactoryShape,
-  never,
-  | AppConfig
-  | ChannelStateRepository
-  | FileSystem.FileSystem
-  | LoadedResources
-  | PiContext
-  | Scope.Scope
-> =>
+const makeFactory = () =>
   Effect.gen(function* () {
     const config = yield* AppConfig;
     const stateRepository = yield* ChannelStateRepository;
@@ -88,7 +67,7 @@ const makeFactory = (): Effect.Effect<
       });
     };
 
-    return {
+    return PiChannelSessionFactory.of({
       create: (input, makeKeepAlive, getShowThinking) =>
         Effect.gen(function* () {
           const activeSession = yield* stateRepository.getActiveSession(input.channel.id).pipe(
@@ -136,12 +115,22 @@ const makeFactory = (): Effect.Effect<
 
           return { pi, sessionManager };
         }),
-    };
+    });
   });
 
 export class PiChannelSessionFactory extends Context.Service<
   PiChannelSessionFactory,
-  PiChannelSessionFactoryShape
+  {
+    readonly create: (
+      input: CreateSessionParams,
+      makeKeepAlive: SessionKeepAliveFactory,
+      getShowThinking: () => boolean,
+    ) => Effect.Effect<
+      { pi: ScopedPiChannelSession; sessionManager: SessionManager },
+      PiChannelSessionFactoryError,
+      Scope.Scope
+    >;
+  }
 >()("bubblebuddy/pi/PiChannelSessionFactory") {
   static readonly layer = Layer.effect(PiChannelSessionFactory, makeFactory());
 }
