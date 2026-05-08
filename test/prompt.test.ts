@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { composeSystemPrompt, renderPromptTemplate } from "../src/domain/prompt.ts";
+import { composeSystemPrompt, renderPromptTemplate } from "../src/prompt/system-prompt.ts";
 
 describe("prompt rendering", () => {
   test("renders the supported placeholders", () => {

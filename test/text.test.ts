@@ -6,7 +6,7 @@ import {
   normalizeIncomingUserMentions,
   splitDiscordMessage,
   splitThinkingStatus,
-} from "../src/domain/text.ts";
+} from "../src/prompt/text.ts";
 
 describe("mention normalization", () => {
   test("normalizes Discord user mention ids to copyable mention references", () => {

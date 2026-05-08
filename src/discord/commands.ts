@@ -9,8 +9,8 @@ import {
 } from "discord.js";
 import { Cause, Effect, Layer, Scope } from "effect";
 
-import type { ChannelRuntimeError } from "../channel-runtime.ts";
-import { ChannelRuntimes } from "../channel-runtimes.ts";
+import type { ChannelRuntimeError } from "../channels/channel-runtime.ts";
+import { ChannelRuntimes } from "../channels/channel-runtimes.ts";
 import { createPromptContext, isGuildTextChannel } from "./utils.ts";
 import { Discord } from "./client.ts";
 

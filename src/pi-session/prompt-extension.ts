@@ -4,7 +4,7 @@ import {
   composeSystemPrompt,
   renderPromptTemplate,
   type PromptTemplateContext,
-} from "../domain/prompt.ts";
+} from "../prompt/system-prompt.ts";
 
 export interface PromptComposerExtensionOptions {
   readonly botProfile: string;

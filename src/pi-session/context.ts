@@ -3,7 +3,6 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import { Context, Effect, Layer } from "effect";
 
 import { AppConfig } from "../config.ts";
-import { resolvePiModel } from "./model.ts";
 
 export class PiContext extends Context.Service<
   PiContext,
@@ -20,7 +19,14 @@ export class PiContext extends Context.Service<
       const config = yield* AppConfig;
       const authStorage = AuthStorage.create();
       const modelRegistry = ModelRegistry.create(authStorage);
-      const model = resolvePiModel(modelRegistry, config.modelProvider, config.modelId);
+      const model = modelRegistry.find(config.modelProvider, config.modelId);
+      if (model === undefined) {
+        const registryError = modelRegistry.getError();
+        const suffix = registryError === undefined ? "" : ` Model registry error: ${registryError}`;
+        throw new Error(
+          `Unknown PI_MODEL "${config.modelId}" for provider "${config.modelProvider}".${suffix}`,
+        );
+      }
 
       yield* Effect.logInfo(`Using model: ${model.provider}/${model.id}`);
 

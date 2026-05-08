@@ -1,8 +1,8 @@
 import { resolve } from "node:path";
 
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { Config, ConfigProvider, Context, Data, Effect, Schema, Layer } from "effect";
-import { readTextFile } from "./resources.ts";
+import { Config, ConfigProvider, Context, Data, Effect, FileSystem, Schema, Layer } from "effect";
+import { normalizeLineEndings } from "./shared/text.ts";
 
 // Matches @earendil-works/pi-agent-core's ThinkingLevel type.
 const THINKING_LEVELS: readonly ThinkingLevel[] = [
@@ -64,7 +64,13 @@ export class AppConfig extends Context.Service<AppConfig, AppConfigShape>()(
   static readonly layer = Layer.effect(
     AppConfig,
     Effect.gen(function* () {
-      const text = yield* readTextFile(CONFIG_FILE_NAME);
+      const fs = yield* FileSystem.FileSystem;
+      const text = yield* fs.readFileString(CONFIG_FILE_NAME).pipe(
+        Effect.map(normalizeLineEndings),
+        Effect.mapError(
+          (cause) => new ConfigError({ message: `Failed to read ${CONFIG_FILE_NAME}`, cause }),
+        ),
+      );
       const json = yield* Effect.try({
         try: () => JSON.parse(text) as unknown,
         catch: (e) => new ConfigError({ message: `Invalid JSON in ${CONFIG_FILE_NAME}`, cause: e }),

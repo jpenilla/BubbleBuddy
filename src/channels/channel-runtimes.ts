@@ -1,12 +1,12 @@
 import { Context, Deferred, Effect, Exit, Layer, RcMap, Scope } from "effect";
 
-import { AppConfig } from "./config.ts";
+import { AppConfig } from "../config.ts";
 import {
   makeChannelRuntime,
   type ChannelRuntime,
   type ChannelRuntimeError,
 } from "./channel-runtime.ts";
-import type { SessionKeepAlive } from "./session-keep-alive.ts";
+import type { SessionKeepAlive } from "./keep-alive.ts";
 
 const makeChannelRuntimes = () => {
   return Effect.gen(function* () {

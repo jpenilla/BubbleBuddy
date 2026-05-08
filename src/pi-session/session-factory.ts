@@ -1,22 +1,31 @@
 import { join } from "node:path";
 
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { GuildTextBasedChannel } from "discord.js";
 import { Context, Data, Effect, FileSystem, Layer, Scope } from "effect";
 
-import { ChannelStateRepository } from "../channel-state-repository.ts";
-import type { CreateSessionParams } from "../channel-runtime.ts";
+import { ChannelStateRepository } from "../channels/state-repository.ts";
 import { AppConfig } from "../config.ts";
 import { LoadedResources } from "../resources.ts";
-import type { SessionKeepAliveFactory } from "../session-keep-alive.ts";
-import { createPiChannelSession, type ScopedPiChannelSession } from "./channel-session.ts";
+import type { SessionKeepAliveFactory } from "../channels/keep-alive.ts";
+import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
+import { createPiChannelSession, type ScopedPiChannelSession } from "./session.ts";
 import { PiContext } from "./context.ts";
-import { WORKSPACE_CWD } from "./workspace.ts";
+import { WORKSPACE_CWD } from "../shared/constants.ts";
 
 export class PiChannelSessionFactoryError extends Data.TaggedError("PiChannelSessionFactoryError")<{
   readonly channelId: string;
   readonly operation: "storage" | "session";
   readonly cause: unknown;
 }> {}
+
+export interface PiChannelSessionFactoryCreateInput {
+  readonly channelId: string;
+  readonly channel: GuildTextBasedChannel;
+  readonly promptContext: PromptTemplateContext;
+  readonly makeKeepAlive: SessionKeepAliveFactory;
+  readonly getShowThinking: () => boolean;
+}
 
 const makeFactory = () =>
   Effect.gen(function* () {
@@ -68,7 +77,7 @@ const makeFactory = () =>
     };
 
     return PiChannelSessionFactory.of({
-      create: (input, makeKeepAlive, getShowThinking) =>
+      create: (input) =>
         Effect.gen(function* () {
           const activeSession = yield* stateRepository.getActiveSession(input.channel.id).pipe(
             Effect.mapError(
@@ -94,11 +103,11 @@ const makeFactory = () =>
 
           const pi = yield* createPiChannelSession({
             channel: input.channel,
-            getShowThinking,
+            getShowThinking: input.getShowThinking,
             hostWorkspaceDir: workspaceDir(input.channel.id),
             promptContext: input.promptContext,
             sessionManager,
-            makeKeepAlive,
+            makeKeepAlive: input.makeKeepAlive,
           }).pipe(
             Effect.mapError(
               (cause) =>
@@ -123,9 +132,7 @@ export class PiChannelSessionFactory extends Context.Service<
   PiChannelSessionFactory,
   {
     readonly create: (
-      input: CreateSessionParams,
-      makeKeepAlive: SessionKeepAliveFactory,
-      getShowThinking: () => boolean,
+      input: PiChannelSessionFactoryCreateInput,
     ) => Effect.Effect<ScopedPiChannelSession, PiChannelSessionFactoryError, Scope.Scope>;
   }
 >()("bubblebuddy/pi/PiChannelSessionFactory") {

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
 
-import { makeDiscordOutputPump, type DiscordOutputPump } from "../src/pi/discord-output-pump.ts";
+import {
+  makeDiscordOutputPump,
+  type DiscordOutputPump,
+} from "../src/pi-session/discord-output-pump.ts";
 
 type SessionEvent = Parameters<DiscordOutputPump["handleSessionEvent"]>[0];
 

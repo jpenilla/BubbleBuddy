@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { Deferred, Effect } from "effect";
 
-import { makePriorityDrainableWorker } from "../src/pi/priority-drainable-worker.ts";
+import { makePriorityDrainableWorker } from "../src/shared/priority-drainable-worker.ts";
 
 const runEffect = <A>(effect: Effect.Effect<A>): Promise<A> => Effect.runPromise(effect);
 

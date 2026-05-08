@@ -5,9 +5,9 @@ import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
 
-import { ChannelStateRepository } from "../src/channel-state-repository.ts";
-import { PiChannelSessionFactory } from "../src/pi/channel-session-factory.ts";
-import { ChannelRuntimes } from "../src/channel-runtimes.ts";
+import { ChannelStateRepository } from "../src/channels/state-repository.ts";
+import { PiChannelSessionFactory } from "../src/pi-session/session-factory.ts";
+import { ChannelRuntimes } from "../src/channels/channel-runtimes.ts";
 import { AppConfig, type AppConfigShape } from "../src/config.ts";
 import { DatabaseLive } from "../src/database.ts";
 import { LoadedResources, type LoadedResourcesShape } from "../src/resources.ts";

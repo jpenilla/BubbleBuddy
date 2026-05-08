@@ -8,7 +8,8 @@ import {
   type SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 
-import { WORKSPACE_CWD } from "./workspace.ts";
+import { WORKSPACE_CWD } from "../shared/constants.ts";
+import { normalizeLineEndings } from "../shared/text.ts";
 
 export interface ChannelWorkspaceResourceLoaderOptions {
   readonly agentDir: string;
@@ -17,8 +18,6 @@ export interface ChannelWorkspaceResourceLoaderOptions {
   readonly settingsManager: SettingsManager;
   readonly workspaceDir: string;
 }
-
-const normalizeLineEndings = (value: string): string => value.replaceAll("\r\n", "\n");
 
 const readWorkspaceAgentsFile = (
   workspaceDir: string,

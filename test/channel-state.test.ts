@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
-import { ChannelStateRepository } from "../src/channel-state-repository.ts";
+import { ChannelStateRepository } from "../src/channels/state-repository.ts";
 import { AppConfig, type AppConfigShape } from "../src/config.ts";
 import { DatabaseLive } from "../src/database.ts";
 

@@ -7,8 +7,8 @@ import type {
 } from "discord.js";
 import type { EmbedBuilder } from "discord.js";
 
-import type { PromptTemplateContext } from "../domain/prompt.ts";
-import { splitDiscordMessage } from "../domain/text.ts";
+import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
+import { splitDiscordMessage } from "../prompt/text.ts";
 
 export const isGuildTextChannel = (channel: unknown): channel is GuildTextBasedChannel =>
   typeof channel === "object" &&

@@ -8,10 +8,10 @@ import { DatabaseLive } from "./database.ts";
 import { Discord } from "./discord/client.ts";
 import { SlashCommandsLive } from "./discord/commands.ts";
 import { LoadedResources } from "./resources.ts";
-import { ChannelStateRepository } from "./channel-state-repository.ts";
-import { PiChannelSessionFactory } from "./pi/channel-session-factory.ts";
-import { PiContext } from "./pi/context.ts";
-import { ChannelRuntimes } from "./channel-runtimes.ts";
+import { ChannelStateRepository } from "./channels/state-repository.ts";
+import { PiChannelSessionFactory } from "./pi-session/session-factory.ts";
+import { PiContext } from "./pi-session/context.ts";
+import { ChannelRuntimes } from "./channels/channel-runtimes.ts";
 
 const AppLayer = Layer.mergeAll(ActivationLive, SlashCommandsLive).pipe(
   Layer.provideMerge(ChannelRuntimes.layer),

@@ -1,7 +1,7 @@
 import { Events, type Client, type Message } from "discord.js";
 import { Effect, Layer } from "effect";
 
-import { ChannelRuntimes } from "../channel-runtimes.ts";
+import { ChannelRuntimes } from "../channels/channel-runtimes.ts";
 import { Discord } from "./client.ts";
 import { createPromptContext, isGuildTextChannel } from "./utils.ts";
 

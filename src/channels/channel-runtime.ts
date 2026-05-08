@@ -1,23 +1,23 @@
 import type { GuildTextBasedChannel, Message } from "discord.js";
 import { Data, Effect, Option, Ref, Scope, Semaphore } from "effect";
 
-import { ChannelStateRepository } from "./channel-state-repository.ts";
-import { formatMessageForPrompt } from "./discord/message-formatting.ts";
-import type { PromptTemplateContext } from "./domain/prompt.ts";
-import type { ScopedPiChannelSession } from "./pi/channel-session.ts";
-import { PiChannelSessionFactory } from "./pi/channel-session-factory.ts";
-import type { SessionKeepAliveFactory } from "./session-keep-alive.ts";
+import { ChannelStateRepository } from "./state-repository.ts";
+import { formatMessageForPrompt } from "../discord/message-formatting.ts";
+import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
+import type { ScopedPiChannelSession } from "../pi-session/session.ts";
+import { PiChannelSessionFactory } from "../pi-session/session-factory.ts";
+import type { SessionKeepAliveFactory } from "./keep-alive.ts";
 
-export type CreateSessionParams = {
+type RuntimeSessionParams = {
   channel: GuildTextBasedChannel;
   promptContext: PromptTemplateContext;
 };
 
-export type ActivationParams = CreateSessionParams & {
+export type ActivationParams = RuntimeSessionParams & {
   originMessage: Message<true>;
 };
 
-export type CompactionParams = CreateSessionParams & {
+export type CompactionParams = RuntimeSessionParams & {
   customInstructions?: string;
 };
 
@@ -95,7 +95,7 @@ export const makeChannelRuntime = (
       });
 
     const getOrCreatePi = (
-      input: CreateSessionParams,
+      input: RuntimeSessionParams,
     ): Effect.Effect<ScopedPiChannelSession, ChannelRuntimeError, Scope.Scope> =>
       Effect.gen(function* () {
         const current = yield* Ref.get(piRef);
@@ -104,7 +104,12 @@ export const makeChannelRuntime = (
         }
 
         const pi = yield* sessionFactory
-          .create(input, options.makeKeepAlive, getShowThinking)
+          .create({
+            ...input,
+            channelId: options.channelId,
+            getShowThinking,
+            makeKeepAlive: options.makeKeepAlive,
+          })
           .pipe(wrapRuntimeError());
         yield* Ref.set(piRef, pi);
 

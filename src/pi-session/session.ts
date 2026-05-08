@@ -14,15 +14,15 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createDiscordTools } from "../discord/tools.ts";
 import { connectMcpServers } from "../mcp/adapter.ts";
 import { AppConfig } from "../config.ts";
-import type { PromptTemplateContext } from "../domain/prompt.ts";
+import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
 import { LoadedResources } from "../resources.ts";
-import type { SessionKeepAliveFactory } from "../session-keep-alive.ts";
-import { createChannelWorkspaceResourceLoader } from "./channel-workspace-resource-loader.ts";
+import type { SessionKeepAliveFactory } from "../channels/keep-alive.ts";
+import { createChannelWorkspaceResourceLoader } from "./workspace-resource-loader.ts";
 import { createGondolinExtension } from "./gondolin-extension.ts";
 import { makeDiscordOutputPump } from "./discord-output-pump.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
-import { WORKSPACE_CWD } from "./workspace.ts";
+import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
 
 export interface PiChannelSessionOptions {
   readonly channel: GuildTextBasedChannel;
@@ -32,8 +32,6 @@ export interface PiChannelSessionOptions {
   readonly sessionManager: SessionManager;
   readonly makeKeepAlive: SessionKeepAliveFactory;
 }
-
-const SHUTDOWN_ABORT_TIMEOUT = "8 seconds";
 
 export class ChannelSessionInitError extends Data.TaggedError("ChannelSessionInitError")<{
   readonly message: string;

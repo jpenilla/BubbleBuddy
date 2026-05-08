@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 
-import { createChannelWorkspaceResourceLoader } from "../src/pi/channel-workspace-resource-loader.ts";
+import { createChannelWorkspaceResourceLoader } from "../src/pi-session/workspace-resource-loader.ts";
 
 describe("channel workspace resource loader", () => {
   let tempDir = "";

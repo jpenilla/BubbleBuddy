@@ -1,6 +1,6 @@
 import type { Message } from "discord.js";
 
-import { formatIncomingDiscordMessage } from "../domain/text.ts";
+import { formatIncomingDiscordMessage } from "../prompt/text.ts";
 
 export const formatMessageForPrompt = (message: Message<true>): string =>
   formatIncomingDiscordMessage(
