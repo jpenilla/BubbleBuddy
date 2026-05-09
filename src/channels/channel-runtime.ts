@@ -45,7 +45,9 @@ export interface ChannelRuntime {
     input: CompactionParams,
   ) => Effect.Effect<CompactResult, ChannelRuntimeError, Scope.Scope>;
   readonly discardPiSession: () => Effect.Effect<DiscardResult, ChannelRuntimeError, Scope.Scope>;
-  readonly status: (input: RuntimeSessionParams) => Effect.Effect<ChannelStatus, ChannelRuntimeError, Scope.Scope>;
+  readonly status: (
+    input: RuntimeSessionParams,
+  ) => Effect.Effect<ChannelStatus, ChannelRuntimeError, Scope.Scope>;
   readonly toggleShowThinking: () => Effect.Effect<boolean, ChannelRuntimeError, Scope.Scope>;
 }
 
