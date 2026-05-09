@@ -6,6 +6,7 @@ import {
   SettingsManager,
   type AgentSessionEvent,
   type ExtensionFactory,
+  type SessionStats,
 } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
 import { Data, Effect, FiberHandle, Exit, Scope, Semaphore } from "effect";
@@ -43,11 +44,19 @@ export class ChannelSessionOperationError extends Data.TaggedError("ChannelSessi
   readonly cause: unknown;
 }> {}
 
+export interface PiChannelSessionModelInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly provider: string;
+}
+
 export interface PiChannelSession {
   readonly isCompacting: () => boolean;
   readonly isStreaming: () => boolean;
   readonly isRetrying: () => boolean;
   readonly getActiveSessionName: () => string | undefined;
+  readonly getModelInfo: () => PiChannelSessionModelInfo | undefined;
+  readonly getSessionStats: () => SessionStats;
   activate(
     input: string,
     replyToMessageId: string,
@@ -291,5 +300,12 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
         const sessionFile = options.sessionManager.getSessionFile();
         return sessionFile === undefined ? undefined : basename(sessionFile);
       },
+      getModelInfo: () => {
+        const model = session.model;
+        return model === undefined
+          ? undefined
+          : { id: model.id, name: model.name, provider: model.provider };
+      },
+      getSessionStats: () => session.getSessionStats(),
     };
   });

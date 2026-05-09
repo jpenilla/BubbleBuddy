@@ -1,10 +1,11 @@
+import type { SessionStats } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel, Message } from "discord.js";
 import { Data, Effect, Option, Ref, Scope, Semaphore } from "effect";
 
 import { ChannelStateRepository } from "./state-repository.ts";
 import { formatMessageForPrompt } from "../discord/message-formatting.ts";
 import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
-import type { ScopedPiChannelSession } from "../pi-session/session.ts";
+import type { PiChannelSessionModelInfo, ScopedPiChannelSession } from "../pi-session/session.ts";
 import { PiChannelSessionFactory } from "../pi-session/session-factory.ts";
 import type { SessionKeepAliveFactory } from "./keep-alive.ts";
 
@@ -25,6 +26,12 @@ export type CompactResult = "done" | "no-session" | "rejected-busy" | "rejected-
 
 export type DiscardResult = "discarded" | "rejected-busy";
 
+export interface ChannelStatus {
+  readonly model: PiChannelSessionModelInfo | undefined;
+  readonly showThinking: boolean;
+  readonly stats: SessionStats;
+}
+
 export class ChannelRuntimeError extends Data.TaggedError("ChannelRuntimeError")<{
   readonly channelId: string;
   readonly cause: unknown;
@@ -38,6 +45,7 @@ export interface ChannelRuntime {
     input: CompactionParams,
   ) => Effect.Effect<CompactResult, ChannelRuntimeError, Scope.Scope>;
   readonly discardPiSession: () => Effect.Effect<DiscardResult, ChannelRuntimeError, Scope.Scope>;
+  readonly status: (input: RuntimeSessionParams) => Effect.Effect<ChannelStatus, ChannelRuntimeError, Scope.Scope>;
   readonly toggleShowThinking: () => Effect.Effect<boolean, ChannelRuntimeError, Scope.Scope>;
 }
 
@@ -193,6 +201,21 @@ export const makeChannelRuntime = (
         )
         .pipe(Effect.map(Option.getOrElse(() => "rejected-busy" as const)));
 
+    const status = (
+      input: RuntimeSessionParams,
+    ): Effect.Effect<ChannelStatus, ChannelRuntimeError, Scope.Scope> =>
+      lock.withPermit(
+        Effect.gen(function* () {
+          const session = yield* getOrCreatePi(input);
+          const showThinking = yield* Ref.get(showThinkingRef);
+          return {
+            model: session.getModelInfo(),
+            showThinking,
+            stats: session.getSessionStats(),
+          };
+        }),
+      );
+
     const toggleShowThinking = (): Effect.Effect<boolean, ChannelRuntimeError> =>
       Effect.gen(function* () {
         const showThinking = yield* Ref.get(showThinkingRef);
@@ -210,6 +233,7 @@ export const makeChannelRuntime = (
       activate,
       compact,
       discardPiSession,
+      status,
       toggleShowThinking,
     };
   });
