@@ -12,7 +12,7 @@ interface TypingIndicatorOptions {
   readonly intervalMs: number;
 }
 
-const SEND_TYPING_TIMEOUT_MS = 1000;
+const SEND_TYPING_TIMEOUT_MS = 10_000;
 const STOP_TYPING_TIMEOUT_MS = 1000;
 
 export const makeTypingIndicator = (
