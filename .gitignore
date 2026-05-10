@@ -19,3 +19,5 @@ storage/
 .vscode/
 .DS_Store
 /context/
+# Ignore subdirs (built image files)
+/images/*/

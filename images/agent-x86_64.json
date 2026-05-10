@@ -1,0 +1,42 @@
+{
+  "arch": "x86_64",
+  "distro": "alpine",
+  "alpine": {
+    "version": "3.23.0",
+    "rootfsPackages": [
+      "linux-virt",
+      "rng-tools",
+      "bash",
+      "ca-certificates",
+      "curl",
+      "nodejs",
+      "npm",
+      "uv",
+      "python3",
+      "openssh",
+      "git",
+      "jq",
+      "ripgrep",
+      "file",
+      "tar",
+      "gzip",
+      "unzip",
+      "findutils",
+      "procps-ng",
+      "shadow",
+      "sudo",
+      "diffutils",
+      "tree",
+      "openssl",
+      "build-base",
+      "wget",
+      "zip",
+      "zstd",
+      "sqlite",
+      "time"
+    ]
+  },
+  "rootfs": {
+    "sizeMb": 2048
+  }
+}
