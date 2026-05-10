@@ -3,13 +3,20 @@ import { Effect, Layer } from "effect";
 
 import { ChannelRuntimes } from "../../channels/channel-runtimes.ts";
 import { Discord } from "../client.ts";
+import { abortCommand } from "./abort.ts";
 import { compactCommand } from "./compact.ts";
 import { discardSessionCommand } from "./discard-session.ts";
 import { statusCommand } from "./status.ts";
 import { thinkingCommand } from "./thinking.ts";
 import type { CommandContext, CommandHandler } from "./types.ts";
 
-const commands = [compactCommand, discardSessionCommand, statusCommand, thinkingCommand];
+const commands = [
+  abortCommand,
+  compactCommand,
+  discardSessionCommand,
+  statusCommand,
+  thinkingCommand,
+];
 
 const commandRegistry = new Map<string, CommandHandler>(
   commands.map((command) => [command.data.name, command]),

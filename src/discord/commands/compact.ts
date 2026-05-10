@@ -39,7 +39,7 @@ export const compactCommand: CommandHandler = {
         let reply: string;
         switch (result) {
           case "no-session":
-            reply = "No session exists yet for this channel";
+            reply = "No active session for this channel.";
             break;
           case "rejected-busy":
             reply = "A response is already in progress for this channel.";

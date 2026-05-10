@@ -22,6 +22,8 @@ export type CompactionParams = RuntimeSessionParams & {
   customInstructions?: string;
 };
 
+export type AbortResult = "aborted" | "idle";
+
 export type CompactResult = "done" | "no-session" | "rejected-busy" | "rejected-compacting";
 
 export type DiscardResult = "discarded" | "rejected-busy";
@@ -38,6 +40,7 @@ export class ChannelRuntimeError extends Data.TaggedError("ChannelRuntimeError")
 }> {}
 
 export interface ChannelRuntime {
+  readonly abort: () => Effect.Effect<AbortResult, ChannelRuntimeError>;
   readonly activate: (
     input: ActivationParams,
   ) => Effect.Effect<void, ChannelRuntimeError, Scope.Scope>;
@@ -132,6 +135,22 @@ export const makeChannelRuntime = (
         }
 
         return pi;
+      });
+
+    const abort = (): Effect.Effect<AbortResult, ChannelRuntimeError> =>
+      Effect.gen(function* () {
+        const pi = yield* Ref.get(piRef);
+        if (pi === undefined) {
+          return "idle";
+        }
+
+        const busy = pi.isCompacting() || pi.isStreaming() || pi.isRetrying();
+        if (!busy) {
+          return "idle";
+        }
+
+        yield* pi.abort().pipe(wrapRuntimeError());
+        return "aborted";
       });
 
     const activate = (
@@ -232,6 +251,7 @@ export const makeChannelRuntime = (
         .pipe(Effect.ignore({ log: "Error", message: "Runtime cleanup failed" })),
     );
     return {
+      abort,
       activate,
       compact,
       discardPiSession,

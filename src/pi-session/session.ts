@@ -40,7 +40,7 @@ export class ChannelSessionInitError extends Data.TaggedError("ChannelSessionIni
 }> {}
 
 export class ChannelSessionOperationError extends Data.TaggedError("ChannelSessionOperationError")<{
-  readonly operation: "activate" | "compact";
+  readonly operation: "abort" | "activate" | "compact";
   readonly cause: unknown;
 }> {}
 
@@ -57,6 +57,7 @@ export interface PiChannelSession {
   readonly getActiveSessionName: () => string | undefined;
   readonly getModelInfo: () => PiChannelSessionModelInfo | undefined;
   readonly getSessionStats: () => SessionStats;
+  abort(): Effect.Effect<void, ChannelSessionOperationError>;
   activate(
     input: string,
     replyToMessageId: string,
@@ -206,14 +207,21 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
 
     const isActivating = () => FiberHandle.getUnsafe(activationFiber)._tag === "Some";
 
-    const prepareForClose = () =>
+    const abort = () =>
       Effect.gen(function* () {
-        yield* Effect.tryPromise(() => session.abort()).pipe(
-          Effect.timeout(SHUTDOWN_ABORT_TIMEOUT),
-          Effect.ignore({ log: "Warn", message: "Session abort for shutdown failed" }),
-        );
+        pendingQueue = [];
         session.abortCompaction();
+        yield* Effect.tryPromise({
+          try: () => session.abort(),
+          catch: (cause) => new ChannelSessionOperationError({ operation: "abort", cause }),
+        });
       });
+
+    const prepareForClose = () =>
+      abort().pipe(
+        Effect.timeout(SHUTDOWN_ABORT_TIMEOUT),
+        Effect.ignore({ log: "Warn", message: "Session abort for shutdown failed" }),
+      );
 
     const handleSessionEvent = (event: AgentSessionEvent): void => {
       if (event.type !== "compaction_end") return;
@@ -291,6 +299,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
     yield* Effect.addFinalizer(prepareForClose);
 
     return {
+      abort,
       activate,
       requestCompaction,
       isCompacting: () => session.isCompacting,
