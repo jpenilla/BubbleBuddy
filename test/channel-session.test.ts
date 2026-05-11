@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { Effect, Exit, Scope } from "effect";
+import { describe, expect, it } from "@effect/vitest";
+import { Effect } from "effect";
 
 import {
   makeDiscordOutputPump,
@@ -8,24 +8,12 @@ import {
 
 type SessionEvent = Parameters<DiscordOutputPump["handleSessionEvent"]>[0];
 
-const runPump = async <T>(
-  setup: { output: DiscordOutputPump; close: () => Promise<void> },
-  use: (output: DiscordOutputPump) => Promise<T>,
-): Promise<T> => {
-  try {
-    return await use(setup.output);
-  } finally {
-    await setup.close();
-  }
-};
-
 const embedDescription = (payload: unknown): string => {
   const embed = (payload as { embeds?: Array<{ data?: { description?: string } }> }).embeds?.[0];
   return embed?.data?.description ?? "";
 };
 
-const makeOutput = async (onDiscordOutput: (description: string) => void) => {
-  const scope = await Effect.runPromise(Scope.make());
+const makeOutput = (onDiscordOutput: (description: string) => void) => {
   const channel = {
     sendTyping: async () => undefined,
     send: async (payload: unknown) => {
@@ -37,144 +25,144 @@ const makeOutput = async (onDiscordOutput: (description: string) => void) => {
       };
     },
   };
-  const output = await Effect.runPromise(
-    makeDiscordOutputPump({
-      channel: channel as never,
-      getShowThinking: () => false,
-    }).pipe(Effect.provideService(Scope.Scope, scope)),
-  );
-  return {
-    output,
-    close: async () => {
-      await Effect.runPromise(Scope.close(scope, Exit.void));
-    },
-  };
+  return makeDiscordOutputPump({
+    channel: channel as never,
+    getShowThinking: () => false,
+  });
 };
 
 describe("channel session Discord output ordering", () => {
-  test("processes tool completion statuses between queued Discord mutations", async () => {
-    const observed: string[] = [];
-    const setup = await makeOutput((description) => {
-      if (description.includes("**bash**")) {
-        observed.push(description.includes("⏳") ? "start" : "success");
-      }
-    });
+  it.effect("processes tool completion statuses between queued Discord mutations", () =>
+    Effect.gen(function* () {
+      const observed = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const outputObserved: string[] = [];
+          const output = yield* makeOutput((description) => {
+            if (description.includes("**bash**")) {
+              outputObserved.push(description.includes("⏳") ? "start" : "success");
+            }
+          });
+          const emit = (event: SessionEvent): void => {
+            output.handleSessionEvent(event);
+          };
 
-    await runPump(setup, async (output) => {
-      const emit = (event: SessionEvent): void => {
-        output.handleSessionEvent(event);
-      };
-
-      const toolIds = ["tool-1", "tool-2", "tool-3"];
-      for (const toolCallId of toolIds) {
-        emit({
-          type: "tool_execution_start",
-          toolCallId,
-          toolName: "bash",
-        } as SessionEvent);
-      }
-
-      await Promise.all(
-        toolIds.map((toolCallId) =>
-          (async () => {
-            await Effect.runPromise(
-              output.awaitToolDiscordAction(
-                Effect.sync(() => {
-                  observed.push(`mutate:${toolCallId}`);
-                }),
-              ),
-            );
+          const toolIds = ["tool-1", "tool-2", "tool-3"];
+          for (const toolCallId of toolIds) {
             emit({
-              type: "tool_execution_end",
+              type: "tool_execution_start",
               toolCallId,
               toolName: "bash",
             } as SessionEvent);
-          })(),
-        ),
+          }
+
+          yield* Effect.forEach(
+            toolIds,
+            (toolCallId) =>
+              Effect.gen(function* () {
+                yield* output.awaitToolDiscordAction(
+                  Effect.sync(() => {
+                    outputObserved.push(`mutate:${toolCallId}`);
+                  }),
+                );
+                emit({
+                  type: "tool_execution_end",
+                  toolCallId,
+                  toolName: "bash",
+                } as SessionEvent);
+              }),
+            { concurrency: "unbounded" },
+          );
+
+          return outputObserved;
+        }),
       );
-    });
 
-    expect(observed).toEqual([
-      "start",
-      "start",
-      "start",
-      "mutate:tool-1",
-      "success",
-      "mutate:tool-2",
-      "success",
-      "mutate:tool-3",
-      "success",
-    ]);
-  });
+      expect(observed).toEqual([
+        "start",
+        "start",
+        "start",
+        "mutate:tool-1",
+        "success",
+        "mutate:tool-2",
+        "success",
+        "mutate:tool-3",
+        "success",
+      ]);
+    }),
+  );
 
-  test("dispatches run error output for message_end with error stopReason", async () => {
-    const observed: string[] = [];
-    const setup = await makeOutput((description) => observed.push(description));
+  it.effect.each([
+    {
+      name: "dispatches run error output for message_end with error stopReason",
+      events: [
+        {
+          type: "message_end",
+          message: { role: "assistant", stopReason: "error", errorMessage: "API timeout" },
+        } as SessionEvent,
+      ],
+      expected: ["❌ **Run failed**\nAPI timeout"],
+    },
+    {
+      name: "dispatches run aborted output for message_end with aborted stopReason",
+      events: [
+        {
+          type: "message_end",
+          message: { role: "assistant", stopReason: "aborted" },
+        } as SessionEvent,
+      ],
+      expected: ["🛑 **Run aborted**"],
+    },
+    {
+      name: "dispatches retry status output for auto_retry_start and auto_retry_end",
+      events: [
+        {
+          type: "auto_retry_start",
+          attempt: 1,
+          maxAttempts: 3,
+          delayMs: 1000,
+          errorMessage: "Rate limited",
+        },
+        {
+          type: "auto_retry_end",
+          success: false,
+          attempt: 1,
+          finalError: "Still rate limited",
+        },
+        {
+          type: "auto_retry_start",
+          attempt: 2,
+          maxAttempts: 3,
+          delayMs: 2000,
+          errorMessage: "Rate limited",
+        },
+        {
+          type: "auto_retry_end",
+          success: true,
+          attempt: 2,
+        },
+      ] as ReadonlyArray<SessionEvent>,
+      expected: [
+        "🔄 **Retrying** (attempt 1)",
+        "❌ **Retry failed** — Still rate limited",
+        "🔄 **Retrying** (attempt 2)",
+        "✅ **Retry succeeded**",
+      ],
+    },
+  ])("$name", ({ events, expected }) =>
+    Effect.gen(function* () {
+      const observed = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const outputObserved: string[] = [];
+          const output = yield* makeOutput((description) => outputObserved.push(description));
 
-    await runPump(setup, async (output) => {
-      output.handleSessionEvent({
-        type: "message_end",
-        message: { role: "assistant", stopReason: "error", errorMessage: "API timeout" },
-      } as SessionEvent);
-    });
+          for (const event of events) {
+            output.handleSessionEvent(event);
+          }
 
-    expect(observed).toEqual(["❌ **Run failed**\nAPI timeout"]);
-  });
-
-  test("dispatches run aborted output for message_end with aborted stopReason", async () => {
-    const observed: string[] = [];
-    const setup = await makeOutput((description) => observed.push(description));
-
-    await runPump(setup, async (output) => {
-      output.handleSessionEvent({
-        type: "message_end",
-        message: { role: "assistant", stopReason: "aborted" },
-      } as SessionEvent);
-    });
-
-    expect(observed).toEqual(["🛑 **Run aborted**"]);
-  });
-
-  test("dispatches retry status output for auto_retry_start and auto_retry_end", async () => {
-    const observed: string[] = [];
-    const setup = await makeOutput((description) => observed.push(description));
-
-    await runPump(setup, async (output) => {
-      output.handleSessionEvent({
-        type: "auto_retry_start",
-        attempt: 1,
-        maxAttempts: 3,
-        delayMs: 1000,
-        errorMessage: "Rate limited",
-      } as SessionEvent);
-
-      output.handleSessionEvent({
-        type: "auto_retry_end",
-        success: false,
-        attempt: 1,
-        finalError: "Still rate limited",
-      } as SessionEvent);
-
-      output.handleSessionEvent({
-        type: "auto_retry_start",
-        attempt: 2,
-        maxAttempts: 3,
-        delayMs: 2000,
-        errorMessage: "Rate limited",
-      } as SessionEvent);
-
-      output.handleSessionEvent({
-        type: "auto_retry_end",
-        success: true,
-        attempt: 2,
-      } as SessionEvent);
-    });
-
-    expect(observed).toEqual([
-      "🔄 **Retrying** (attempt 1)",
-      "❌ **Retry failed** — Still rate limited",
-      "🔄 **Retrying** (attempt 2)",
-      "✅ **Retry succeeded**",
-    ]);
-  });
+          return outputObserved;
+        }),
+      );
+      expect(observed).toEqual(expected);
+    }),
+  );
 });

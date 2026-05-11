@@ -24,17 +24,20 @@ describe("channel workspace resource loader", () => {
     await rm(tempDir, { force: true, recursive: true });
   });
 
-  test("loads only the channel workspace AGENTS.md", async () => {
-    await writeFile(join(tempDir, "AGENTS.md"), "outer instructions\n", "utf8");
-    await writeFile(join(workspaceDir, "AGENTS.md"), "inner\r\nworkspace\r\n", "utf8");
-
-    const loader = createChannelWorkspaceResourceLoader({
+  const makeLoader = (enableAgenticWorkspace: boolean) =>
+    createChannelWorkspaceResourceLoader({
       agentDir,
-      enableAgenticWorkspace: true,
+      enableAgenticWorkspace,
       extensionFactories: [],
       settingsManager: SettingsManager.create(workspaceDir, agentDir),
       workspaceDir,
     });
+
+  test("loads only the channel workspace AGENTS.md", async () => {
+    await writeFile(join(tempDir, "AGENTS.md"), "outer instructions\n", "utf8");
+    await writeFile(join(workspaceDir, "AGENTS.md"), "inner\r\nworkspace\r\n", "utf8");
+
+    const loader = makeLoader(true);
     await loader.reload();
 
     expect(loader.getAgentsFiles().agentsFiles).toEqual([
@@ -59,13 +62,7 @@ describe("channel workspace resource loader", () => {
       "utf8",
     );
 
-    const loader = createChannelWorkspaceResourceLoader({
-      agentDir,
-      enableAgenticWorkspace: true,
-      extensionFactories: [],
-      settingsManager: SettingsManager.create(workspaceDir, agentDir),
-      workspaceDir,
-    });
+    const loader = makeLoader(true);
     await loader.reload();
 
     expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["workspace-skill"]);
@@ -74,13 +71,7 @@ describe("channel workspace resource loader", () => {
   test("omits workspace context when agentic workspace is off", async () => {
     await writeFile(join(workspaceDir, "AGENTS.md"), "workspace instructions\n", "utf8");
 
-    const loader = createChannelWorkspaceResourceLoader({
-      agentDir,
-      enableAgenticWorkspace: false,
-      extensionFactories: [],
-      settingsManager: SettingsManager.create(workspaceDir, agentDir),
-      workspaceDir,
-    });
+    const loader = makeLoader(false);
     await loader.reload();
 
     expect(loader.getAgentsFiles().agentsFiles).toEqual([]);

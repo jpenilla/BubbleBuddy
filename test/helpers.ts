@@ -1,4 +1,4 @@
-import { Redacted, Layer } from "effect";
+import { Layer, Redacted } from "effect";
 import { EnvConfig, type EnvConfigShape } from "../src/config/env.ts";
 import { type FileConfigShape } from "../src/config/file.ts";
 

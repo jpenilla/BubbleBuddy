@@ -21,7 +21,7 @@
     "check": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test",
     "dev": "node --env-file-if-exists=.env --watch src/index.ts",
     "start": "node --env-file-if-exists=.env src/index.ts",
-    "test": "vitest run ./test/",
+    "test": "vitest run",
     "lint": "oxlint src test",
     "lint:fix": "oxlint src test --fix",
     "fmt": "oxfmt src test",

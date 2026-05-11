@@ -1,9 +1,7 @@
-import { describe, expect, it } from "@effect/vitest";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Layer } from "effect";
+import { Effect, FileSystem, Layer } from "effect";
+import { TestClock } from "effect/testing";
 
 import { ChannelStateRepository } from "../src/channels/state-repository.ts";
 import { PiChannelSessionFactory } from "../src/pi-session/session-factory.ts";
@@ -35,72 +33,58 @@ const testLayer = (config: FileConfigShape, appHome: string) =>
     Layer.provideMerge(NodeServices.layer),
   );
 
-describe("channel runtimes", () => {
-  it("evicts and recreates idle channel entries after the idle timeout", async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
+it.layer(NodeServices.layer)("channel runtimes", (it) => {
+  it.effect("evicts and recreates idle channel entries after the idle timeout", () => {
     const config = makeTestFileConfig();
+    return Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const appHome = yield* fs.makeTempDirectoryScoped({ prefix: "bb-channel-runtimes-" });
 
-    try {
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          const manager = yield* ChannelRuntimes;
+      yield* Effect.gen(function* () {
+        const manager = yield* ChannelRuntimes;
 
-          // Acquire in a closed scope → refCount drops to 0 → idle timer starts.
-          const runtime1 = yield* Effect.scoped(manager.get("ch-1"));
-          yield* runtime1.toggleShowThinking();
+        const runtime1 = yield* Effect.scoped(manager.get("ch-1"));
+        yield* runtime1.toggleShowThinking();
 
-          // Wait past the idle timeout so the entry is evicted.
-          yield* Effect.sleep(config.channelIdleTimeoutMs + 50);
+        yield* TestClock.adjust(config.channelIdleTimeoutMs + 1);
 
-          // Should be a different runtime — the original was evicted and recreated.
-          const runtime2 = yield* Effect.scoped(manager.get("ch-1"));
-          expect(runtime2).not.toBe(runtime1);
-        }).pipe(Effect.scoped, Effect.provide(testLayer(config, tmpDir))),
-      );
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
+        const runtime2 = yield* Effect.scoped(manager.get("ch-1"));
+        expect(runtime2).not.toBe(runtime1);
+      }).pipe(Effect.scoped, Effect.provide(testLayer(config, appHome)));
+    });
   });
 
-  it("keeps channel entry when re-acquired within the idle timeout", async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
-    // Use a longer idle timeout so the re-acquire lands before eviction.
+  it.effect("keeps channel entry when re-acquired within the idle timeout", () => {
     const config = makeTestFileConfig({ channelIdleTimeoutMs: 5000 });
+    return Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const appHome = yield* fs.makeTempDirectoryScoped({ prefix: "bb-channel-runtimes-" });
 
-    try {
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          const manager = yield* ChannelRuntimes;
+      yield* Effect.gen(function* () {
+        const manager = yield* ChannelRuntimes;
 
-          const runtime1 = yield* Effect.scoped(manager.get("ch-2"));
+        const runtime1 = yield* Effect.scoped(manager.get("ch-2"));
 
-          // Re-acquire well before the 5s idle timeout — should be the same runtime.
-          yield* Effect.sleep(10);
-          const runtime2 = yield* Effect.scoped(manager.get("ch-2"));
-          expect(runtime2).toBe(runtime1);
-        }).pipe(Effect.scoped, Effect.provide(testLayer(config, tmpDir))),
-      );
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
+        yield* TestClock.adjust(10);
+        const runtime2 = yield* Effect.scoped(manager.get("ch-2"));
+        expect(runtime2).toBe(runtime1);
+      }).pipe(Effect.scoped, Effect.provide(testLayer(config, appHome)));
+    });
   });
 
-  it("toggleShowThinking persists showThinking", async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
+  it.effect("toggleShowThinking persists showThinking", () => {
     const config = makeTestFileConfig();
+    return Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const appHome = yield* fs.makeTempDirectoryScoped({ prefix: "bb-channel-runtimes-" });
 
-    try {
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          const manager = yield* ChannelRuntimes;
-          const runtime = yield* manager.get("ch-3");
-          const newValue = yield* runtime.toggleShowThinking();
+      yield* Effect.gen(function* () {
+        const manager = yield* ChannelRuntimes;
+        const runtime = yield* manager.get("ch-3");
+        const newValue = yield* runtime.toggleShowThinking();
 
-          expect(newValue).toBe(true);
-        }).pipe(Effect.scoped, Effect.provide(testLayer(config, tmpDir))),
-      );
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
+        expect(newValue).toBe(true);
+      }).pipe(Effect.scoped, Effect.provide(testLayer(config, appHome)));
+    });
   });
 });

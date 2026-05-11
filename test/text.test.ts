@@ -76,24 +76,20 @@ describe("status formatting", () => {
 });
 
 describe("message splitting", () => {
-  test("prefers natural boundaries", () => {
-    const chunks = splitDiscordMessage(
-      "First paragraph.\n\nSecond paragraph.\nThird paragraph.",
-      30,
-    );
-
-    expect(chunks).toEqual(["First paragraph.\n\n", "Second paragraph.\n", "Third paragraph."]);
-  });
-
-  test("reopens code fences across chunks", () => {
-    const chunks = splitDiscordMessage(
-      "```ts\nconsole.log('hello');\nconsole.log('world');\n```",
-      32,
-    );
-
-    expect(chunks).toEqual([
-      "```ts\nconsole.log('hello');\n\n```",
-      "```ts\nconsole.log('world');\n```",
-    ]);
+  test.each([
+    {
+      name: "prefers natural boundaries",
+      input: "First paragraph.\n\nSecond paragraph.\nThird paragraph.",
+      limit: 30,
+      expected: ["First paragraph.\n\n", "Second paragraph.\n", "Third paragraph."],
+    },
+    {
+      name: "reopens code fences across chunks",
+      input: "```ts\nconsole.log('hello');\nconsole.log('world');\n```",
+      limit: 32,
+      expected: ["```ts\nconsole.log('hello');\n\n```", "```ts\nconsole.log('world');\n```"],
+    },
+  ])("$name", ({ input, limit, expected }) => {
+    expect(splitDiscordMessage(input, limit)).toEqual(expected);
   });
 });

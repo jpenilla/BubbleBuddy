@@ -1,11 +1,11 @@
-import { afterEach, describe, expect, test } from "vitest";
-import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { it } from "@effect/vitest";
+import { describe, expect, test } from "vitest";
+import { open } from "node:fs/promises";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { Message } from "discord.js";
-import { Effect } from "effect";
+import { Effect, FileSystem, Path } from "effect";
 
 import { createDiscordTools } from "../src/discord/tools.ts";
 
@@ -74,6 +74,14 @@ const findFetchTool = (tools: readonly DiscordTool[]): DiscordTool => {
   return tool;
 };
 
+const makeFetchTool = (originMessage: Message<true>): DiscordTool =>
+  findFetchTool(
+    createDiscordTools(originMessage, passthroughDiscordAction, {
+      enableAgenticWorkspace: false,
+      workspaceDir: "/tmp",
+    }),
+  );
+
 const executeFetchTool = async (
   tool: DiscordTool,
   params: { messageId: string },
@@ -94,6 +102,18 @@ const findUploadTool = (tools: readonly DiscordTool[]): DiscordTool => {
   }
   return tool;
 };
+
+const makeUploadTool = (
+  originMessage: Message<true>,
+  workspaceDir: string,
+  runDiscordAction = passthroughDiscordAction,
+): DiscordTool =>
+  findUploadTool(
+    createDiscordTools(originMessage, runDiscordAction, {
+      enableAgenticWorkspace: true,
+      workspaceDir,
+    }),
+  );
 
 const executeUploadTool = async (
   tool: DiscordTool,
@@ -125,97 +145,87 @@ const createSparseFile = async (path: string, size: number): Promise<void> => {
   }
 };
 
-const tempWorkspaces: string[] = [];
-
-const makeWorkspace = async (): Promise<string> => {
-  const dir = await mkdtemp(join(tmpdir(), "bubblebuddy-upload-"));
-  tempWorkspaces.push(dir);
-  return dir;
-};
-
-afterEach(async () => {
-  await Promise.all(
-    tempWorkspaces.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
-  );
+const makeWorkspace = Effect.fn("discord-tools.test.makeWorkspace")(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  return yield* fs.makeTempDirectoryScoped({ prefix: "bubblebuddy-upload-" });
 });
 
-describe("discord upload tool", () => {
-  test("is only registered when agentic workspace is enabled", () => {
-    const originMessage = makeOriginMessage(0);
+it.layer(NodeServices.layer)("discord upload tool", (it) => {
+  it.effect("is only registered when agentic workspace is enabled", () =>
+    Effect.sync(() => {
+      const originMessage = makeOriginMessage(0);
 
-    const enabled = createDiscordTools(originMessage, passthroughDiscordAction, {
-      enableAgenticWorkspace: true,
-      workspaceDir: "/tmp",
-    });
-    const disabled = createDiscordTools(originMessage, passthroughDiscordAction, {
-      enableAgenticWorkspace: false,
-      workspaceDir: "/tmp",
-    });
-
-    expect(enabled.some((tool) => tool.name === UPLOAD_FILE_TOOL)).toBe(true);
-    expect(disabled.some((tool) => tool.name === UPLOAD_FILE_TOOL)).toBe(false);
-  });
-
-  test("rejects paths outside workspace", async () => {
-    const originMessage = makeOriginMessage(0);
-    const workspaceDir = await makeWorkspace();
-
-    const tool = findUploadTool(
-      createDiscordTools(originMessage, passthroughDiscordAction, {
+      const enabled = createDiscordTools(originMessage, passthroughDiscordAction, {
         enableAgenticWorkspace: true,
-        workspaceDir,
-      }),
-    );
+        workspaceDir: "/tmp",
+      });
+      const disabled = createDiscordTools(originMessage, passthroughDiscordAction, {
+        enableAgenticWorkspace: false,
+        workspaceDir: "/tmp",
+      });
 
-    const result = await executeUploadTool(tool, { path: "/etc/passwd" });
+      expect(enabled.some((tool) => tool.name === UPLOAD_FILE_TOOL)).toBe(true);
+      expect(disabled.some((tool) => tool.name === UPLOAD_FILE_TOOL)).toBe(false);
+    }),
+  );
 
-    expect(result.isError).toBe(true);
-    expect(result.content[0]?.type).toBe("text");
-    expect(result.content[0]?.text).toContain("Absolute paths outside /workspace are not allowed.");
-  });
+  it.effect("rejects paths outside workspace", () =>
+    Effect.gen(function* () {
+      const workspaceDir = yield* makeWorkspace();
+      const result = yield* Effect.promise(() =>
+        executeUploadTool(makeUploadTool(makeOriginMessage(0), workspaceDir), {
+          path: "/etc/passwd",
+        }),
+      );
 
-  test("uploads a file from workspace", async () => {
-    let runDiscordActionCalls = 0;
-    let sentName: string | null | undefined;
-    let sentAttachment: unknown;
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.type).toBe("text");
+      expect(result.content[0]?.text).toContain(
+        "Absolute paths outside /workspace are not allowed.",
+      );
+    }),
+  );
 
-    const workspaceDir = await makeWorkspace();
-    const filePath = join(workspaceDir, "report.txt");
-    await writeFile(filePath, "hello world");
+  it.effect("uploads a file from workspace", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      let runDiscordActionCalls = 0;
+      let sentName: string | null | undefined;
+      let sentAttachment: unknown;
 
-    const originMessage = makeOriginMessage(0, async (payload) => {
-      const message = payload as { files: Array<{ attachment: string; name: string }> };
-      sentName = message.files[0]?.name;
-      sentAttachment = message.files[0]?.attachment;
-      return undefined;
-    });
+      const workspaceDir = yield* makeWorkspace();
+      const filePath = path.join(workspaceDir, "report.txt");
+      yield* fs.writeFileString(filePath, "hello world");
 
-    const tool = findUploadTool(
-      createDiscordTools(
-        originMessage,
-        (operation) =>
-          Effect.gen(function* () {
-            runDiscordActionCalls++;
-            return yield* operation;
-          }),
-        {
-          enableAgenticWorkspace: true,
-          workspaceDir,
-        },
-      ),
-    );
+      const originMessage = makeOriginMessage(0, async (payload) => {
+        const message = payload as { files: Array<{ attachment: string; name: string }> };
+        sentName = message.files[0]?.name;
+        sentAttachment = message.files[0]?.attachment;
+        return undefined;
+      });
 
-    const result = await executeUploadTool(tool, { path: "/workspace/report.txt" });
+      const tool = makeUploadTool(originMessage, workspaceDir, (operation) =>
+        Effect.gen(function* () {
+          runDiscordActionCalls++;
+          return yield* operation;
+        }),
+      );
 
-    expect(runDiscordActionCalls).toBe(1);
-    expect(sentName).toBe("report.txt");
-    expect(sentAttachment).toBe(filePath);
-    expect(result.isError).toBeUndefined();
-    expect(result.content[0]?.type).toBe("text");
-    expect(result.content[0]?.text).toContain(
-      `Uploaded file report.txt from /workspace/report.txt (${Buffer.byteLength("hello world")} bytes).`,
-    );
-  });
+      const result = yield* Effect.promise(() =>
+        executeUploadTool(tool, { path: "/workspace/report.txt" }),
+      );
+
+      expect(runDiscordActionCalls).toBe(1);
+      expect(sentName).toBe("report.txt");
+      expect(sentAttachment).toBe(filePath);
+      expect(result.isError).toBeUndefined();
+      expect(result.content[0]?.type).toBe("text");
+      expect(result.content[0]?.text).toContain(
+        `Uploaded file report.txt from /workspace/report.txt (${Buffer.byteLength("hello world")} bytes).`,
+      );
+    }),
+  );
 
   for (const testCase of [
     {
@@ -237,67 +247,62 @@ describe("discord upload tool", () => {
       expectedLimit: 100 * 1000 * 1000,
     },
   ]) {
-    test(testCase.name, async () => {
-      const workspaceDir = await makeWorkspace();
-      const filePath = join(workspaceDir, "big.bin");
-      await createSparseFile(filePath, testCase.size);
+    it.effect(testCase.name, () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const workspaceDir = yield* makeWorkspace();
+        const filePath = path.join(workspaceDir, "big.bin");
+        yield* Effect.promise(() => createSparseFile(filePath, testCase.size));
 
-      const tool = findUploadTool(
-        createDiscordTools(makeOriginMessage(testCase.premiumTier), passthroughDiscordAction, {
-          enableAgenticWorkspace: true,
-          workspaceDir,
-        }),
-      );
+        const result = yield* Effect.promise(() =>
+          executeUploadTool(makeUploadTool(makeOriginMessage(testCase.premiumTier), workspaceDir), {
+            path: "/workspace/big.bin",
+          }),
+        );
 
-      const result = await executeUploadTool(tool, { path: "/workspace/big.bin" });
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0]?.type).toBe("text");
-      expect(result.content[0]?.text).toContain(
-        `exceeds this server's upload limit of ${testCase.expectedLimit} bytes`,
-      );
-    });
+        expect(result.isError).toBe(true);
+        expect(result.content[0]?.type).toBe("text");
+        expect(result.content[0]?.text).toContain(
+          `exceeds this server's upload limit of ${testCase.expectedLimit} bytes`,
+        );
+      }),
+    );
   }
 
-  test("allows files within tier 2 limit", async () => {
-    let sent = false;
-    const workspaceDir = await makeWorkspace();
-    const filePath = join(workspaceDir, "big.bin");
-    await createSparseFile(filePath, 49 * 1000 * 1000);
+  it.effect("allows files within tier 2 limit", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      let sent = false;
+      const workspaceDir = yield* makeWorkspace();
+      const filePath = path.join(workspaceDir, "big.bin");
+      yield* Effect.promise(() => createSparseFile(filePath, 49 * 1000 * 1000));
 
-    const tool = findUploadTool(
-      createDiscordTools(
-        makeOriginMessage(2, async () => {
-          sent = true;
-          return undefined;
-        }),
-        passthroughDiscordAction,
-        {
-          enableAgenticWorkspace: true,
-          workspaceDir,
-        },
-      ),
-    );
+      const result = yield* Effect.promise(() =>
+        executeUploadTool(
+          makeUploadTool(
+            makeOriginMessage(2, async () => {
+              sent = true;
+              return undefined;
+            }),
+            workspaceDir,
+          ),
+          { path: "/workspace/big.bin" },
+        ),
+      );
 
-    const result = await executeUploadTool(tool, { path: "/workspace/big.bin" });
-
-    expect(result.isError).toBeUndefined();
-    expect(sent).toBe(true);
-  });
+      expect(result.isError).toBeUndefined();
+      expect(sent).toBe(true);
+    }),
+  );
 });
 
 describe("discord fetch message tool", () => {
   test("throws when channel does not support fetching", async () => {
     const originMessage = makeOriginMessage(0);
-    const tools = createDiscordTools(originMessage, passthroughDiscordAction, {
-      enableAgenticWorkspace: false,
-      workspaceDir: "/tmp",
-    });
-    const tool = findFetchTool(tools);
 
-    await expect(executeFetchTool(tool, { messageId: "123" })).rejects.toThrow(
-      "This Discord channel does not support fetching messages.",
-    );
+    await expect(
+      executeFetchTool(makeFetchTool(originMessage), { messageId: "123" }),
+    ).rejects.toThrow("This Discord channel does not support fetching messages.");
   });
 
   test("throws when message is not found", async () => {
@@ -306,60 +311,40 @@ describe("discord fetch message tool", () => {
     const originMessage = makeOriginMessageWithFetch(async () => {
       throw notFoundError;
     });
-    const tools = createDiscordTools(originMessage, passthroughDiscordAction, {
-      enableAgenticWorkspace: false,
-      workspaceDir: "/tmp",
-    });
-    const tool = findFetchTool(tools);
 
-    await expect(executeFetchTool(tool, { messageId: "123" })).rejects.toBe(notFoundError);
-  });
-
-  test("returns formatted message content", async () => {
-    const fetchedMessage = makeFetchedMessage({
-      id: "456",
-      authorUsername: "alice",
-      authorId: "789",
-      content: "Hello world",
-      channelId: "channel-1",
-    });
-
-    const originMessage = makeOriginMessageWithFetch(async () => fetchedMessage);
-    const tools = createDiscordTools(originMessage, passthroughDiscordAction, {
-      enableAgenticWorkspace: false,
-      workspaceDir: "/tmp",
-    });
-    const tool = findFetchTool(tools);
-
-    const result = await executeFetchTool(tool, { messageId: "456" });
-
-    expect(result.isError).toBeUndefined();
-    expect(result.content[0]?.text).toBe("[msg 456 user=alice mention=<@789>] Hello world");
-  });
-
-  test("includes reply reference when present", async () => {
-    const fetchedMessage = makeFetchedMessage({
-      id: "456",
-      authorUsername: "alice",
-      authorId: "789",
-      content: "Hello world",
-      channelId: "channel-1",
-      reference: { messageId: "111", channelId: "channel-1" },
-    });
-
-    const originMessage = makeOriginMessageWithFetch(async () => fetchedMessage);
-    const tools = createDiscordTools(originMessage, passthroughDiscordAction, {
-      enableAgenticWorkspace: false,
-      workspaceDir: "/tmp",
-    });
-    const tool = findFetchTool(tools);
-
-    const result = await executeFetchTool(tool, { messageId: "456" });
-
-    expect(result.isError).toBeUndefined();
-    expect(result.content[0]?.text).toBe(
-      "[msg 456 user=alice mention=<@789> reply_to=111] Hello world",
+    await expect(executeFetchTool(makeFetchTool(originMessage), { messageId: "123" })).rejects.toBe(
+      notFoundError,
     );
+  });
+
+  test.each([
+    {
+      name: "returns formatted message content",
+      reference: undefined,
+      expected: "[msg 456 user=alice mention=<@789>] Hello world",
+    },
+    {
+      name: "includes reply reference when present",
+      reference: { messageId: "111", channelId: "channel-1" },
+      expected: "[msg 456 user=alice mention=<@789> reply_to=111] Hello world",
+    },
+  ])("$name", async ({ reference, expected }) => {
+    const tool = makeFetchTool(
+      makeOriginMessageWithFetch(async () =>
+        makeFetchedMessage({
+          id: "456",
+          authorUsername: "alice",
+          authorId: "789",
+          content: "Hello world",
+          channelId: "channel-1",
+          reference,
+        }),
+      ),
+    );
+    const result = await executeFetchTool(tool, { messageId: "456" });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0]?.text).toBe(expected);
   });
 });
 
@@ -382,6 +367,14 @@ describe("discord react tool", () => {
       },
     }) as unknown as Message<true>;
 
+  const makeReactTool = (
+    fetch: (id: string) => Promise<{ id: string; react: (emoji: string) => Promise<void> }>,
+  ) =>
+    createDiscordTools(makeOriginMessageForReact(fetch), passthroughDiscordAction, {
+      enableAgenticWorkspace: false,
+      workspaceDir: "/tmp",
+    }).find((t) => t.name === REACT_TOOL)!;
+
   test("adds multiple reactions", async () => {
     const reacted: string[] = [];
     const msg = {
@@ -390,14 +383,7 @@ describe("discord react tool", () => {
         reacted.push(e);
       },
     };
-    const tool = createDiscordTools(
-      makeOriginMessageForReact(async () => msg),
-      passthroughDiscordAction,
-      {
-        enableAgenticWorkspace: false,
-        workspaceDir: "/tmp",
-      },
-    ).find((t) => t.name === REACT_TOOL)!;
+    const tool = makeReactTool(async () => msg);
 
     const result = (await tool.execute(
       "tool-call",
@@ -422,14 +408,7 @@ describe("discord react tool", () => {
         reacted.push(e);
       },
     };
-    const tool = createDiscordTools(
-      makeOriginMessageForReact(async () => msg),
-      passthroughDiscordAction,
-      {
-        enableAgenticWorkspace: false,
-        workspaceDir: "/tmp",
-      },
-    ).find((t) => t.name === REACT_TOOL)!;
+    const tool = makeReactTool(async () => msg);
 
     let error: unknown;
     try {
