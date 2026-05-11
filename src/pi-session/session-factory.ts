@@ -5,7 +5,8 @@ import type { GuildTextBasedChannel } from "discord.js";
 import { Context, Data, Effect, FileSystem, Layer, Scope } from "effect";
 
 import { ChannelStateRepository } from "../channels/state-repository.ts";
-import { AppConfig } from "../config.ts";
+import { AppHome } from "../config/env.ts";
+import { FileConfig } from "../config/file.ts";
 import { LoadedResources } from "../resources.ts";
 import type { SessionKeepAliveFactory } from "../channels/keep-alive.ts";
 import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
@@ -29,14 +30,14 @@ export interface PiChannelSessionFactoryCreateInput {
 
 const makeFactory = () =>
   Effect.gen(function* () {
-    const config = yield* AppConfig;
+    const config = yield* FileConfig;
+    const appHome = yield* AppHome;
     const stateRepository = yield* ChannelStateRepository;
     const fs = yield* FileSystem.FileSystem;
     const resources = yield* LoadedResources;
     const piContext = yield* PiContext;
 
-    const channelStorageDirectory = (channelId: string) =>
-      join(config.storageDirectory, "channel", channelId);
+    const channelStorageDirectory = (channelId: string) => join(appHome, "channel", channelId);
     const workspaceDir = (channelId: string) =>
       join(channelStorageDirectory(channelId), "workspace");
     const sessionsDir = (channelId: string) => join(channelStorageDirectory(channelId), "sessions");
@@ -121,7 +122,7 @@ const makeFactory = () =>
 
           return pi;
         }).pipe(
-          Effect.provideService(AppConfig, config),
+          Effect.provideService(FileConfig, config),
           Effect.provideService(LoadedResources, resources),
           Effect.provideService(PiContext, piContext),
         ),

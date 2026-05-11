@@ -2,7 +2,8 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Layer } from "effect";
 
-import { AppConfig } from "./config.ts";
+import { AppHome, EnvConfig } from "./config/env.ts";
+import { FileConfig } from "./config/file.ts";
 import { ActivationLive } from "./discord/activation.ts";
 import { DatabaseLive } from "./database.ts";
 import { Discord } from "./discord/client.ts";
@@ -20,8 +21,10 @@ const AppLayer = Layer.mergeAll(ActivationLive, SlashCommandsLive).pipe(
   Layer.provideMerge(ChannelStateRepository.layer),
   Layer.provideMerge(DatabaseLive),
   Layer.provideMerge(PiContext.layer),
-  Layer.provideMerge(AppConfig.layer),
   Layer.provideMerge(Discord.layer),
+  Layer.provideMerge(FileConfig.layer),
+  Layer.provideMerge(AppHome.layer),
+  Layer.provideMerge(EnvConfig.layer),
   Layer.provideMerge(NodeServices.layer),
 );
 

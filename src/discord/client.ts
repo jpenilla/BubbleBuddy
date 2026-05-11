@@ -1,15 +1,7 @@
 import { Client, Events, GatewayIntentBits, type ClientEvents } from "discord.js";
-import {
-  Config,
-  Context,
-  Deferred,
-  Effect,
-  FiberSet,
-  Layer,
-  Redacted,
-  Schema,
-  Scope,
-} from "effect";
+import { Context, Deferred, Effect, FiberSet, Layer, Redacted, Schema, Scope } from "effect";
+
+import { EnvConfig } from "../config/env.ts";
 
 export class DiscordLoginError extends Schema.TaggedErrorClass<DiscordLoginError>()(
   "DiscordLoginError",
@@ -59,7 +51,7 @@ export class Discord extends Context.Service<
   static readonly layer = Layer.effect(
     Discord,
     Effect.gen(function* () {
-      const token = yield* Config.redacted("DISCORD_TOKEN");
+      const env = yield* EnvConfig;
       const client = yield* Effect.acquireRelease(
         Effect.sync(() => new Client({ intents: INTENTS })),
         (client) =>
@@ -101,7 +93,7 @@ export class Discord extends Context.Service<
       yield* events.forkOn(Events.Warn, (warn) => Effect.logWarning(warn));
       // yield* events.forkOn(Events.Debug, (debug) => Effect.logDebug(debug));
 
-      const readyClient = yield* loginClient(client, events, token);
+      const readyClient = yield* loginClient(client, events, env.discordToken);
 
       return Discord.of({
         client: readyClient,

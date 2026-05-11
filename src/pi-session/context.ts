@@ -2,7 +2,7 @@ import { AuthStorage, getAgentDir, ModelRegistry } from "@earendil-works/pi-codi
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { Context, Effect, Layer } from "effect";
 
-import { AppConfig } from "../config.ts";
+import { FileConfig } from "../config/file.ts";
 
 export class PiContext extends Context.Service<
   PiContext,
@@ -16,7 +16,7 @@ export class PiContext extends Context.Service<
   static readonly layer = Layer.effect(
     PiContext,
     Effect.gen(function* () {
-      const config = yield* AppConfig;
+      const config = yield* FileConfig;
       const authStorage = AuthStorage.create();
       const modelRegistry = ModelRegistry.create(authStorage);
       const model = modelRegistry.find(config.modelProvider, config.modelId);

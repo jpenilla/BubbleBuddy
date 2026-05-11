@@ -4,7 +4,6 @@ import { Deferred, Effect, HashMap, MutableRef, Option, Ref, Scope } from "effec
 
 import { makeTypingIndicator } from "../discord/typing-indicator.ts";
 
-import type { AppConfigShape } from "../config.ts";
 import {
   createCompactionStatusEmbed,
   type CompactionStatusEmbed,
@@ -33,7 +32,6 @@ export interface DiscordOutputPump {
 
 interface DiscordOutputPumpOptions {
   readonly channel: GuildTextBasedChannel;
-  readonly config: AppConfigShape;
   readonly getShowThinking: () => boolean;
 }
 
@@ -69,13 +67,9 @@ export const makeDiscordOutputPump = (
       ),
     );
     const channel = options.channel;
-    const config = options.config;
     const getShowThinking = options.getShowThinking;
     const ctx = yield* Effect.context();
-    const typingIndicator = yield* makeTypingIndicator({
-      channel,
-      intervalMs: config.typingIndicatorIntervalMs,
-    });
+    const typingIndicator = yield* makeTypingIndicator({ channel });
 
     const latestTriggerMessageId = MutableRef.make("");
     const currentTurnReplyTo = yield* Ref.make("");

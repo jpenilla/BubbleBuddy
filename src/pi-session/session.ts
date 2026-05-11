@@ -14,7 +14,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import { createDiscordTools } from "../discord/tools.ts";
 import { connectMcpServers } from "../mcp/adapter.ts";
-import { AppConfig } from "../config.ts";
+import { FileConfig } from "../config/file.ts";
 import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
 import { LoadedResources } from "../resources.ts";
 import type { SessionKeepAliveFactory } from "../channels/keep-alive.ts";
@@ -74,7 +74,7 @@ export const createPiChannelSession = (
 ): Effect.Effect<
   ScopedPiChannelSession,
   ChannelSessionInitError,
-  AppConfig | LoadedResources | PiContext
+  FileConfig | LoadedResources | PiContext
 > =>
   Effect.gen(function* () {
     const scope = yield* Scope.make("sequential");
@@ -90,7 +90,7 @@ export const createPiChannelSession = (
 
 const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
   Effect.gen(function* () {
-    const config = yield* AppConfig;
+    const config = yield* FileConfig;
     const resources = yield* LoadedResources;
     const piContext = yield* PiContext;
     const settingsManager = SettingsManager.inMemory({
@@ -142,7 +142,6 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
 
     const output = yield* makeDiscordOutputPump({
       channel: options.channel,
-      config,
       getShowThinking: options.getShowThinking,
     });
 

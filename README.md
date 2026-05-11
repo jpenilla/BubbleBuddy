@@ -10,24 +10,24 @@
 
 BubbleBuddy is a fun Discord companion that lives in your servers. It gives Discord communities a shared AI buddy that remembers each channel's conversation separately. It is powered by [Pi](https://github.com/earendil-works/pi), built with [Effect](https://effect.website/) v4, and can optionally use agentic coding abilities through a [Gondolin](https://github.com/earendil-works/gondolin) Virtual Machine.
 
-## What BubbleBuddy does
+## Features
 
-BubbleBuddy gives each Discord channel its own Pi-backed assistant session. Mention the bot, or ping-reply to one of its messages, and it continues the conversation for that channel. If the channel needs a clean slate, run `/new` to discard the current session and start fresh on the next interaction.
-
-The bot profile is configurable, with `profiles/friendly.md` included as the default starting point. Model selection lives in `bubblebuddy.json` and uses Pi's built-in model/provider names, with provider authentication coming from your system Pi configuration. Optional MCP servers and Gondolin workspace support can also be configured there.
-
-The runtime is structured as an Effect v4 application, with `discord.js` handling the Discord API integration and a small custom adapter bridging the Pi SDK into Effect.
+- Channel-scoped Pi-backed assistant sessions. Use any model or provider supported by Pi.
+- Mention-based and ping-reply interaction support.
+- [Slash commands](#slash-command-reference) for managing channel sessions.
+- [MCP server support](#mcp-server-definitions).
+- Sandboxed agentic workspace. When enabled, the assistant can use tools to interact with a Gondolin VM, giving it access to project files and coding capabilities without exposing host credentials or environment variables.
 
 ## Setup
 
 ### Requirements
 
 - Node.js `>=25.9.0`
-- pnpm `10.33.0`
-- A Discord application + bot token
+- pnpm `>=10.33.0`
+- A Discord account
 - Access to whichever Pi model provider you configure
 
-### Discord application
+### Discord bot setup
 
 Create a Discord application and bot in the Discord Developer Portal.
 
@@ -54,7 +54,6 @@ BubbleBuddy is intended to be run from source for now.
 ```sh
 pnpm install
 cp .env.example .env
-cp bubblebuddy.json.example bubblebuddy.json
 ```
 
 Edit `.env` and set:
@@ -63,11 +62,54 @@ Edit `.env` and set:
 DISCORD_TOKEN=your-discord-bot-token
 ```
 
-Edit `bubblebuddy.json` for your Pi model/profile settings. The example file is the best starting point; it shows model selection, the included friendly profile, storage location, thinking level, and optional MCP server configuration. Some example MCP servers work without API keys.
+## Configuration
 
-Review `enableAgenticWorkspace` before running. When enabled, BubbleBuddy starts a Gondolin-backed workspace for channel sessions and exposes additional agentic capabilities.
+### App home directory
 
-## Running
+Configuration and state, including the database, sessions, and workspaces, is stored under the directory set by the `BUBBLEBUDDY_HOME` environment variable.
+
+If `BUBBLEBUDDY_HOME` is unset, BubbleBuddy uses the platform-standard application data path:
+
+- Linux: `~/.local/share/bubblebuddy`
+- macOS: `~/Library/Application Support/BubbleBuddy`
+- Windows: `%APPDATA%/BubbleBuddy`
+
+### First-run configuration
+
+The `$BUBBLEBUDDY_HOME/bubblebuddy.json` configuration file will be generated on the first run. Edit the file with your Pi `modelProvider` and `modelId` to get started. Provider authentication comes from your system Pi configuration.
+
+### `bubblebuddy.json` reference
+
+| Key | Description | Default |
+| --- | --- | --- |
+| `botProfileFile` | Bot profile to load. Use `"default"` for the bundled friendly profile, an absolute path, or a path relative to `BUBBLEBUDDY_HOME`. | `"default"` |
+| `modelProvider` | Pi model provider to use. Must be changed. | `"YOUR_PROVIDER"` |
+| `modelId` | Pi model ID to use. Must be changed. | `"YOUR_MODEL"` |
+| `enableAgenticWorkspace` | Enables the Gondolin-backed workspace and additional agentic capabilities. | `true` |
+| `thinkingLevel` | Thinking level passed to Pi. Valid values are `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, and `"xhigh"`. Some models only accept a subset or do not support thinking. | `"minimal"` |
+| `channelIdleTimeoutMs` | How long idle channel sessions stay loaded before eviction. | `1800000` (30 minutes) |
+| `mcpServers` | MCP server definitions made available to Pi sessions. | `{}` |
+
+### MCP server definitions
+
+`mcpServers` is an object keyed by server name. Each value is either an HTTP/SSE server definition or a local command server definition.
+
+HTTP/SSE server definition:
+
+| Key | Description | Required |
+| --- | --- | --- |
+| `url` | MCP server URL. | Yes |
+| `bearerTokenEnv` | Environment variable containing the bearer token to send when connecting. | No |
+
+Local command server definition:
+
+| Key | Description | Required |
+| --- | --- | --- |
+| `command` | Command to start the MCP server. | Yes |
+| `args` | Arguments passed to `command`. | No |
+| `env` | Additional environment variables for the MCP server process. | No |
+
+## Running BubbleBuddy
 
 Start BubbleBuddy in development mode:
 
@@ -83,7 +125,7 @@ pnpm run start
 
 For checks, tests, formatting, linting, and typechecking scripts, see `package.json`.
 
-## Discord commands
+## Slash command reference
 
 BubbleBuddy registers these slash commands:
 
@@ -92,7 +134,7 @@ BubbleBuddy registers these slash commands:
 - `/status` — show current channel/session status.
 - `/thinking` — toggle thinking messages for the channel.
 
-## Status
+## Project status and safety notes
 
 BubbleBuddy is a personal project and still evolving. The current shape is a Discord companion with channel-scoped Pi sessions and optional agentic workspace support.
 

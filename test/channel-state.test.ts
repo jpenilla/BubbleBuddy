@@ -6,13 +6,15 @@ import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
 import { ChannelStateRepository } from "../src/channels/state-repository.ts";
-import { AppConfig, type AppConfigShape } from "../src/config.ts";
+import { AppHome } from "../src/config/env.ts";
 import { DatabaseLive } from "../src/database.ts";
+import { makeTestEnvLayer } from "./helpers.ts";
 
-const makeRepoLayer = (storageDirectory: string) =>
+const makeRepoLayer = (appHome: string) =>
   ChannelStateRepository.layer.pipe(
     Layer.provideMerge(DatabaseLive),
-    Layer.provide(Layer.succeed(AppConfig, { storageDirectory } as AppConfigShape)),
+    Layer.provideMerge(AppHome.layer),
+    Layer.provideMerge(makeTestEnvLayer({ appHome })),
     Layer.provide(NodeServices.layer),
   );
 

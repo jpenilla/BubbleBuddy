@@ -2,14 +2,6 @@ node_modules/
 .env
 .env.*
 !.env.example
-*.md
-!README.md
-!discord-context.md
-!AGENTS.md
-bubblebuddy.json
-!profiles/
-!profiles/coding-agent.md
-!profiles/friendly.md
 dist/
 coverage/
 *.log
@@ -21,3 +13,4 @@ storage/
 /context/
 # Ignore subdirs (built image files)
 /images/*/
+local-docs/

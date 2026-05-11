@@ -8,45 +8,37 @@ import { Effect, Layer } from "effect";
 import { ChannelStateRepository } from "../src/channels/state-repository.ts";
 import { PiChannelSessionFactory } from "../src/pi-session/session-factory.ts";
 import { ChannelRuntimes } from "../src/channels/channel-runtimes.ts";
-import { AppConfig, type AppConfigShape } from "../src/config.ts";
+import { AppHome } from "../src/config/env.ts";
+import { FileConfig, type FileConfigShape } from "../src/config/file.ts";
 import { DatabaseLive } from "../src/database.ts";
 import { LoadedResources, type LoadedResourcesShape } from "../src/resources.ts";
-
-const makeConfig = (storageDir: string): AppConfigShape => ({
-  botProfileFile: "profiles/test.md",
-  channelIdleTimeoutMs: 1,
-  enableAgenticWorkspace: false,
-  mcpServers: {},
-  modelId: "test-model",
-  modelProvider: "test",
-  storageDirectory: storageDir,
-  thinkingLevel: "medium",
-  typingIndicatorIntervalMs: 1000,
-});
+import { makeTestEnvLayer, makeTestFileConfig } from "./helpers.ts";
 
 const resources: LoadedResourcesShape = {
   botProfile: "test",
   discordContextTemplate: "",
 };
 
-const testLayer = (config: AppConfigShape) =>
+const testLayer = (config: FileConfigShape, appHome: string) =>
   ChannelRuntimes.layer.pipe(
     Layer.provideMerge(ChannelStateRepository.layer),
     Layer.provideMerge(DatabaseLive),
-    Layer.provideMerge(Layer.succeed(AppConfig, config)),
+    Layer.provideMerge(Layer.succeed(FileConfig, config)),
     Layer.provideMerge(Layer.succeed(LoadedResources, resources)),
     Layer.provideMerge(
       Layer.succeed(PiChannelSessionFactory, {
         create: () => Effect.die("Pi session creation is not expected in these tests"),
       }),
     ),
+    Layer.provideMerge(AppHome.layer),
+    Layer.provideMerge(makeTestEnvLayer({ appHome })),
     Layer.provideMerge(NodeServices.layer),
   );
 
 describe("channel runtimes", () => {
   it("evicts and recreates idle channel entries after the idle timeout", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
-    const config = makeConfig(tmpDir);
+    const config = makeTestFileConfig();
 
     try {
       await Effect.runPromise(
@@ -63,7 +55,7 @@ describe("channel runtimes", () => {
           // Should be a different runtime — the original was evicted and recreated.
           const runtime2 = yield* Effect.scoped(manager.get("ch-1"));
           expect(runtime2).not.toBe(runtime1);
-        }).pipe(Effect.scoped, Effect.provide(testLayer(config))),
+        }).pipe(Effect.scoped, Effect.provide(testLayer(config, tmpDir))),
       );
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
@@ -73,7 +65,7 @@ describe("channel runtimes", () => {
   it("keeps channel entry when re-acquired within the idle timeout", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
     // Use a longer idle timeout so the re-acquire lands before eviction.
-    const config = { ...makeConfig(tmpDir), channelIdleTimeoutMs: 5000 };
+    const config = makeTestFileConfig({ channelIdleTimeoutMs: 5000 });
 
     try {
       await Effect.runPromise(
@@ -86,7 +78,7 @@ describe("channel runtimes", () => {
           yield* Effect.sleep(10);
           const runtime2 = yield* Effect.scoped(manager.get("ch-2"));
           expect(runtime2).toBe(runtime1);
-        }).pipe(Effect.scoped, Effect.provide(testLayer(config))),
+        }).pipe(Effect.scoped, Effect.provide(testLayer(config, tmpDir))),
       );
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
@@ -95,7 +87,7 @@ describe("channel runtimes", () => {
 
   it("toggleShowThinking persists showThinking", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "bb-test-"));
-    const config = makeConfig(tmpDir);
+    const config = makeTestFileConfig();
 
     try {
       await Effect.runPromise(
@@ -105,7 +97,7 @@ describe("channel runtimes", () => {
           const newValue = yield* runtime.toggleShowThinking();
 
           expect(newValue).toBe(true);
-        }).pipe(Effect.scoped, Effect.provide(testLayer(config))),
+        }).pipe(Effect.scoped, Effect.provide(testLayer(config, tmpDir))),
       );
     } finally {
       await rm(tmpDir, { recursive: true, force: true });

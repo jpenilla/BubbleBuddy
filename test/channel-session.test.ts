@@ -40,7 +40,6 @@ const makeOutput = async (onDiscordOutput: (description: string) => void) => {
   const output = await Effect.runPromise(
     makeDiscordOutputPump({
       channel: channel as never,
-      config: { typingIndicatorIntervalMs: 60_000 } as never,
       getShowThinking: () => false,
     }).pipe(Effect.provideService(Scope.Scope, scope)),
   );

@@ -11,7 +11,7 @@ import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { Data, Effect, Scope } from "effect";
 import { Type } from "typebox";
 
-import type { McpServerConfigEntry } from "../config.ts";
+import type { McpServerConfigEntry } from "../config/file.ts";
 
 export type McpServerConfig = McpServerConfigEntry & { readonly name: string };
 

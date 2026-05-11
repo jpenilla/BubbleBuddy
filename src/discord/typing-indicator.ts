@@ -9,11 +9,11 @@ export interface TypingIndicator {
 
 interface TypingIndicatorOptions {
   readonly channel: GuildTextBasedChannel;
-  readonly intervalMs: number;
 }
 
 const SEND_TYPING_TIMEOUT_MS = 10_000;
 const STOP_TYPING_TIMEOUT_MS = 1000;
+const TYPING_INDICATOR_REFRESH_INTERVAL_MS = 8000;
 
 export const makeTypingIndicator = (
   options: TypingIndicatorOptions,
@@ -34,7 +34,10 @@ export const makeTypingIndicator = (
 
     const waitForRefresh = TxQueue.take(refreshSignals).pipe(Effect.tx, Effect.asVoid);
 
-    const waitForNextRefresh = Effect.race(Effect.sleep(options.intervalMs), waitForRefresh);
+    const waitForNextRefresh = Effect.race(
+      Effect.sleep(TYPING_INDICATOR_REFRESH_INTERVAL_MS),
+      waitForRefresh,
+    );
 
     const loop = sendTyping.pipe(Effect.andThen(waitForNextRefresh), Effect.forever);
 

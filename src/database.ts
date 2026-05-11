@@ -4,7 +4,7 @@ import { SqliteClient } from "@effect/sql-sqlite-node";
 import { Context, Data, Effect, FileSystem, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
-import { AppConfig } from "./config.ts";
+import { AppHome } from "./config/env.ts";
 
 const DATABASE_FILE_NAME = "bubblebuddy.sqlite";
 
@@ -31,14 +31,14 @@ const initSchema = (sql: SqlClient.SqlClient) =>
 
 export const DatabaseLive = Layer.unwrap(
   Effect.gen(function* () {
-    const config = yield* AppConfig;
+    const appHome = yield* AppHome;
     const fs = yield* FileSystem.FileSystem;
     yield* fs
-      .makeDirectory(config.storageDirectory, { recursive: true })
+      .makeDirectory(appHome, { recursive: true })
       .pipe(Effect.mapError((cause) => new DatabaseError({ operation: "initialize", cause })));
 
     return SqliteClient.layer({
-      filename: join(config.storageDirectory, DATABASE_FILE_NAME),
+      filename: join(appHome, DATABASE_FILE_NAME),
     }).pipe(Layer.tap((context) => initSchema(Context.get(context, SqlClient.SqlClient))));
   }),
 );
