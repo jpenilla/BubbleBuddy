@@ -6,7 +6,9 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  packages/bubblebuddy:
     dependencies:
       '@earendil-works/gondolin':
         specifier: ^0.9.1

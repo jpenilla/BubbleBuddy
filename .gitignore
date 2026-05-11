@@ -2,6 +2,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+!packages/*/.env.example
 dist/
 coverage/
 *.log
@@ -12,5 +13,7 @@ storage/
 .DS_Store
 /context/
 # Ignore subdirs (built image files)
-/images/*/
+/tools/gondolin-images/*/
+!/tools/gondolin-images/README.md
+!/tools/gondolin-images/*.json
 local-docs/

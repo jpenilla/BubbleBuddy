@@ -1,0 +1,42 @@
+{
+  "name": "bubblebuddy",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=25.9.0"
+  },
+  "scripts": {
+    "check": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test",
+    "dev": "node --env-file-if-exists=.env --watch src/index.ts",
+    "start": "node --env-file-if-exists=.env src/index.ts",
+    "test": "vitest run",
+    "lint": "oxlint src test",
+    "lint:fix": "oxlint src test --fix",
+    "fmt": "oxfmt src test",
+    "fmt:check": "oxfmt src test --check",
+    "prepare": "effect-tsgo patch",
+    "typecheck": "tsgo -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@earendil-works/gondolin": "^0.9.1",
+    "@earendil-works/pi-agent-core": "0.74.0",
+    "@earendil-works/pi-ai": "0.74.0",
+    "@earendil-works/pi-coding-agent": "0.74.0",
+    "@effect/platform-node": "4.0.0-beta.64",
+    "@effect/sql-sqlite-node": "4.0.0-beta.64",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "discord.js": "^14.26.4",
+    "effect": "^4.0.0-beta.64",
+    "typebox": "^1.1.38"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "^0.5.2",
+    "@effect/vitest": "4.0.0-beta.64",
+    "@types/node": "^25.6.2",
+    "@typescript/native-preview": "^7.0.0-dev.20260508.1",
+    "oxfmt": "^0.48.0",
+    "oxlint": "^1.63.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}

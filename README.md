@@ -1,4 +1,4 @@
-<img src="resources/bubblebuddy.png" alt="BubbleBuddy" width="420">
+<img src="assets/brand/bubblebuddy.png" alt="BubbleBuddy" width="420">
 
 # BubbleBuddy
 
@@ -53,10 +53,10 @@ BubbleBuddy is intended to be run from source for now.
 
 ```sh
 pnpm install
-cp .env.example .env
+cp packages/bubblebuddy/.env.example packages/bubblebuddy/.env
 ```
 
-Edit `.env` and set:
+Edit `packages/bubblebuddy/.env` and set:
 
 ```env
 DISCORD_TOKEN=your-discord-bot-token
