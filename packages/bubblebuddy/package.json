@@ -17,7 +17,6 @@
     "typecheck": "tsgo -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@earendil-works/gondolin": "^0.9.1",
     "incus-api": "workspace:*",
     "@earendil-works/pi-agent-core": "0.74.0",
     "@earendil-works/pi-ai": "0.74.0",

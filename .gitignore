@@ -12,8 +12,4 @@ storage/
 .vscode/
 .DS_Store
 /context/
-# Ignore subdirs (built image files)
-/tools/gondolin-images/*/
-!/tools/gondolin-images/README.md
-!/tools/gondolin-images/*.json
 local-docs/
