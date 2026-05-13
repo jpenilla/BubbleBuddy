@@ -66,6 +66,6 @@ jobs:
           sudo usermod -aG incus-admin "$USER"
 
       - name: Run tests
-        run: sg incus-admin -c 'pnpm --filter incus-api run test -- --testTimeout=120000'
+        run: sg incus-admin -c 'pnpm --filter incus-api run test'
         env:
           INCUS_API_INTEGRATION: "1"
