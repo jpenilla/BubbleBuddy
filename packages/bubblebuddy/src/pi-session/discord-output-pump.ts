@@ -1,6 +1,6 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel, Message } from "discord.js";
-import { Deferred, Effect, HashMap, MutableRef, Option, Ref, Scope } from "effect";
+import { Deferred, Effect, Fiber, HashMap, MutableRef, Option, Ref, Scope } from "effect";
 
 import { makeTypingIndicator } from "../discord/typing-indicator.ts";
 
@@ -92,8 +92,38 @@ export const makeDiscordOutputPump = (
     ) =>
       Effect.gen(function* () {
         const deferred = yield* Deferred.make<T, unknown>();
-        yield* worker.enqueueLow(Deferred.completeWith(deferred, operation));
-        return yield* Deferred.await(deferred);
+        const canceled = yield* Ref.make(false);
+        const runningFiber = yield* Ref.make<Option.Option<Fiber.Fiber<T, unknown>>>(Option.none());
+
+        const interruptRunningFiber = Effect.gen(function* () {
+          const maybeFiber = yield* Ref.get(runningFiber);
+          if (Option.isSome(maybeFiber)) {
+            yield* Fiber.interrupt(maybeFiber.value);
+          }
+        });
+
+        yield* worker.enqueueLow(
+          Effect.gen(function* () {
+            if (yield* Ref.get(canceled)) {
+              return;
+            }
+
+            const fiber = yield* Effect.forkChild(operation);
+            yield* Ref.set(runningFiber, Option.some(fiber));
+            const exit = yield* Fiber.await(fiber);
+            yield* Deferred.done(deferred, exit);
+          }).pipe(Effect.onInterrupt(() => interruptRunningFiber)),
+        );
+
+        return yield* Deferred.await(deferred).pipe(
+          Effect.onInterrupt(() =>
+            Effect.gen(function* () {
+              yield* Ref.set(canceled, true);
+              yield* interruptRunningFiber;
+              yield* Deferred.interrupt(deferred);
+            }),
+          ),
+        );
       });
 
     const sendCompactionStatus = (status: CompactionStatusEmbed): Effect.Effect<void, unknown> =>

@@ -179,7 +179,7 @@ export const createDiscordTools = (
         ),
         stickerId: Type.String({ description: "Sticker ID" }),
       }),
-      execute: async (_toolCallId, params) => {
+      execute: async (_toolCallId, params, signal) => {
         const stickers = await listUsableStickers(context);
         const sticker = stickers.find((candidate) => candidate.sticker.id === params.stickerId);
 
@@ -198,6 +198,7 @@ export const createDiscordTools = (
               catch: (cause) => cause,
             }),
           ),
+          { signal },
         );
 
         return {
@@ -220,7 +221,7 @@ export const createDiscordTools = (
         emojis: Type.Array(Type.String({ description: "Emoji reaction to add" })),
         messageId: Type.String({ description: "Discord message ID" }),
       }),
-      execute: async (_toolCallId, params) => {
+      execute: async (_toolCallId, params, signal) => {
         if (
           !("messages" in context.channel) ||
           typeof context.channel.messages.fetch !== "function"
@@ -228,7 +229,13 @@ export const createDiscordTools = (
           throw new Error("This Discord channel does not support fetching messages for reactions.");
         }
 
-        const targetMessage = await context.channel.messages.fetch(params.messageId);
+        const targetMessage = await Effect.runPromise(
+          Effect.tryPromise({
+            try: () => context.channel.messages.fetch(params.messageId),
+            catch: (cause) => cause,
+          }),
+          { signal },
+        );
 
         const failures: string[] = [];
 
@@ -247,10 +254,15 @@ export const createDiscordTools = (
                   catch: (cause) => cause,
                 }),
               ),
+              { signal },
             );
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             failures.push(`${emoji}: ${message}`);
+          }
+
+          if (signal?.aborted === true) {
+            throw new Error("Operation aborted.");
           }
         }
 
@@ -275,7 +287,7 @@ export const createDiscordTools = (
       parameters: Type.Object({
         messageId: Type.String({ description: "Message ID" }),
       }),
-      execute: async (_toolCallId, params) => {
+      execute: async (_toolCallId, params, signal) => {
         if (
           !("messages" in context.channel) ||
           typeof context.channel.messages.fetch !== "function"
@@ -283,7 +295,13 @@ export const createDiscordTools = (
           throw new Error("This Discord channel does not support fetching messages.");
         }
 
-        const fetchedMessage = await context.channel.messages.fetch(params.messageId);
+        const fetchedMessage = await Effect.runPromise(
+          Effect.tryPromise({
+            try: () => context.channel.messages.fetch(params.messageId),
+            catch: (cause) => cause,
+          }),
+          { signal },
+        );
 
         return {
           content: [{ type: "text", text: formatMessageForPrompt(fetchedMessage) }],
@@ -315,7 +333,7 @@ export const createDiscordTools = (
             description: "Path of file to upload",
           }),
         }),
-        execute: async (_toolCallId, params) => {
+        execute: async (_toolCallId, params, signal) => {
           const resolved = await resolveWorkspaceFile(options.workspaceDir, params.path);
 
           const limit = getGuildUploadLimit(context);
@@ -337,6 +355,7 @@ export const createDiscordTools = (
                 catch: (cause) => cause,
               }),
             ),
+            { signal },
           );
 
           return {

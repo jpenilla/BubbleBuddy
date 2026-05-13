@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Deferred, Effect, Exit, Fiber } from "effect";
 
 import {
   makeDiscordOutputPump,
@@ -32,6 +32,31 @@ const makeOutput = (onDiscordOutput: (description: string) => void) => {
 };
 
 describe("channel session Discord output ordering", () => {
+  it.effect("interrupts a running tool Discord action", () =>
+    Effect.gen(function* () {
+      const exit = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const output = yield* makeOutput(() => undefined);
+          const started = yield* Deferred.make<void>();
+          const fiber = yield* output
+            .awaitToolDiscordAction(
+              Effect.gen(function* () {
+                yield* Deferred.succeed(started, undefined);
+                return yield* Effect.never;
+              }),
+            )
+            .pipe(Effect.forkChild({ startImmediately: true }));
+
+          yield* Deferred.await(started);
+          yield* Fiber.interrupt(fiber);
+          return yield* Fiber.await(fiber);
+        }),
+      );
+
+      expect(Exit.hasInterrupts(exit)).toBe(true);
+    }),
+  );
+
   it.effect("processes tool completion statuses between queued Discord mutations", () =>
     Effect.gen(function* () {
       const observed = yield* Effect.scoped(
