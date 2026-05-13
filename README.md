@@ -8,7 +8,7 @@
 ![tsgo](https://img.shields.io/badge/typecheck-tsgo-3178C6?logo=typescript&logoColor=white)
 ![Status](https://img.shields.io/badge/status-personal%20WIP-8A2BE2)
 
-BubbleBuddy is a fun Discord companion that lives in your servers. It gives Discord communities a shared AI buddy that remembers each channel's conversation separately. It is powered by [Pi](https://github.com/earendil-works/pi), built with [Effect](https://effect.website/) v4, and can optionally use agentic coding abilities through a [Gondolin](https://github.com/earendil-works/gondolin) Virtual Machine.
+BubbleBuddy is a fun Discord companion that lives in your servers. It gives Discord communities a shared AI buddy that remembers each channel's conversation separately. It is powered by [Pi](https://github.com/earendil-works/pi), built with [Effect](https://effect.website/) v4, and can optionally use agentic coding abilities through [Incus](https://linuxcontainers.org/incus/) containers.
 
 ## Features
 
@@ -16,7 +16,7 @@ BubbleBuddy is a fun Discord companion that lives in your servers. It gives Disc
 - Mention-based and ping-reply interaction support.
 - [Slash commands](#slash-command-reference) for managing channel sessions.
 - [MCP server support](#mcp-server-definitions).
-- Sandboxed agentic workspace. When enabled, the assistant can use tools to interact with a Gondolin VM, giving it access to project files and coding capabilities without exposing host credentials or environment variables.
+- Sandboxed agentic workspace. When enabled, the assistant can use tools to interact with an Incus container, giving it access to project files and coding capabilities without exposing host credentials or environment variables.
 
 ## Setup
 
@@ -85,7 +85,7 @@ The `$BUBBLEBUDDY_HOME/bubblebuddy.json` configuration file will be generated on
 | `botProfileFile` | Bot profile to load. Use `"default"` for the bundled friendly profile, an absolute path, or a path relative to `BUBBLEBUDDY_HOME`. | `"default"` |
 | `modelProvider` | Pi model provider to use. Must be changed. | `"YOUR_PROVIDER"` |
 | `modelId` | Pi model ID to use. Must be changed. | `"YOUR_MODEL"` |
-| `enableAgenticWorkspace` | Enables the Gondolin-backed workspace and additional agentic capabilities. | `true` |
+| `enableAgenticWorkspace` | Enables the Incus-backed workspace and additional agentic capabilities. Requires a local Incus server with a `default` profile. | `false` |
 | `thinkingLevel` | Thinking level passed to Pi. Valid values are `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, and `"xhigh"`. Some models only accept a subset or do not support thinking. | `"minimal"` |
 | `channelIdleTimeoutMs` | How long idle channel sessions stay loaded before eviction. | `1800000` (30 minutes) |
 | `mcpServers` | MCP server definitions made available to Pi sessions. | `{}` |
@@ -138,4 +138,4 @@ BubbleBuddy registers these slash commands:
 
 BubbleBuddy is a personal project and still evolving. The current shape is a Discord companion with channel-scoped Pi sessions and optional agentic workspace support.
 
-Agentic workspace support uses Gondolin and should be enabled only after reviewing the configured tools and workspace behavior. In particular, file upload behavior has not been fully audited yet.
+Agentic workspace support uses Incus and should be enabled only after reviewing the configured tools and workspace behavior. In particular, file upload behavior has not been fully audited yet.

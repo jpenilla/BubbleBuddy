@@ -53,7 +53,7 @@ export const ConfigFileSchema = Schema.Struct({
     Schema.withDecodingDefaultKey(Effect.succeed("YOUR_PROVIDER")),
   ),
   modelId: Schema.NonEmptyString.pipe(Schema.withDecodingDefaultKey(Effect.succeed("YOUR_MODEL"))),
-  enableAgenticWorkspace: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+  enableAgenticWorkspace: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
   thinkingLevel: ThinkingLevelSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed("minimal"))),
   channelIdleTimeoutMs: PositiveFiniteNumberSchema.pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(30 * 60 * 1000)),
@@ -67,7 +67,7 @@ const defaultConfigFile = {
   botProfileFile: "default",
   modelProvider: "YOUR_PROVIDER",
   modelId: "YOUR_MODEL",
-  enableAgenticWorkspace: true,
+  enableAgenticWorkspace: false,
   thinkingLevel: "minimal",
   channelIdleTimeoutMs: 30 * 60 * 1000,
   mcpServers: {},
