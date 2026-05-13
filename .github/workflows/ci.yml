@@ -5,7 +5,29 @@ on:
   pull_request:
 
 jobs:
-  ci:
+  bubblebuddy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.repository != github.event.pull_request.head.repo.full_name }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '25'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run checks
+        run: pnpm --filter bubblebuddy run check
+
+  incus-api:
     runs-on: ubuntu-latest
     if: ${{ github.event_name != 'pull_request' || github.repository != github.event.pull_request.head.repo.full_name }}
 
@@ -25,13 +47,25 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check formatting
-        run: pnpm run fmt:check
+        run: pnpm --filter incus-api run fmt:check
 
       - name: Run lint
-        run: pnpm run lint
+        run: pnpm --filter incus-api run lint
 
       - name: Run typecheck
-        run: pnpm run typecheck
+        run: pnpm --filter incus-api run typecheck
+
+      - name: Install Incus
+        run: curl -fsSL https://pkgs.zabbly.com/get/incus-stable | sudo sh
+
+      - name: Initialize Incus
+        run: |
+          sudo nft flush ruleset
+          sudo incus admin waitready
+          sudo incus admin init --minimal
+          sudo usermod -aG incus-admin "$USER"
 
       - name: Run tests
-        run: pnpm run test
+        run: sg incus-admin -c 'pnpm --filter incus-api run test -- --testTimeout=120000'
+        env:
+          INCUS_API_INTEGRATION: "1"
