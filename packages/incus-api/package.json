@@ -1,15 +1,19 @@
 {
-  "name": "bubblebuddy",
+  "name": "incus-api",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=25.9.0"
   },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
   "scripts": {
     "check": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test",
-    "dev": "node --env-file-if-exists=.env --watch src/index.ts",
-    "start": "node --env-file-if-exists=.env src/index.ts",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "oxlint src test",
     "lint:fix": "oxlint src test --fix",
     "fmt": "oxfmt src test",
@@ -17,17 +21,8 @@
     "typecheck": "tsgo -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@earendil-works/gondolin": "^0.9.1",
-    "incus-api": "workspace:*",
-    "@earendil-works/pi-agent-core": "0.74.0",
-    "@earendil-works/pi-ai": "0.74.0",
-    "@earendil-works/pi-coding-agent": "0.74.0",
     "@effect/platform-node": "4.0.0-beta.65",
-    "@effect/sql-sqlite-node": "4.0.0-beta.65",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "discord.js": "^14.26.4",
-    "effect": "4.0.0-beta.65",
-    "typebox": "^1.1.38"
+    "effect": "4.0.0-beta.65"
   },
   "devDependencies": {
     "@effect/tsgo": "^0.5.2",

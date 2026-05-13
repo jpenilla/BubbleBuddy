@@ -19,6 +19,11 @@
   "scripts": {
     "check": "pnpm -r run check",
     "dev": "pnpm --filter bubblebuddy run dev",
+    "prepare": "effect-tsgo patch",
     "start": "pnpm --filter bubblebuddy run start"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "^0.5.2",
+    "@typescript/native-preview": "7.0.0-dev.20260511.1"
   }
 }

@@ -19,7 +19,7 @@ import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
 import { LoadedResources } from "../resources.ts";
 import type { SessionKeepAliveFactory } from "../channels/keep-alive.ts";
 import { createChannelWorkspaceResourceLoader } from "./workspace-resource-loader.ts";
-import { createGondolinExtension } from "./gondolin-extension.ts";
+import { createIncusExtension } from "./incus-extension.ts";
 import { makeDiscordOutputPump } from "./discord-output-pump.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
@@ -107,21 +107,21 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
     ];
 
     if (config.enableAgenticWorkspace) {
-      const gondolin = yield* Effect.acquireRelease(
+      const incus = yield* Effect.acquireRelease(
         Effect.sync(() =>
-          createGondolinExtension({
+          createIncusExtension({
             channelId: options.channel.id,
             sessionCwd: WORKSPACE_CWD,
             sessionLabel: `bubblebuddy:${options.channel.id}`,
             workspaceDir: options.hostWorkspaceDir,
           }),
         ),
-        (gondolin) =>
-          Effect.tryPromise(() => gondolin.dispose()).pipe(
-            Effect.ignore({ log: "Warn", message: "Failed to dispose Gondolin workspace" }),
+        (ext) =>
+          Effect.tryPromise(() => ext.dispose()).pipe(
+            Effect.ignore({ log: "Warn", message: "Failed to dispose Incus workspace" }),
           ),
       );
-      extensionFactories.push(gondolin.extensionFactory);
+      extensionFactories.push(incus.extensionFactory);
     }
 
     const resourceLoader = createChannelWorkspaceResourceLoader({
