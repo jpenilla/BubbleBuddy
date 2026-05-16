@@ -308,14 +308,6 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
 });
 
 describe("discord fetch message tool", () => {
-  test("throws when channel does not support fetching", async () => {
-    const originMessage = makeOriginMessage(0);
-
-    await expect(
-      executeFetchTool(makeFetchTool(originMessage), { messageId: "123" }),
-    ).rejects.toThrow("This Discord channel does not support fetching messages.");
-  });
-
   test("throws when message is not found", async () => {
     const notFoundError = new Error("DiscordAPIError[10008]: Unknown Message");
 

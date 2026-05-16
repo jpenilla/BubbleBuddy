@@ -4,7 +4,7 @@ import { basename, relative, resolve } from "node:path";
 import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { type Client, type Guild, type GuildTextBasedChannel } from "discord.js";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import {
   formatCustomEmojiMessageSyntax,
@@ -114,6 +114,23 @@ const resolveWorkspaceFile = async (
   };
 };
 
+const runToolEffect = async <A>(
+  effect: Effect.Effect<A, unknown>,
+  signal: AbortSignal | undefined,
+): Promise<A> => {
+  const exit = await Effect.runPromiseExit(effect, { signal });
+
+  if (Exit.isSuccess(exit)) {
+    return exit.value;
+  }
+
+  if (signal?.aborted === true || Cause.hasInterruptsOnly(exit.cause)) {
+    throw new Error("Operation aborted.");
+  }
+
+  throw Cause.squash(exit.cause);
+};
+
 const getGuildUploadLimit = (context: DiscordToolContext): number => {
   switch (context.guild.premiumTier) {
     case 3:
@@ -188,7 +205,7 @@ export const createDiscordTools = (
           throw new Error(`Sticker ${params.stickerId} is not available here.`);
         }
 
-        await Effect.runPromise(
+        await runToolEffect(
           awaitToolDiscordAction(
             Effect.tryPromise({
               try: () =>
@@ -199,7 +216,7 @@ export const createDiscordTools = (
               catch: (cause) => cause,
             }),
           ),
-          { signal },
+          signal,
         );
 
         return {
@@ -223,19 +240,12 @@ export const createDiscordTools = (
         messageId: Type.String({ description: "Discord message ID" }),
       }),
       execute: async (_toolCallId, params, signal) => {
-        if (
-          !("messages" in context.channel) ||
-          typeof context.channel.messages.fetch !== "function"
-        ) {
-          throw new Error("This Discord channel does not support fetching messages for reactions.");
-        }
-
-        const targetMessage = await Effect.runPromise(
+        const targetMessage = await runToolEffect(
           Effect.tryPromise({
             try: () => context.channel.messages.fetch(params.messageId),
             catch: (cause) => cause,
           }),
-          { signal },
+          signal,
         );
 
         const failures: string[] = [];
@@ -248,14 +258,14 @@ export const createDiscordTools = (
           }
 
           try {
-            await Effect.runPromise(
+            await runToolEffect(
               awaitToolDiscordAction(
                 Effect.tryPromise({
                   try: () => targetMessage.react(emoji),
                   catch: (cause) => cause,
                 }),
               ),
-              { signal },
+              signal,
             );
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -289,19 +299,12 @@ export const createDiscordTools = (
         messageId: Type.String({ description: "Message ID" }),
       }),
       execute: async (_toolCallId, params, signal) => {
-        if (
-          !("messages" in context.channel) ||
-          typeof context.channel.messages.fetch !== "function"
-        ) {
-          throw new Error("This Discord channel does not support fetching messages.");
-        }
-
-        const fetchedMessage = await Effect.runPromise(
+        const fetchedMessage = await runToolEffect(
           Effect.tryPromise({
             try: () => context.channel.messages.fetch(params.messageId),
             catch: (cause) => cause,
           }),
-          { signal },
+          signal,
         );
 
         return {
@@ -345,7 +348,7 @@ export const createDiscordTools = (
           }
 
           const fileName = params.fileName?.trim() || basename(resolved.hostPath);
-          await Effect.runPromise(
+          await runToolEffect(
             awaitToolDiscordAction(
               Effect.tryPromise({
                 try: (signal) =>
@@ -356,7 +359,7 @@ export const createDiscordTools = (
                 catch: (cause) => cause,
               }),
             ),
-            { signal },
+            signal,
           );
 
           return {
