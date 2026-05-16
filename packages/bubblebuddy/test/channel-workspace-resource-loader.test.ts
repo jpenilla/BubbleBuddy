@@ -27,7 +27,6 @@ describe("channel workspace resource loader", () => {
   const makeLoader = (enableAgenticWorkspace: boolean) =>
     createChannelWorkspaceResourceLoader({
       agentDir,
-      appSkillPaths: [join(tempDir, "app", "skills")],
       enableAgenticWorkspace,
       extensionFactories: [],
       settingsManager: SettingsManager.create(workspaceDir, agentDir),
@@ -69,47 +68,13 @@ describe("channel workspace resource loader", () => {
     expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["workspace-skill"]);
   });
 
-  test("loads app-level skills when agentic workspace is off", async () => {
-    await mkdir(join(tempDir, "app", "skills", "app-skill"), { recursive: true });
+  test("omits workspace context when agentic workspace is off", async () => {
     await writeFile(join(workspaceDir, "AGENTS.md"), "workspace instructions\n", "utf8");
-    await writeFile(
-      join(tempDir, "app", "skills", "app-skill", "SKILL.md"),
-      ["---", "description: Use the app skill.", "---", "# App Skill"].join("\n"),
-      "utf8",
-    );
 
     const loader = makeLoader(false);
     await loader.reload();
 
     expect(loader.getAgentsFiles().agentsFiles).toEqual([]);
-    expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["app-skill"]);
-  });
-
-  test("loads workspace skills before app-level skills", async () => {
-    await mkdir(join(workspaceDir, ".pi", "skills", "shared-skill"), { recursive: true });
-    await mkdir(join(tempDir, "app", "skills", "shared-skill"), { recursive: true });
-    await mkdir(join(tempDir, "app", "skills", "app-skill"), { recursive: true });
-    await writeFile(
-      join(workspaceDir, ".pi", "skills", "shared-skill", "SKILL.md"),
-      ["---", "description: Use the workspace skill.", "---", "# Workspace Skill"].join("\n"),
-      "utf8",
-    );
-    await writeFile(
-      join(tempDir, "app", "skills", "shared-skill", "SKILL.md"),
-      ["---", "description: Use the app shared skill.", "---", "# App Shared Skill"].join("\n"),
-      "utf8",
-    );
-    await writeFile(
-      join(tempDir, "app", "skills", "app-skill", "SKILL.md"),
-      ["---", "description: Use the app skill.", "---", "# App Skill"].join("\n"),
-      "utf8",
-    );
-
-    const loader = makeLoader(true);
-    await loader.reload();
-
-    const skills = loader.getSkills().skills;
-    expect(skills.map((skill) => skill.name)).toEqual(["shared-skill", "app-skill"]);
-    expect(skills[0]?.description).toBe("Use the workspace skill.");
+    expect(loader.getSkills().skills).toEqual([]);
   });
 });

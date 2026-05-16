@@ -13,7 +13,6 @@ import { normalizeLineEndings } from "../shared/text.ts";
 
 export interface ChannelWorkspaceResourceLoaderOptions {
   readonly agentDir: string;
-  readonly appSkillPaths: string[];
   readonly enableAgenticWorkspace: boolean;
   readonly extensionFactories: ExtensionFactory[];
   readonly settingsManager: SettingsManager;
@@ -54,10 +53,9 @@ export const createChannelWorkspaceResourceLoader = (
   options: ChannelWorkspaceResourceLoaderOptions,
 ): ResourceLoader =>
   new DefaultResourceLoader({
-    additionalSkillPaths: [
-      ...(options.enableAgenticWorkspace ? workspaceSkillPaths(options.workspaceDir) : []),
-      ...options.appSkillPaths,
-    ],
+    additionalSkillPaths: options.enableAgenticWorkspace
+      ? workspaceSkillPaths(options.workspaceDir)
+      : [],
     agentDir: options.agentDir,
     agentsFilesOverride: () => ({
       agentsFiles: options.enableAgenticWorkspace

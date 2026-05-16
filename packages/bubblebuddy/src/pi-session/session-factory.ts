@@ -103,7 +103,6 @@ const makeFactory = () =>
           const sessionManager = yield* loadSessionManager(input.channel.id, activeSession);
 
           const pi = yield* createPiChannelSession({
-            appSkillPaths: [join(appHome, "skills")],
             channel: input.channel,
             getShowThinking: input.getShowThinking,
             hostWorkspaceDir: workspaceDir(input.channel.id),
