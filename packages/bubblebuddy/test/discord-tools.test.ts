@@ -32,7 +32,18 @@ const makeOriginMessage = (
   send: (payload?: unknown) => Promise<unknown> = async () => undefined,
 ): Message<true> =>
   ({
-    channel: { send },
+    channel: {
+      send,
+      id: "channel-id",
+      client: {
+        options: {},
+        user: { id: "bot-id" },
+        rest: {
+          post: async (_route: string, payload: { body?: unknown; files?: unknown }) =>
+            send({ ...(payload.body as object), files: payload.files }),
+        },
+      },
+    },
     guild: { premiumTier },
   }) as unknown as Message<true>;
 
@@ -199,9 +210,9 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
       yield* fs.writeFileString(filePath, "hello world");
 
       const originMessage = makeOriginMessage(0, async (payload) => {
-        const message = payload as { files: Array<{ attachment: string; name: string }> };
+        const message = payload as { files: Array<{ data: Buffer; name: string }> };
         sentName = message.files[0]?.name;
-        sentAttachment = message.files[0]?.attachment;
+        sentAttachment = message.files[0]?.data;
         return undefined;
       });
 
@@ -218,7 +229,7 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
 
       expect(runDiscordActionCalls).toBe(1);
       expect(sentName).toBe("report.txt");
-      expect(sentAttachment).toBe(filePath);
+      expect(sentAttachment).toEqual(Buffer.from("hello world"));
       expect(result.isError).toBeUndefined();
       expect(result.content[0]?.type).toBe("text");
       expect(result.content[0]?.text).toContain(

@@ -3,7 +3,7 @@ import { basename, relative, resolve } from "node:path";
 
 import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { Client, Guild, GuildTextBasedChannel } from "discord.js";
+import { type Client, type Guild, type GuildTextBasedChannel } from "discord.js";
 import { Effect } from "effect";
 
 import {
@@ -17,6 +17,7 @@ import {
 import { formatMessageForPrompt } from "./message-formatting.ts";
 import { WORKSPACE_CWD } from "../shared/constants.ts";
 import type { AwaitToolDiscordAction } from "../pi-session/discord-output-pump.ts";
+import { sendMessageWithAbort } from "./utils.ts";
 
 const LIST_CUSTOM_EMOJIS_TOOL = "discord_list_custom_emojis";
 const LIST_STICKERS_TOOL = "discord_list_stickers";
@@ -347,8 +348,8 @@ export const createDiscordTools = (
           await Effect.runPromise(
             awaitToolDiscordAction(
               Effect.tryPromise({
-                try: () =>
-                  context.channel.send({
+                try: (signal) =>
+                  sendMessageWithAbort(context.channel, signal, {
                     content: params.caption,
                     files: [{ attachment: resolved.hostPath, name: fileName }],
                   }),

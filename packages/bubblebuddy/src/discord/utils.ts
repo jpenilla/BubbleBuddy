@@ -1,9 +1,12 @@
-import type {
-  Client,
-  GuildTextBasedChannel,
-  Message,
-  MessageMentionOptions,
-  ReplyOptions,
+import {
+  MessagePayload,
+  Routes,
+  type Client,
+  type GuildTextBasedChannel,
+  type Message,
+  type MessageCreateOptions,
+  type MessageMentionOptions,
+  type ReplyOptions,
 } from "discord.js";
 import type { EmbedBuilder } from "discord.js";
 
@@ -70,4 +73,18 @@ export const sendChunkedMessage = async (opts: {
       allowedMentions: opts.allowedMentions,
     });
   }
+};
+
+export const sendMessageWithAbort = async (
+  channel: GuildTextBasedChannel,
+  signal: AbortSignal,
+  options: MessageCreateOptions,
+): Promise<void> => {
+  const payload = MessagePayload.create(channel, options).resolveBody();
+  const { body, files } = await payload.resolveFiles();
+  await channel.client.rest.post(Routes.channelMessages(channel.id), {
+    body,
+    files: files ?? undefined,
+    signal,
+  });
 };
