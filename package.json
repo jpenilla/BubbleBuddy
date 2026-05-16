@@ -12,7 +12,7 @@
     "start": "pnpm --filter bubblebuddy run start"
   },
   "devDependencies": {
-    "@effect/tsgo": "^0.5.2",
-    "@typescript/native-preview": "7.0.0-dev.20260511.1"
+    "@effect/tsgo": "^0.7.2",
+    "@typescript/native-preview": "7.0.0-dev.20260515.1"
   }
 }

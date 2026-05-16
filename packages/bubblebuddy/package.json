@@ -17,24 +17,24 @@
     "typecheck": "tsgo -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "incus-api": "workspace:*",
     "@earendil-works/pi-agent-core": "0.74.0",
     "@earendil-works/pi-ai": "0.74.0",
     "@earendil-works/pi-coding-agent": "0.74.0",
-    "@effect/platform-node": "4.0.0-beta.65",
-    "@effect/sql-sqlite-node": "4.0.0-beta.65",
+    "@effect/platform-node": "4.0.0-beta.66",
+    "@effect/sql-sqlite-node": "4.0.0-beta.66",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "discord.js": "^14.26.4",
-    "effect": "4.0.0-beta.65",
+    "effect": "4.0.0-beta.66",
+    "incus-api": "workspace:*",
     "typebox": "^1.1.38"
   },
   "devDependencies": {
-    "@effect/tsgo": "^0.5.2",
-    "@effect/vitest": "4.0.0-beta.65",
-    "@types/node": "^25.6.2",
-    "@typescript/native-preview": "7.0.0-dev.20260511.1",
-    "oxfmt": "^0.48.0",
-    "oxlint": "^1.63.0",
+    "@effect/tsgo": "^0.7.2",
+    "@effect/vitest": "4.0.0-beta.66",
+    "@types/node": "^25.8.0",
+    "@typescript/native-preview": "7.0.0-dev.20260515.1",
+    "oxfmt": "^0.50.0",
+    "oxlint": "^1.65.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
   }
