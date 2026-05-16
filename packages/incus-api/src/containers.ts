@@ -1,12 +1,18 @@
-import { Cause, Data, Effect, Exit, Schema, Scope } from "effect";
+import { Cause, Data, Effect, Exit, Scope } from "effect";
 import { posix } from "node:path";
 
-import { IncusApi, type IncusApiError, type IncusApiService } from "./api.ts";
+import { type IncusApiError, type IncusApiService } from "./api.ts";
+import { type IncusConfigService } from "./config.ts";
 import {
-  IncusOperations,
-  type IncusOperationsError,
-  type IncusOperationsService,
-} from "./operations.ts";
+  IncusContainerExecCallbackError,
+  IncusContainerExecInvalidOptionsError,
+  IncusContainerExecTimeoutError,
+  IncusContainerExecTransportError,
+  execStream,
+  type IncusExecOptions,
+  type IncusExecResult,
+} from "./exec.ts";
+import { type IncusOperationsError, type IncusOperationsService } from "./operations.ts";
 
 export class IncusContainerPathError extends Data.TaggedError("IncusContainerPathError")<{
   readonly path: string;
@@ -24,7 +30,11 @@ export type IncusContainerError =
   | IncusApiError
   | IncusOperationsError
   | IncusContainerPathError
-  | IncusContainerMetadataError;
+  | IncusContainerMetadataError
+  | IncusContainerExecCallbackError
+  | IncusContainerExecInvalidOptionsError
+  | IncusContainerExecTimeoutError
+  | IncusContainerExecTransportError;
 
 export type IncusImage =
   | {
@@ -60,17 +70,7 @@ export interface IncusContainerOptions {
   readonly mounts?: readonly IncusMount[];
   readonly limits?: IncusLimits;
 }
-export interface IncusExecOptions {
-  readonly cwd?: string;
-  readonly environment?: Readonly<Record<string, string>>;
-  readonly timeoutMs?: number;
-  readonly signal?: AbortSignal;
-}
-export interface IncusExecResult {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
+
 export interface IncusFileWriteOptions {
   readonly mode?: number;
   readonly uid?: number;
@@ -110,33 +110,25 @@ export const make = (
   project: string,
   api: IncusApiService,
   operations: IncusOperationsService,
+  config: IncusConfigService,
 ): IncusContainers => ({
   scoped: (options) =>
-    Effect.acquireRelease(acquire(project, api, operations, options), (container, exit) =>
+    Effect.acquireRelease(acquire(project, api, operations, config, options), (container, exit) =>
       release(api, operations, container, exit),
     ),
   exists: (name) => api.instances.exists(name, { project }),
 });
 
-export const scoped = (
-  project: string,
-  options: IncusContainerOptions,
-): Effect.Effect<IncusContainer, IncusContainerError, IncusApi | IncusOperations | Scope.Scope> =>
-  Effect.gen(function* () {
-    const api = yield* IncusApi;
-    const operations = yield* IncusOperations;
-    return yield* make(project, api, operations).scoped(options);
-  });
-
 const acquire = (
   project: string,
   api: IncusApiService,
   operations: IncusOperationsService,
+  config: IncusConfigService,
   options: IncusContainerOptions,
 ): Effect.Effect<IncusContainer, IncusContainerError> =>
   Effect.gen(function* () {
     const name = options.name ?? `incus-api-${crypto.randomUUID().slice(0, 8)}`;
-    const container = makeContainer(project, api, operations, name);
+    const container = makeContainer(project, api, operations, config, name);
 
     const operation = yield* api.instances.create(
       {
@@ -144,7 +136,7 @@ const acquire = (
         type: "container",
         ephemeral: true,
         profiles: options.profiles === undefined ? undefined : [...options.profiles],
-        config: config(options.limits),
+        config: containerConfig(options.limits),
         devices: devices(options),
         source: source(options.image),
         start: true,
@@ -207,7 +199,7 @@ const stop = Effect.fn("IncusContainer.stop")(function* (
   );
   yield* operations.wait(operation.id, {
     project,
-    timeoutMs: options.timeoutSeconds === undefined ? undefined : options.timeoutSeconds * 1000,
+    timeoutSeconds: options.timeoutSeconds,
   });
 });
 
@@ -225,6 +217,7 @@ const makeContainer = (
   project: string,
   api: IncusApiService,
   operations: IncusOperationsService,
+  config: IncusConfigService,
   name: string,
 ): IncusContainer => {
   const projectOptions = { project };
@@ -233,38 +226,7 @@ const makeContainer = (
     command: readonly string[],
     options?: IncusExecOptions,
   ) {
-    const operation = yield* api.instances.exec(
-      name,
-      {
-        command: [...command],
-        cwd: options?.cwd,
-        environment: options?.environment,
-        interactive: false,
-        "record-output": true,
-        "wait-for-websocket": false,
-      },
-      projectOptions,
-    );
-    const op = yield* operations.waitInterruptible(operation.id, {
-      timeoutMs: options?.timeoutMs,
-      signal: options?.signal,
-      project,
-    });
-    const meta = yield* Schema.decodeUnknownEffect(ExecOperationMetadata)(
-      op.metadata?.metadata,
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new IncusContainerMetadataError({
-            operation: operation.id,
-            message: "Failed to decode Incus exec operation metadata",
-            metadata: { cause, metadata: op.metadata?.metadata },
-          }),
-      ),
-    );
-    const stdout = yield* readOutput(api, project, meta.output?.["1"]);
-    const stderr = yield* readOutput(api, project, meta.output?.["2"]);
-    return { exitCode: meta.return, stdout, stderr };
+    return yield* execStream(name, project, api, operations, config, command, options);
   });
 
   const writeFile: IncusContainer["files"]["write"] = Effect.fn("IncusContainer.writeFile")(
@@ -311,9 +273,6 @@ const makeContainer = (
     },
   };
 };
-
-const readOutput = (api: IncusApiService, project: string, path?: string) =>
-  path ? api.instances.files.readExecOutput(path, { project }) : Effect.succeed("");
 
 const ensureParentDirectories = (
   api: IncusApiService,
@@ -396,7 +355,7 @@ const source = (image: IncusImage) =>
         protocol: image.protocol ?? "simplestreams",
       };
 
-const config = (limits?: IncusLimits) => ({
+const containerConfig = (limits?: IncusLimits) => ({
   ...(limits?.cpu ? { "limits.cpu": limits.cpu } : {}),
   ...(limits?.memory ? { "limits.memory": limits.memory } : {}),
 });
@@ -415,8 +374,3 @@ const devices = (options: IncusContainerOptions) =>
       },
     ]),
   );
-
-const ExecOperationMetadata = Schema.Struct({
-  return: Schema.Number,
-  output: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-});

@@ -11,8 +11,8 @@ import {
   type ReadOperations,
   type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
-import { Context, Effect, Layer, ManagedRuntime } from "effect";
-import { Incus, type IncusContainer } from "incus-api";
+import { Cause, Context, Effect, Exit, Layer, ManagedRuntime, Option } from "effect";
+import { Incus, IncusContainerExecTimeoutError, type IncusContainer } from "incus-api";
 
 export interface IncusExtensionOptions {
   readonly channelId: string;
@@ -100,10 +100,15 @@ export const createIncusExtension = (options: IncusExtensionOptions): IncusExten
     },
     detectImageMimeType: async (path) => {
       try {
-        const result = await runInContainer((c) =>
-          c.exec(["/bin/sh", "-lc", `file --mime-type -b ${shQuote(path)} 2>/dev/null || true`]),
+        let stdout = "";
+        await runInContainer((c) =>
+          c.exec(["/bin/sh", "-lc", `file --mime-type -b ${shQuote(path)} 2>/dev/null || true`], {
+            onStdout: (chunk) => {
+              stdout += new TextDecoder().decode(chunk);
+            },
+          }),
         );
-        const mimeType = result.stdout.trim();
+        const mimeType = stdout.trim();
         return mimeType.length > 0 && IMAGE_MIME_TYPES.has(mimeType) ? mimeType : null;
       } catch {
         return null;
@@ -138,55 +143,46 @@ export const createIncusExtension = (options: IncusExtensionOptions): IncusExten
   };
 
   const bashOperations: BashOperations = {
-    exec: async (command, cwd, options) => {
-      const abortController = new AbortController();
-      const onAbort = (): void => abortController.abort();
-      options.signal?.addEventListener("abort", onAbort, { once: true });
+    exec: async (command, cwd, execOptions) => {
+      const timeoutSec = execOptions.timeout;
+      const timeoutSeconds = timeoutSec !== undefined && timeoutSec > 0 ? timeoutSec : undefined;
 
-      let timedOut = false;
-      const timeoutSec = options.timeout;
-      const timeoutMs = timeoutSec !== undefined && timeoutSec > 0 ? timeoutSec * 1000 : undefined;
-      const timeoutHandle =
-        timeoutMs !== undefined
-          ? setTimeout(() => {
-              timedOut = true;
-              abortController.abort();
-            }, timeoutMs)
-          : undefined;
-
-      try {
-        const result = await runInContainer((c) =>
-          c.exec(["/bin/bash", "-c", command], {
+      const exit = await runtime.runPromiseExit(
+        Effect.gen(function* () {
+          const container = yield* SessionContainer;
+          return yield* container.exec(["/bin/bash", "-c", command], {
             cwd,
-            signal: abortController.signal,
-            timeoutMs,
-          }),
-        );
+            timeoutSeconds,
+            onStdout: (chunk) => {
+              execOptions.onData(Buffer.from(chunk));
+            },
+            onStderr: (chunk) => {
+              execOptions.onData(Buffer.from(chunk));
+            },
+          });
+        }),
+        { signal: execOptions.signal },
+      );
 
-        if (result.stdout) {
-          options.onData(Buffer.from(result.stdout));
-        }
-        if (result.stderr) {
-          options.onData(Buffer.from(result.stderr));
-        }
-
-        return { exitCode: result.exitCode };
-      } catch (error) {
-        if (options.signal?.aborted) {
-          throw new Error("aborted");
-        }
-
-        if (timedOut) {
-          throw new Error(`timeout:${timeoutSec}`);
-        }
-
-        throw error;
-      } finally {
-        if (timeoutHandle !== undefined) {
-          clearTimeout(timeoutHandle);
-        }
-        options.signal?.removeEventListener("abort", onAbort);
+      if (Exit.isSuccess(exit)) {
+        return { exitCode: exit.value.exitCode };
       }
+
+      if (execOptions.signal?.aborted || Cause.hasInterruptsOnly(exit.cause)) {
+        throw new Error("aborted");
+      }
+
+      const errorOpt = Cause.findErrorOption(exit.cause);
+      if (Option.isSome(errorOpt) && errorOpt.value instanceof IncusContainerExecTimeoutError) {
+        throw new Error(`timeout:${timeoutSec}`);
+      }
+
+      await Effect.runPromise(
+        Effect.logError(
+          `Sandbox bash command failed for channel ${options.channelId}: ${Cause.pretty(exit.cause)}`,
+        ),
+      );
+      throw new Error("Sandbox internal error");
     },
   };
 

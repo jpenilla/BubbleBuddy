@@ -23,10 +23,11 @@ export class Incus extends Context.Service<
     Effect.gen(function* () {
       const api = yield* Api.IncusApi;
       const operations = yield* Operations.IncusOperations;
+      const config = yield* Config.IncusConfig;
       return Incus.of({
         project: (name) => ({
           name,
-          containers: Containers.make(name, api, operations),
+          containers: Containers.make(name, api, operations, config),
         }),
       });
     }),

@@ -3,11 +3,12 @@ import { Cause, Effect, Exit, Layer, Option } from "effect";
 
 import {
   Incus,
-  IncusContainerMetadataError,
+  IncusContainerExecInvalidOptionsError,
   IncusContainerPathError,
   type IncusImage,
 } from "../src/index.ts";
 import { IncusApi, type IncusApiService } from "../src/api.ts";
+import { IncusConfig } from "../src/config.ts";
 import { IncusOperations, type IncusOperationsService } from "../src/operations.ts";
 
 const debianImage: IncusImage = {
@@ -31,7 +32,6 @@ const makeFakeApi = (overrides: {
   readonly readText?: IncusApiService["instances"]["files"]["readText"];
   readonly stat?: IncusApiService["instances"]["files"]["stat"];
   readonly write?: IncusApiService["instances"]["files"]["write"];
-  readonly readExecOutput?: IncusApiService["instances"]["files"]["readExecOutput"];
 }): IncusApiService => ({
   instances: {
     create: overrides.create ?? (() => notImplemented("instances.create")),
@@ -44,8 +44,6 @@ const makeFakeApi = (overrides: {
       readText: overrides.readText ?? (() => notImplemented("instances.files.readText")),
       stat: overrides.stat ?? (() => notImplemented("instances.files.stat")),
       write: overrides.write ?? (() => notImplemented("instances.files.write")),
-      readExecOutput:
-        overrides.readExecOutput ?? (() => notImplemented("instances.files.readExecOutput")),
     },
   },
   operations: {
@@ -57,9 +55,8 @@ const makeFakeApi = (overrides: {
 const makeFakeOperations = (
   overrides: Partial<IncusOperationsService> = {},
 ): IncusOperationsService => ({
-  wait: () => Effect.succeed({ metadata: { status_code: 200 } }),
-  waitInterruptible: () =>
-    Effect.succeed({ metadata: { status_code: 200, metadata: { return: 0 } } }),
+  wait: () => Effect.succeed({ status: "success", metadata: { return: 0 } }),
+
   ...overrides,
 });
 
@@ -70,6 +67,12 @@ const makeLayer = (
   Incus.layer.pipe(
     Layer.provide(Layer.succeed(IncusApi, api)),
     Layer.provide(Layer.succeed(IncusOperations, operations)),
+    Layer.provide(
+      Layer.succeed(
+        IncusConfig,
+        IncusConfig.of({ endpoint: { type: "unix", socketPath: "/var/lib/incus/unix.socket" } }),
+      ),
+    ),
   );
 
 const extractError = <E>(exit: Exit.Exit<unknown, E>): E | undefined => {
@@ -101,30 +104,10 @@ describe("Incus project container API", () => {
     ).pipe(Effect.provide(makeLayer(api)));
   });
 
-  it.effect("exec reads recorded output from the project-bound API", () => {
+  it.effect("exec fails with options error for invalid timeout", () => {
     const api = makeFakeApi({
       create: () => Effect.succeed(operation),
       setState: () => Effect.succeed(operation),
-      exec: () => Effect.succeed(operation),
-      readExecOutput: (path) =>
-        Effect.succeed(
-          path === "/1.0/instances/test/logs/exec-output/exec_123.stdout" ? "hello" : "",
-        ),
-    });
-    const operations = makeFakeOperations({
-      waitInterruptible: () =>
-        Effect.succeed({
-          metadata: {
-            status_code: 200,
-            metadata: {
-              return: 0,
-              output: {
-                "1": "/1.0/instances/test/logs/exec-output/exec_123.stdout",
-                "2": "/1.0/instances/test/logs/exec-output/exec_123.stderr",
-              },
-            },
-          },
-        }),
     });
 
     return Effect.scoped(
@@ -134,11 +117,17 @@ describe("Incus project container API", () => {
           name: "test",
           image: debianImage,
         });
-        const result = yield* container.exec(["printf", "hello"]);
+        const zeroExit = yield* Effect.exit(container.exec(["true"], { timeoutSeconds: 0 }));
+        const fractionalExit = yield* Effect.exit(
+          container.exec(["true"], { timeoutSeconds: 0.5 }),
+        );
 
-        assert.deepStrictEqual(result, { exitCode: 0, stdout: "hello", stderr: "" });
+        assert.strictEqual(zeroExit._tag, "Failure");
+        assert.instanceOf(extractError(zeroExit), IncusContainerExecInvalidOptionsError);
+        assert.strictEqual(fractionalExit._tag, "Failure");
+        assert.instanceOf(extractError(fractionalExit), IncusContainerExecInvalidOptionsError);
       }),
-    ).pipe(Effect.provide(makeLayer(api, operations)));
+    ).pipe(Effect.provide(makeLayer(api)));
   });
 
   it.effect("stops an ephemeral container when the scope closes", () => {
@@ -301,31 +290,5 @@ describe("Incus project container API", () => {
         assert.instanceOf(extractError(exit), IncusContainerPathError);
       }),
     ).pipe(Effect.provide(makeLayer(api)));
-  });
-
-  it.effect("exec fails with a metadata error when operation metadata is malformed", () => {
-    const api = makeFakeApi({
-      create: () => Effect.succeed(operation),
-      setState: () => Effect.succeed(operation),
-      exec: () => Effect.succeed(operation),
-    });
-    const operations = makeFakeOperations({
-      waitInterruptible: () =>
-        Effect.succeed({ metadata: { status_code: 200, metadata: { output: {} } } }),
-    });
-
-    return Effect.scoped(
-      Effect.gen(function* () {
-        const incus = yield* Incus;
-        const container = yield* incus.project("ci").containers.scoped({
-          name: "test",
-          image: debianImage,
-        });
-        const exit = yield* Effect.exit(container.exec(["true"]));
-
-        assert.strictEqual(exit._tag, "Failure");
-        assert.instanceOf(extractError(exit), IncusContainerMetadataError);
-      }),
-    ).pipe(Effect.provide(makeLayer(api, operations)));
   });
 });

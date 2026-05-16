@@ -1,5 +1,5 @@
 - Our package manager is pnpm. Do not manage packages or run scripts with any other package manager.
 - Our current app runtime is Node.js, current test runtime is Node.js via Vitest.
-- We use Effect v4, it's not the same as the older versions you remember. Read the docs and source to understand it.
+- We use Effect v4 (effect-smol), it's not the same as the older versions you remember. Read the docs and source to understand it.
 - In `./context` we maintain Git clones of several of our dependencies as well as some reference apps using good Effect v4 patterns. If you need to understand a dependency, always check `./context` before `./node_modules`. If a repo is not checking out the right tag for the npm package we use, you can fix that.
 - Use `pnpm run ...` rather than direct check invocations.

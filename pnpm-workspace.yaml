@@ -1,2 +1,11 @@
 packages:
   - "packages/*"
+
+allowBuilds:
+  '@google/genai': true
+  better-sqlite3: true
+  cpu-features: true
+  koffi: true
+  msgpackr-extract: true
+  protobufjs: true
+  ssh2: true

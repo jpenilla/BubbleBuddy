@@ -5,13 +5,7 @@ import * as HttpClientError from "effect/unstable/http/HttpClientError";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 
-import {
-  IncusApi,
-  IncusApiBodyError,
-  IncusApiOperationError,
-  IncusApiStatusCodeError,
-  IncusApiTransportError,
-} from "../src/api.ts";
+import { IncusApi, IncusApiOperationError, IncusApiStatusCodeError } from "../src/api.ts";
 import { IncusHttpClient } from "../src/http-client.ts";
 
 const layerWithHttp = (client: HttpClient.HttpClient) =>
@@ -36,7 +30,7 @@ const extractError = <E>(exit: Exit.Exit<unknown, E>): E | undefined => {
 };
 
 describe("IncusApi error paths", () => {
-  it.effect("raises IncusApiTransportError on execute failure", () => {
+  it.effect("raises HttpClientError on execute failure", () => {
     const http = makeHttpClient(() =>
       Effect.fail(
         new HttpClientError.HttpClientError({
@@ -52,7 +46,7 @@ describe("IncusApi error paths", () => {
       const api = yield* IncusApi;
       const exit = yield* Effect.exit(api.instances.exists("test", { project: "default" }));
       assert.strictEqual(exit._tag, "Failure");
-      assert.instanceOf(extractError(exit), IncusApiTransportError);
+      assert.instanceOf(extractError(exit), HttpClientError.HttpClientError);
     }).pipe(Effect.provide(layerWithHttp(http)));
   });
 
@@ -75,7 +69,7 @@ describe("IncusApi error paths", () => {
     }).pipe(Effect.provide(layerWithHttp(http)));
   });
 
-  it.effect("raises IncusApiBodyError on malformed JSON body", () => {
+  it.effect("raises HttpClientError on malformed JSON body", () => {
     const http = makeHttpClient((request) =>
       Effect.succeed(
         HttpClientResponse.fromWeb(
@@ -92,11 +86,7 @@ describe("IncusApi error paths", () => {
       const api = yield* IncusApi;
       const exit = yield* Effect.exit(api.instances.create({}, { project: "default" }));
       assert.strictEqual(exit._tag, "Failure");
-      const error = extractError(exit);
-      assert.instanceOf(error, IncusApiBodyError);
-      if (error instanceof IncusApiBodyError) {
-        assert.strictEqual(error.bodyType, "json");
-      }
+      assert.instanceOf(extractError(exit), HttpClientError.HttpClientError);
     }).pipe(Effect.provide(layerWithHttp(http)));
   });
 
@@ -105,9 +95,12 @@ describe("IncusApi error paths", () => {
       Effect.succeed(
         HttpClientResponse.fromWeb(
           request,
-          new Response(JSON.stringify({ metadata: { status_code: 500, err: "boom" } }), {
-            status: 200,
-          }),
+          new Response(
+            JSON.stringify({ type: "sync", metadata: { status_code: 500, err: "boom" } }),
+            {
+              status: 200,
+            },
+          ),
         ),
       ),
     );
@@ -120,7 +113,94 @@ describe("IncusApi error paths", () => {
       assert.instanceOf(error, IncusApiOperationError);
       if (error instanceof IncusApiOperationError) {
         assert.strictEqual(error.message, "boom");
+        assert.deepStrictEqual(error.metadata, {
+          type: "sync",
+          metadata: { status_code: 500, err: "boom" },
+        });
       }
+    }).pipe(Effect.provide(layerWithHttp(http)));
+  });
+
+  it.effect("operations.wait preserves failed exec metadata when requested", () => {
+    const http = makeHttpClient((request) =>
+      Effect.succeed(
+        HttpClientResponse.fromWeb(
+          request,
+          new Response(
+            JSON.stringify({
+              type: "sync",
+              metadata: {
+                status_code: 400,
+                err: "Command not found",
+                metadata: { return: 127 },
+              },
+            }),
+            {
+              status: 200,
+            },
+          ),
+        ),
+      ),
+    );
+
+    return Effect.gen(function* () {
+      const api = yield* IncusApi;
+      const result = yield* api.operations.wait("op-123", {
+        project: "default",
+        failureMode: "return",
+      });
+      assert.deepStrictEqual(result, {
+        status: "failure",
+        error: "Command not found",
+        metadata: { return: 127 },
+      });
+    }).pipe(Effect.provide(layerWithHttp(http)));
+  });
+
+  it.effect("instances.exec decodes websocket fd secrets into named fields", () => {
+    const http = makeHttpClient((request) =>
+      Effect.succeed(
+        HttpClientResponse.fromWeb(
+          request,
+          new Response(
+            JSON.stringify({
+              type: "async",
+              operation: "/1.0/operations/op-123",
+              metadata: {
+                metadata: {
+                  fds: {
+                    "0": "stdin-secret",
+                    "1": "stdout-secret",
+                    "2": "stderr-secret",
+                    control: "control-secret",
+                  },
+                },
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+      ),
+    );
+
+    return Effect.gen(function* () {
+      const api = yield* IncusApi;
+      const operation = yield* api.instances.exec(
+        "test",
+        { command: ["true"] },
+        {
+          project: "default",
+        },
+      );
+      assert.deepStrictEqual(operation, {
+        id: "op-123",
+        fds: {
+          stdin: "stdin-secret",
+          stdout: "stdout-secret",
+          stderr: "stderr-secret",
+          control: "control-secret",
+        },
+      });
     }).pipe(Effect.provide(layerWithHttp(http)));
   });
 
