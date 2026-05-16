@@ -27,6 +27,7 @@ import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
 
 export interface PiChannelSessionOptions {
   readonly channel: GuildTextBasedChannel;
+  readonly appSkillPaths: string[];
   readonly getShowThinking: () => boolean;
   readonly hostWorkspaceDir: string;
   readonly promptContext: PromptTemplateContext;
@@ -126,6 +127,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
 
     const resourceLoader = createChannelWorkspaceResourceLoader({
       agentDir: piContext.agentDir,
+      appSkillPaths: options.appSkillPaths,
       enableAgenticWorkspace: config.enableAgenticWorkspace,
       extensionFactories,
       settingsManager,
