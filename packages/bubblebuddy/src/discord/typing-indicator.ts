@@ -1,6 +1,8 @@
 import type { GuildTextBasedChannel } from "discord.js";
 import { Effect, FiberHandle, Option, Scope, TxQueue } from "effect";
 
+import { tryDiscordJsPromise } from "./utils.ts";
+
 export interface TypingIndicator {
   readonly start: Effect.Effect<void>;
   readonly awaitStop: Effect.Effect<void>;
@@ -22,7 +24,7 @@ export const makeTypingIndicator = (
     const handle = yield* FiberHandle.make<void, never>();
     const refreshSignals = yield* Effect.acquireRelease(TxQueue.sliding<void>(1), TxQueue.shutdown);
 
-    const sendTyping = Effect.tryPromise(() => options.channel.sendTyping()).pipe(
+    const sendTyping = tryDiscordJsPromise(() => options.channel.sendTyping()).pipe(
       Effect.timeout(SEND_TYPING_TIMEOUT_MS),
       Effect.ignore({
         log: "Warn",

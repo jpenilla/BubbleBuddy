@@ -9,9 +9,18 @@ import {
   type ReplyOptions,
 } from "discord.js";
 import type { EmbedBuilder } from "discord.js";
+import { Effect } from "effect";
 
 import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
 import { splitDiscordMessage } from "../prompt/text.ts";
+
+export const tryDiscordJsPromise = <A>(
+  evaluate: (signal: AbortSignal) => PromiseLike<A>,
+): Effect.Effect<A, unknown> =>
+  Effect.tryPromise({
+    try: evaluate,
+    catch: (cause) => cause,
+  });
 
 export const isGuildTextChannel = (channel: unknown): channel is GuildTextBasedChannel =>
   typeof channel === "object" &&

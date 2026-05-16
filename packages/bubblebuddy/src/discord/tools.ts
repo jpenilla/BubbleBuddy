@@ -17,7 +17,7 @@ import {
 import { formatMessageForPrompt } from "./message-formatting.ts";
 import { WORKSPACE_CWD } from "../shared/constants.ts";
 import type { AwaitToolDiscordAction } from "../pi-session/discord-output-pump.ts";
-import { sendMessageWithAbort } from "./utils.ts";
+import { sendMessageWithAbort, tryDiscordJsPromise } from "./utils.ts";
 
 const LIST_CUSTOM_EMOJIS_TOOL = "discord_list_custom_emojis";
 const LIST_STICKERS_TOOL = "discord_list_stickers";
@@ -207,14 +207,12 @@ export const createDiscordTools = (
 
         await runToolEffect(
           awaitToolDiscordAction(
-            Effect.tryPromise({
-              try: () =>
-                context.channel.send({
-                  content: params.caption,
-                  stickers: [sticker.sticker.id],
-                }),
-              catch: (cause) => cause,
-            }),
+            tryDiscordJsPromise(() =>
+              context.channel.send({
+                content: params.caption,
+                stickers: [sticker.sticker.id],
+              }),
+            ),
           ),
           signal,
         );
@@ -241,10 +239,7 @@ export const createDiscordTools = (
       }),
       execute: async (_toolCallId, params, signal) => {
         const targetMessage = await runToolEffect(
-          Effect.tryPromise({
-            try: () => context.channel.messages.fetch(params.messageId),
-            catch: (cause) => cause,
-          }),
+          tryDiscordJsPromise(() => context.channel.messages.fetch(params.messageId)),
           signal,
         );
 
@@ -259,12 +254,7 @@ export const createDiscordTools = (
 
           try {
             await runToolEffect(
-              awaitToolDiscordAction(
-                Effect.tryPromise({
-                  try: () => targetMessage.react(emoji),
-                  catch: (cause) => cause,
-                }),
-              ),
+              awaitToolDiscordAction(tryDiscordJsPromise(() => targetMessage.react(emoji))),
               signal,
             );
           } catch (error) {
@@ -300,10 +290,7 @@ export const createDiscordTools = (
       }),
       execute: async (_toolCallId, params, signal) => {
         const fetchedMessage = await runToolEffect(
-          Effect.tryPromise({
-            try: () => context.channel.messages.fetch(params.messageId),
-            catch: (cause) => cause,
-          }),
+          tryDiscordJsPromise(() => context.channel.messages.fetch(params.messageId)),
           signal,
         );
 
@@ -350,14 +337,12 @@ export const createDiscordTools = (
           const fileName = params.fileName?.trim() || basename(resolved.hostPath);
           await runToolEffect(
             awaitToolDiscordAction(
-              Effect.tryPromise({
-                try: (signal) =>
-                  sendMessageWithAbort(context.channel, signal, {
-                    content: params.caption,
-                    files: [{ attachment: resolved.hostPath, name: fileName }],
-                  }),
-                catch: (cause) => cause,
-              }),
+              tryDiscordJsPromise((signal) =>
+                sendMessageWithAbort(context.channel, signal, {
+                  content: params.caption,
+                  files: [{ attachment: resolved.hostPath, name: fileName }],
+                }),
+              ),
             ),
             signal,
           );

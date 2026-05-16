@@ -15,7 +15,7 @@ import {
   type RetryStatusEmbed,
 } from "../discord/run-status-embed.ts";
 import { createToolStatusEmbed, type ToolStatusEmbed } from "../discord/tool-status-embed.ts";
-import { sendChunkedMessage, sendOrEditStatusCard } from "../discord/utils.ts";
+import { sendChunkedMessage, sendOrEditStatusCard, tryDiscordJsPromise } from "../discord/utils.ts";
 import { extractAssistantText, splitThinkingStatus } from "../prompt/text.ts";
 import { makePriorityDrainableWorker } from "../shared/priority-drainable-worker.ts";
 
@@ -130,12 +130,14 @@ export const makeDiscordOutputPump = (
       Effect.gen(function* () {
         const embed = createCompactionStatusEmbed(status);
         const existing = yield* Ref.get(compactionStatusMessage);
-        const sent = yield* Effect.tryPromise(() => sendOrEditStatusCard(channel, existing, embed));
+        const sent = yield* tryDiscordJsPromise(() =>
+          sendOrEditStatusCard(channel, existing, embed),
+        );
         yield* Ref.set(compactionStatusMessage, status.phase === "start" ? sent : undefined);
       });
 
     const sendFinal = (text: string, replyToMessageId: string): Effect.Effect<void, unknown> =>
-      Effect.tryPromise(() =>
+      tryDiscordJsPromise(() =>
         sendChunkedMessage({
           channel,
           content: text,
@@ -150,7 +152,7 @@ export const makeDiscordOutputPump = (
       text: string,
       replyToMessageId: string,
     ): Effect.Effect<void, unknown> =>
-      Effect.tryPromise(() =>
+      tryDiscordJsPromise(() =>
         sendChunkedMessage({
           channel,
           content: text,
@@ -166,7 +168,9 @@ export const makeDiscordOutputPump = (
       Effect.gen(function* () {
         const embed = createRetryStatusEmbed(status);
         const existing = yield* Ref.get(runRetryMessage);
-        const sent = yield* Effect.tryPromise(() => sendOrEditStatusCard(channel, existing, embed));
+        const sent = yield* tryDiscordJsPromise(() =>
+          sendOrEditStatusCard(channel, existing, embed),
+        );
         yield* Ref.set(
           runRetryMessage,
           status.phase === "success" || status.phase === "failure" || status.phase === "aborted"
@@ -180,22 +184,24 @@ export const makeDiscordOutputPump = (
         const existing = yield* Ref.get(runRetryMessage);
         if (existing !== undefined) {
           const embed = createRetryStatusEmbed({ phase: "aborted" });
-          yield* Effect.tryPromise(() => sendOrEditStatusCard(channel, existing, embed));
+          yield* tryDiscordJsPromise(() => sendOrEditStatusCard(channel, existing, embed));
           yield* Ref.set(runRetryMessage, undefined);
           return;
         }
-        yield* Effect.tryPromise(() => channel.send({ embeds: [createRunAbortedEmbed()] }));
+        yield* tryDiscordJsPromise(() => channel.send({ embeds: [createRunAbortedEmbed()] }));
       });
 
     const sendRunError = (errorMessage: string): Effect.Effect<void, unknown> =>
-      Effect.tryPromise(() => channel.send({ embeds: [createRunErrorEmbed({ errorMessage })] }));
+      tryDiscordJsPromise(() => channel.send({ embeds: [createRunErrorEmbed({ errorMessage })] }));
 
     const sendToolStatus = (status: ToolStatusEmbed): Effect.Effect<void, unknown> =>
       Effect.gen(function* () {
         const embed = createToolStatusEmbed(status);
         const messages = yield* Ref.get(toolStatusMessages);
         const existing = HashMap.get(messages, status.toolCallId).pipe(Option.getOrUndefined);
-        const sent = yield* Effect.tryPromise(() => sendOrEditStatusCard(channel, existing, embed));
+        const sent = yield* tryDiscordJsPromise(() =>
+          sendOrEditStatusCard(channel, existing, embed),
+        );
         yield* Ref.update(toolStatusMessages, (current) =>
           status.phase === "start"
             ? HashMap.set(current, status.toolCallId, sent)
@@ -205,7 +211,7 @@ export const makeDiscordOutputPump = (
 
     const sendThinking = (text: string): Effect.Effect<void, unknown> =>
       Effect.forEach(splitThinkingStatus(text), (chunk) =>
-        Effect.tryPromise(() => channel.send(chunk)),
+        tryDiscordJsPromise(() => channel.send(chunk)),
       ).pipe(Effect.asVoid);
 
     const onAgentStart = (_event: SessionEvent<"agent_start">): Effect.Effect<void, unknown> =>
