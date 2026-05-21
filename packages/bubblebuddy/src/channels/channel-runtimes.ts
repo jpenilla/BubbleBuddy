@@ -6,7 +6,6 @@ import {
   type ChannelRuntime,
   type ChannelRuntimeError,
 } from "./channel-runtime.ts";
-import type { SessionKeepAlive } from "./keep-alive.ts";
 import { ChannelStateRepository } from "./state-repository.ts";
 import { PiChannelSessionFactory } from "../pi-session/session-factory.ts";
 
@@ -15,17 +14,16 @@ const makeChannelRuntimes = Effect.gen(function* () {
   const runtimesDeferred =
     yield* Deferred.make<RcMap.RcMap<string, ChannelRuntime, ChannelRuntimeError>>();
 
-  const makeKeepAlive = (channelId: string): Effect.Effect<SessionKeepAlive> =>
-    Effect.gen(function* () {
-      const runtimes = yield* Deferred.await(runtimesDeferred);
-      const keepAliveScope = yield* Scope.make();
-      yield* Effect.forkIn(keepAliveScope)(
-        RcMap.get(runtimes, channelId).pipe(Scope.provide(keepAliveScope)),
-      );
-      return {
-        release: Scope.close(keepAliveScope, Exit.void),
-      };
-    });
+  const makeKeepAlive = Effect.fn("ChannelRuntimes.makeKeepAlive")(function* (channelId: string) {
+    const runtimes = yield* Deferred.await(runtimesDeferred);
+    const keepAliveScope = yield* Scope.make();
+    yield* Effect.forkIn(keepAliveScope)(
+      RcMap.get(runtimes, channelId).pipe(Scope.provide(keepAliveScope)),
+    );
+    return {
+      release: Scope.close(keepAliveScope, Exit.void),
+    };
+  });
 
   const runtimes = yield* RcMap.make({
     lookup: (channelId: string) =>
@@ -37,8 +35,12 @@ const makeChannelRuntimes = Effect.gen(function* () {
   });
   yield* Deferred.complete(runtimesDeferred, Effect.succeed(runtimes));
 
+  const get = Effect.fn("ChannelRuntimes.get")(function* (channelId: string) {
+    return yield* RcMap.get(runtimes, channelId);
+  });
+
   return ChannelRuntimes.of({
-    get: (channelId: string) => RcMap.get(runtimes, channelId),
+    get,
   });
 });
 
