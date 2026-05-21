@@ -2,9 +2,6 @@
   "name": "bubblebuddy",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=25.9.0"
-  },
   "scripts": {
     "check": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test",
     "dev": "node --env-file-if-exists=.env --watch src/index.ts",
@@ -17,25 +14,25 @@
     "typecheck": "tsgo -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.75.4",
-    "@earendil-works/pi-ai": "0.75.4",
-    "@earendil-works/pi-coding-agent": "0.75.4",
-    "@effect/platform-node": "4.0.0-beta.68",
-    "@effect/sql-sqlite-node": "4.0.0-beta.68",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "discord.js": "^14.26.4",
-    "effect": "4.0.0-beta.68",
+    "@earendil-works/pi-agent-core": "catalog:",
+    "@earendil-works/pi-ai": "catalog:",
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@effect/sql-sqlite-node": "catalog:",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "discord.js": "catalog:",
+    "effect": "catalog:",
     "incus-api": "workspace:*",
-    "typebox": "^1.1.38"
+    "typebox": "catalog:"
   },
   "devDependencies": {
-    "@effect/tsgo": "^0.10.0",
-    "@effect/vitest": "4.0.0-beta.68",
-    "@types/node": "^25.9.1",
-    "@typescript/native-preview": "7.0.0-dev.20260521.1",
-    "oxfmt": "^0.51.0",
-    "oxlint": "^1.66.0",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "@effect/tsgo": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
