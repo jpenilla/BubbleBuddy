@@ -26,13 +26,13 @@ export const DatabaseLive = Layer.unwrap(
 const initialSchema = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   yield* sql`
-    CREATE TABLE IF NOT EXISTS channel_settings (
+    CREATE TABLE channel_settings (
       channel_id TEXT PRIMARY KEY NOT NULL,
       show_thinking INTEGER
     )
   `;
   yield* sql`
-    CREATE TABLE IF NOT EXISTS channel_sessions (
+    CREATE TABLE channel_sessions (
       channel_id TEXT PRIMARY KEY NOT NULL,
       active_session TEXT
     )
