@@ -12,7 +12,7 @@ export interface LoadedResourcesShape {
 export class LoadedResources extends Context.Service<LoadedResources, LoadedResourcesShape>()(
   "bubblebuddy/LoadedResources",
 ) {
-  static readonly layer = Layer.effect(
+  static readonly layerNoDeps = Layer.effect(
     LoadedResources,
     Effect.gen(function* () {
       const config = yield* FileConfig;
@@ -41,5 +41,9 @@ export class LoadedResources extends Context.Service<LoadedResources, LoadedReso
         discordContextTemplate,
       });
     }),
+  );
+  static readonly layer = LoadedResources.layerNoDeps.pipe(
+    Layer.provide(FileConfig.layer),
+    Layer.provide(AppHome.layer),
   );
 }

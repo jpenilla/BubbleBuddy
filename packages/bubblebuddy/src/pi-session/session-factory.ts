@@ -137,5 +137,12 @@ export class PiChannelSessionFactory extends Context.Service<
     ) => Effect.Effect<ScopedPiChannelSession, PiChannelSessionFactoryError, Scope.Scope>;
   }
 >()("bubblebuddy/pi/PiChannelSessionFactory") {
-  static readonly layer = Layer.effect(PiChannelSessionFactory, makeFactory());
+  static readonly layerNoDeps = Layer.effect(PiChannelSessionFactory, makeFactory());
+  static readonly layer = PiChannelSessionFactory.layerNoDeps.pipe(
+    Layer.provide(FileConfig.layer),
+    Layer.provide(LoadedResources.layer),
+    Layer.provide(AppHome.layer),
+    Layer.provide(ChannelStateRepository.layer),
+    Layer.provide(PiContext.layer),
+  );
 }

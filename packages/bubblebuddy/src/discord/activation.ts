@@ -31,7 +31,7 @@ export const ActivationLive = Layer.effectDiscard(
       }),
     );
   }),
-);
+).pipe(Layer.provide(Discord.layer), Layer.provide(ChannelRuntimes.layer));
 
 const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
   Effect.gen(function* () {

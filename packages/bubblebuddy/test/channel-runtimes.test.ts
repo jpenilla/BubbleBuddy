@@ -18,7 +18,7 @@ const resources: LoadedResourcesShape = {
 };
 
 const testLayer = (config: FileConfigShape, appHome: string) =>
-  ChannelRuntimes.layer.pipe(
+  ChannelRuntimes.layerNoDeps.pipe(
     Layer.provideMerge(ChannelStateRepository.layer),
     Layer.provideMerge(DatabaseLive),
     Layer.provideMerge(Layer.succeed(FileConfig, config)),
@@ -28,7 +28,7 @@ const testLayer = (config: FileConfigShape, appHome: string) =>
         create: () => Effect.die("Pi session creation is not expected in these tests"),
       }),
     ),
-    Layer.provideMerge(AppHome.layer),
+    Layer.provideMerge(AppHome.layerNoDeps),
     Layer.provideMerge(makeTestEnvLayer({ appHome })),
     Layer.provideMerge(NodeServices.layer),
   );

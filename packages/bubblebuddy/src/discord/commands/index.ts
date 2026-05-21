@@ -57,7 +57,7 @@ export const SlashCommandsLive = Layer.effectDiscard(
     );
     yield* Effect.logInfo("Discord slash commands registered.");
   }),
-);
+).pipe(Layer.provide(Discord.layer), Layer.provide(ChannelRuntimes.layer));
 
 const handleInteraction = (interaction: Interaction) =>
   Effect.gen(function* () {

@@ -7,6 +7,8 @@ import {
   type ChannelRuntimeError,
 } from "./channel-runtime.ts";
 import type { SessionKeepAlive } from "./keep-alive.ts";
+import { ChannelStateRepository } from "./state-repository.ts";
+import { PiChannelSessionFactory } from "../pi-session/session-factory.ts";
 
 const makeChannelRuntimes = () => {
   return Effect.gen(function* () {
@@ -50,5 +52,10 @@ export class ChannelRuntimes extends Context.Service<
     ) => Effect.Effect<ChannelRuntime, ChannelRuntimeError, Scope.Scope>;
   }
 >()("bubblebuddy/ChannelRuntimes") {
-  static readonly layer = Layer.effect(ChannelRuntimes, makeChannelRuntimes());
+  static readonly layerNoDeps = Layer.effect(ChannelRuntimes, makeChannelRuntimes());
+  static readonly layer = ChannelRuntimes.layerNoDeps.pipe(
+    Layer.provide(FileConfig.layer),
+    Layer.provide(ChannelStateRepository.layer),
+    Layer.provide(PiChannelSessionFactory.layer),
+  );
 }

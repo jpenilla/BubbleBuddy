@@ -48,7 +48,7 @@ export class Discord extends Context.Service<
     readonly events: DiscordEvents;
   }
 >()("bubblebuddy/discord/Discord") {
-  static readonly layer = Layer.effect(
+  static readonly layerNoDeps = Layer.effect(
     Discord,
     Effect.gen(function* () {
       const env = yield* EnvConfig;
@@ -101,6 +101,7 @@ export class Discord extends Context.Service<
       });
     }),
   );
+  static readonly layer = Discord.layerNoDeps.pipe(Layer.provide(EnvConfig.layer));
 }
 
 const loginClient = (

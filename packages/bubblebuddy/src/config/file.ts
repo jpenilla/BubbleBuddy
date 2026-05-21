@@ -166,7 +166,6 @@ const loadFileConfig = Effect.gen(function* () {
 export class FileConfig extends Context.Service<FileConfig, FileConfigShape>()(
   "bubblebuddy/FileConfig",
 ) {
-  static readonly layer = Layer.effect(FileConfig, loadFileConfig);
+  static readonly layerNoDeps = Layer.effect(FileConfig, loadFileConfig);
+  static readonly layer = FileConfig.layerNoDeps.pipe(Layer.provide(AppHome.layer));
 }
-
-export const FileConfigLive = FileConfig.layer;

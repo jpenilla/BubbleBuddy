@@ -13,7 +13,7 @@ export class PiContext extends Context.Service<
     readonly modelRegistry: ModelRegistry;
   }
 >()("bubblebuddy/pi/PiContext") {
-  static readonly layer = Layer.effect(
+  static readonly layerNoDeps = Layer.effect(
     PiContext,
     Effect.gen(function* () {
       const config = yield* FileConfig;
@@ -38,4 +38,5 @@ export class PiContext extends Context.Service<
       });
     }),
   );
+  static readonly layer = PiContext.layerNoDeps.pipe(Layer.provide(FileConfig.layer));
 }

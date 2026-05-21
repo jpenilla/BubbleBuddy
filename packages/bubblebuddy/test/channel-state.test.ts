@@ -15,7 +15,7 @@ const withRepo = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       Effect.provide(
         ChannelStateRepository.layer.pipe(
           Layer.provideMerge(DatabaseLive),
-          Layer.provideMerge(AppHome.layer),
+          Layer.provideMerge(AppHome.layerNoDeps),
           Layer.provideMerge(makeTestEnvLayer({ appHome: dir })),
         ),
       ),

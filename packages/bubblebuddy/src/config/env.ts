@@ -55,5 +55,6 @@ export const resolveAppHome = Effect.gen(function* () {
 });
 
 export class AppHome extends Context.Service<AppHome, string>()("bubblebuddy/AppHome") {
-  static readonly layer = Layer.effect(AppHome, resolveAppHome);
+  static readonly layerNoDeps = Layer.effect(AppHome, resolveAppHome);
+  static readonly layer = AppHome.layerNoDeps.pipe(Layer.provide(EnvConfig.layer));
 }
