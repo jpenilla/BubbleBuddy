@@ -1,7 +1,5 @@
-import { join } from "node:path";
-
 import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
-import { Effect, FileSystem, Layer } from "effect";
+import { Effect, FileSystem, Layer, Path } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
 import { AppHome } from "./config/env.ts";
@@ -12,12 +10,13 @@ export const DatabaseLive = Layer.unwrap(
   Effect.gen(function* () {
     const appHome = yield* AppHome;
     const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
     yield* fs.makeDirectory(appHome, { recursive: true });
 
     return MigrationsLayer.pipe(
       Layer.provideMerge(
         SqliteClient.layer({
-          filename: join(appHome, DATABASE_FILE_NAME),
+          filename: path.join(appHome, DATABASE_FILE_NAME),
         }),
       ),
     );
