@@ -10,39 +10,37 @@ import type { SessionKeepAlive } from "./keep-alive.ts";
 import { ChannelStateRepository } from "./state-repository.ts";
 import { PiChannelSessionFactory } from "../pi-session/session-factory.ts";
 
-const makeChannelRuntimes = () => {
-  return Effect.gen(function* () {
-    const config = yield* FileConfig;
-    const runtimesDeferred =
-      yield* Deferred.make<RcMap.RcMap<string, ChannelRuntime, ChannelRuntimeError>>();
+const makeChannelRuntimes = Effect.gen(function* () {
+  const config = yield* FileConfig;
+  const runtimesDeferred =
+    yield* Deferred.make<RcMap.RcMap<string, ChannelRuntime, ChannelRuntimeError>>();
 
-    const makeKeepAlive = (channelId: string): Effect.Effect<SessionKeepAlive> =>
-      Effect.gen(function* () {
-        const runtimes = yield* Deferred.await(runtimesDeferred);
-        const keepAliveScope = yield* Scope.make();
-        yield* Effect.forkIn(keepAliveScope)(
-          RcMap.get(runtimes, channelId).pipe(Scope.provide(keepAliveScope)),
-        );
-        return {
-          release: Scope.close(keepAliveScope, Exit.void),
-        };
-      });
-
-    const runtimes = yield* RcMap.make({
-      lookup: (channelId: string) =>
-        makeChannelRuntime({
-          channelId,
-          makeKeepAlive: () => makeKeepAlive(channelId),
-        }),
-      idleTimeToLive: config.channelIdleTimeoutMs,
+  const makeKeepAlive = (channelId: string): Effect.Effect<SessionKeepAlive> =>
+    Effect.gen(function* () {
+      const runtimes = yield* Deferred.await(runtimesDeferred);
+      const keepAliveScope = yield* Scope.make();
+      yield* Effect.forkIn(keepAliveScope)(
+        RcMap.get(runtimes, channelId).pipe(Scope.provide(keepAliveScope)),
+      );
+      return {
+        release: Scope.close(keepAliveScope, Exit.void),
+      };
     });
-    yield* Deferred.complete(runtimesDeferred, Effect.succeed(runtimes));
 
-    return ChannelRuntimes.of({
-      get: (channelId: string) => RcMap.get(runtimes, channelId),
-    });
+  const runtimes = yield* RcMap.make({
+    lookup: (channelId: string) =>
+      makeChannelRuntime({
+        channelId,
+        makeKeepAlive: () => makeKeepAlive(channelId),
+      }),
+    idleTimeToLive: config.channelIdleTimeoutMs,
   });
-};
+  yield* Deferred.complete(runtimesDeferred, Effect.succeed(runtimes));
+
+  return ChannelRuntimes.of({
+    get: (channelId: string) => RcMap.get(runtimes, channelId),
+  });
+});
 
 export class ChannelRuntimes extends Context.Service<
   ChannelRuntimes,
@@ -52,7 +50,7 @@ export class ChannelRuntimes extends Context.Service<
     ) => Effect.Effect<ChannelRuntime, ChannelRuntimeError, Scope.Scope>;
   }
 >()("bubblebuddy/ChannelRuntimes") {
-  static readonly layerNoDeps = Layer.effect(ChannelRuntimes, makeChannelRuntimes());
+  static readonly layerNoDeps = Layer.effect(ChannelRuntimes, makeChannelRuntimes);
   static readonly layer = ChannelRuntimes.layerNoDeps.pipe(
     Layer.provide(FileConfig.layer),
     Layer.provide(ChannelStateRepository.layer),

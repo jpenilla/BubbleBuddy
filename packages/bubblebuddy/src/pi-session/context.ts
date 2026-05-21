@@ -4,6 +4,29 @@ import { Context, Effect, Layer } from "effect";
 
 import { FileConfig } from "../config/file.ts";
 
+const makePiContext = Effect.gen(function* () {
+  const config = yield* FileConfig;
+  const authStorage = AuthStorage.create();
+  const modelRegistry = ModelRegistry.create(authStorage);
+  const model = modelRegistry.find(config.modelProvider, config.modelId);
+  if (model === undefined) {
+    const registryError = modelRegistry.getError();
+    const suffix = registryError === undefined ? "" : ` Model registry error: ${registryError}`;
+    throw new Error(
+      `Unknown PI_MODEL "${config.modelId}" for provider "${config.modelProvider}".${suffix}`,
+    );
+  }
+
+  yield* Effect.logInfo(`Using model: ${model.provider}/${model.id}`);
+
+  return PiContext.of({
+    agentDir: getAgentDir(),
+    authStorage,
+    model,
+    modelRegistry,
+  });
+});
+
 export class PiContext extends Context.Service<
   PiContext,
   {
@@ -13,30 +36,6 @@ export class PiContext extends Context.Service<
     readonly modelRegistry: ModelRegistry;
   }
 >()("bubblebuddy/pi/PiContext") {
-  static readonly layerNoDeps = Layer.effect(
-    PiContext,
-    Effect.gen(function* () {
-      const config = yield* FileConfig;
-      const authStorage = AuthStorage.create();
-      const modelRegistry = ModelRegistry.create(authStorage);
-      const model = modelRegistry.find(config.modelProvider, config.modelId);
-      if (model === undefined) {
-        const registryError = modelRegistry.getError();
-        const suffix = registryError === undefined ? "" : ` Model registry error: ${registryError}`;
-        throw new Error(
-          `Unknown PI_MODEL "${config.modelId}" for provider "${config.modelProvider}".${suffix}`,
-        );
-      }
-
-      yield* Effect.logInfo(`Using model: ${model.provider}/${model.id}`);
-
-      return PiContext.of({
-        agentDir: getAgentDir(),
-        authStorage,
-        model,
-        modelRegistry,
-      });
-    }),
-  );
+  static readonly layerNoDeps = Layer.effect(PiContext, makePiContext);
   static readonly layer = PiContext.layerNoDeps.pipe(Layer.provide(FileConfig.layer));
 }

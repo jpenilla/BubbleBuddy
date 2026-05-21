@@ -28,106 +28,103 @@ export interface PiChannelSessionFactoryCreateInput {
   readonly getShowThinking: () => boolean;
 }
 
-const makeFactory = () =>
-  Effect.gen(function* () {
-    const config = yield* FileConfig;
-    const appHome = yield* AppHome;
-    const stateRepository = yield* ChannelStateRepository;
-    const fs = yield* FileSystem.FileSystem;
-    const resources = yield* LoadedResources;
-    const piContext = yield* PiContext;
+const makePiChannelSessionFactory = Effect.gen(function* () {
+  const config = yield* FileConfig;
+  const appHome = yield* AppHome;
+  const stateRepository = yield* ChannelStateRepository;
+  const fs = yield* FileSystem.FileSystem;
+  const resources = yield* LoadedResources;
+  const piContext = yield* PiContext;
 
-    const channelStorageDirectory = (channelId: string) => join(appHome, "channel", channelId);
-    const workspaceDir = (channelId: string) =>
-      join(channelStorageDirectory(channelId), "workspace");
-    const sessionsDir = (channelId: string) => join(channelStorageDirectory(channelId), "sessions");
+  const channelStorageDirectory = (channelId: string) => join(appHome, "channel", channelId);
+  const workspaceDir = (channelId: string) => join(channelStorageDirectory(channelId), "workspace");
+  const sessionsDir = (channelId: string) => join(channelStorageDirectory(channelId), "sessions");
 
-    const loadSessionManager = (
-      channelId: string,
-      activeSession?: string,
-    ): Effect.Effect<SessionManager, PiChannelSessionFactoryError> => {
-      const dir = sessionsDir(channelId);
-      return Effect.gen(function* () {
-        yield* fs
-          .makeDirectory(dir, { recursive: true })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new PiChannelSessionFactoryError({ channelId, operation: "storage", cause }),
-            ),
-          );
-
-        if (activeSession === undefined) {
-          return SessionManager.create(WORKSPACE_CWD, dir);
-        }
-
-        return yield* Effect.try({
-          try: () => SessionManager.open(join(dir, activeSession), dir, WORKSPACE_CWD),
-          catch: (cause) =>
-            new PiChannelSessionFactoryError({ channelId, operation: "storage", cause }),
-        }).pipe(
-          Effect.tapError((error) =>
-            Effect.logWarning(
-              `Failed to resume session for channel ${channelId} from ${activeSession}. Starting a new session.`,
-              error,
-            ),
+  const loadSessionManager = (
+    channelId: string,
+    activeSession?: string,
+  ): Effect.Effect<SessionManager, PiChannelSessionFactoryError> => {
+    const dir = sessionsDir(channelId);
+    return Effect.gen(function* () {
+      yield* fs
+        .makeDirectory(dir, { recursive: true })
+        .pipe(
+          Effect.mapError(
+            (cause) => new PiChannelSessionFactoryError({ channelId, operation: "storage", cause }),
           ),
-          Effect.catch(() => Effect.succeed(SessionManager.create(WORKSPACE_CWD, dir))),
         );
-      });
-    };
 
-    return PiChannelSessionFactory.of({
-      create: (input) =>
-        Effect.gen(function* () {
-          const activeSession = yield* stateRepository.getActiveSession(input.channel.id).pipe(
-            Effect.mapError(
-              (cause) =>
-                new PiChannelSessionFactoryError({
-                  channelId: input.channel.id,
-                  operation: "storage",
-                  cause,
-                }),
-            ),
-          );
-          yield* fs.makeDirectory(workspaceDir(input.channel.id), { recursive: true }).pipe(
-            Effect.mapError(
-              (cause) =>
-                new PiChannelSessionFactoryError({
-                  channelId: input.channel.id,
-                  operation: "storage",
-                  cause,
-                }),
-            ),
-          );
-          const sessionManager = yield* loadSessionManager(input.channel.id, activeSession);
+      if (activeSession === undefined) {
+        return SessionManager.create(WORKSPACE_CWD, dir);
+      }
 
-          const pi = yield* createPiChannelSession({
-            channel: input.channel,
-            getShowThinking: input.getShowThinking,
-            hostWorkspaceDir: workspaceDir(input.channel.id),
-            promptContext: input.promptContext,
-            sessionManager,
-            makeKeepAlive: input.makeKeepAlive,
-          }).pipe(
-            Effect.mapError(
-              (cause) =>
-                new PiChannelSessionFactoryError({
-                  channelId: input.channel.id,
-                  operation: "session",
-                  cause,
-                }),
-            ),
-          );
-
-          return pi;
-        }).pipe(
-          Effect.provideService(FileConfig, config),
-          Effect.provideService(LoadedResources, resources),
-          Effect.provideService(PiContext, piContext),
+      return yield* Effect.try({
+        try: () => SessionManager.open(join(dir, activeSession), dir, WORKSPACE_CWD),
+        catch: (cause) =>
+          new PiChannelSessionFactoryError({ channelId, operation: "storage", cause }),
+      }).pipe(
+        Effect.tapError((error) =>
+          Effect.logWarning(
+            `Failed to resume session for channel ${channelId} from ${activeSession}. Starting a new session.`,
+            error,
+          ),
         ),
+        Effect.catch(() => Effect.succeed(SessionManager.create(WORKSPACE_CWD, dir))),
+      );
     });
+  };
+
+  return PiChannelSessionFactory.of({
+    create: (input) =>
+      Effect.gen(function* () {
+        const activeSession = yield* stateRepository.getActiveSession(input.channel.id).pipe(
+          Effect.mapError(
+            (cause) =>
+              new PiChannelSessionFactoryError({
+                channelId: input.channel.id,
+                operation: "storage",
+                cause,
+              }),
+          ),
+        );
+        yield* fs.makeDirectory(workspaceDir(input.channel.id), { recursive: true }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new PiChannelSessionFactoryError({
+                channelId: input.channel.id,
+                operation: "storage",
+                cause,
+              }),
+          ),
+        );
+        const sessionManager = yield* loadSessionManager(input.channel.id, activeSession);
+
+        const pi = yield* createPiChannelSession({
+          channel: input.channel,
+          getShowThinking: input.getShowThinking,
+          hostWorkspaceDir: workspaceDir(input.channel.id),
+          promptContext: input.promptContext,
+          sessionManager,
+          makeKeepAlive: input.makeKeepAlive,
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new PiChannelSessionFactoryError({
+                channelId: input.channel.id,
+                operation: "session",
+                cause,
+              }),
+          ),
+        );
+
+        return pi;
+      }).pipe(
+        Effect.provideService(FileConfig, config),
+        Effect.provideService(LoadedResources, resources),
+        Effect.provideService(PiContext, piContext),
+      ),
   });
+});
 
 export class PiChannelSessionFactory extends Context.Service<
   PiChannelSessionFactory,
@@ -137,7 +134,7 @@ export class PiChannelSessionFactory extends Context.Service<
     ) => Effect.Effect<ScopedPiChannelSession, PiChannelSessionFactoryError, Scope.Scope>;
   }
 >()("bubblebuddy/pi/PiChannelSessionFactory") {
-  static readonly layerNoDeps = Layer.effect(PiChannelSessionFactory, makeFactory());
+  static readonly layerNoDeps = Layer.effect(PiChannelSessionFactory, makePiChannelSessionFactory);
   static readonly layer = PiChannelSessionFactory.layerNoDeps.pipe(
     Layer.provide(FileConfig.layer),
     Layer.provide(LoadedResources.layer),

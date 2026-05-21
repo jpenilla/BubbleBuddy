@@ -9,20 +9,20 @@ import { ChannelRuntimes } from "../src/channels/channel-runtimes.ts";
 import { AppHome } from "../src/config/env.ts";
 import { FileConfig, type FileConfigShape } from "../src/config/file.ts";
 import { DatabaseLive } from "../src/database.ts";
-import { LoadedResources, type LoadedResourcesShape } from "../src/resources.ts";
+import { LoadedResources } from "../src/resources.ts";
 import { makeTestEnvLayer, makeTestFileConfig } from "./helpers.ts";
-
-const resources: LoadedResourcesShape = {
-  botProfile: "test",
-  discordContextTemplate: "",
-};
 
 const testLayer = (config: FileConfigShape, appHome: string) =>
   ChannelRuntimes.layerNoDeps.pipe(
     Layer.provideMerge(ChannelStateRepository.layer),
     Layer.provideMerge(DatabaseLive),
     Layer.provideMerge(Layer.succeed(FileConfig, config)),
-    Layer.provideMerge(Layer.succeed(LoadedResources, resources)),
+    Layer.provideMerge(
+      Layer.succeed(LoadedResources, {
+        botProfile: "test",
+        discordContextTemplate: "",
+      }),
+    ),
     Layer.provideMerge(
       Layer.succeed(PiChannelSessionFactory, {
         create: () => Effect.die("Pi session creation is not expected in these tests"),
