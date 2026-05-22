@@ -4,7 +4,7 @@ import { Deferred, Effect, Exit, Fiber } from "effect";
 import {
   makeDiscordOutputPump,
   type DiscordOutputPump,
-} from "../src/pi-session/discord-output-pump.ts";
+} from "../src/discord/session-output-pump.ts";
 
 type SessionEvent = Parameters<DiscordOutputPump["handleSessionEvent"]>[0];
 

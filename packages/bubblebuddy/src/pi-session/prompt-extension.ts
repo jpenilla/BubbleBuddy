@@ -4,7 +4,7 @@ import {
   composeSystemPrompt,
   renderPromptTemplate,
   type PromptTemplateContext,
-} from "../prompt/system-prompt.ts";
+} from "../pi-session/system-prompt.ts";
 
 export interface PromptComposerExtensionOptions {
   readonly botProfile: string;

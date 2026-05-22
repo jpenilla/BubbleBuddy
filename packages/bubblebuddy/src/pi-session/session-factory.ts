@@ -9,7 +9,7 @@ import { AppHome } from "../config/env.ts";
 import { FileConfig } from "../config/file.ts";
 import { LoadedResources } from "../resources.ts";
 import type { SessionKeepAliveFactory } from "../channels/keep-alive.ts";
-import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
+import type { PromptTemplateContext } from "../pi-session/system-prompt.ts";
 import { createPiChannelSession, type ScopedPiChannelSession } from "./session.ts";
 import { PiContext } from "./context.ts";
 import { WORKSPACE_CWD } from "../shared/constants.ts";

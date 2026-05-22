@@ -7,20 +7,20 @@ import {
   type AgentSessionEvent,
   type ExtensionFactory,
   type SessionStats,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
 import { Data, Effect, FiberHandle, Exit, Scope, Semaphore } from "effect";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import { createDiscordTools } from "../discord/tools.ts";
 import { connectMcpServers } from "../mcp/adapter.ts";
 import { FileConfig } from "../config/file.ts";
-import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
+import type { PromptTemplateContext } from "./system-prompt.ts";
 import { LoadedResources } from "../resources.ts";
 import type { SessionKeepAliveFactory } from "../channels/keep-alive.ts";
 import { createChannelWorkspaceResourceLoader } from "./workspace-resource-loader.ts";
 import { createIncusExtension } from "./incus-extension.ts";
-import { makeDiscordOutputPump } from "./discord-output-pump.ts";
+import { makeDiscordOutputPump } from "../discord/session-output-pump.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
 import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";

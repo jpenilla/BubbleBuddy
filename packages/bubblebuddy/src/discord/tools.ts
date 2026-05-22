@@ -15,7 +15,7 @@ import {
   type DiscordAssetContext,
 } from "./assets.ts";
 import { WORKSPACE_CWD } from "../shared/constants.ts";
-import type { AwaitToolDiscordAction } from "../pi-session/discord-output-pump.ts";
+import type { AwaitToolDiscordAction } from "./session-output-pump.ts";
 import { sendMessageWithAbort, tryDiscordJsPromise } from "./utils.ts";
 import { formatMessageForPrompt } from "./prompt-formatting.ts";
 

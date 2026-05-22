@@ -1,6 +1,6 @@
 import { type Client, type GuildTextBasedChannel, Message } from "discord.js";
 
-import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
+import type { PromptTemplateContext } from "../pi-session/system-prompt.ts";
 
 export const DISCORD_SAFE_MESSAGE_LIMIT = 1_900;
 
