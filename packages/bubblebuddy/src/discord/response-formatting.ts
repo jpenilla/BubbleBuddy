@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { splitAiResponse } from "../shared/text-split";
+import { splitAiResponse } from "../shared/text-split.ts";
 
 export const DISCORD_SAFE_MESSAGE_LIMIT = 1_900;
 
