@@ -16,8 +16,8 @@ import {
 } from "../discord/run-status-embed.ts";
 import { createToolStatusEmbed, type ToolStatusEmbed } from "../discord/tool-status-embed.ts";
 import { sendChunkedMessage, sendOrEditStatusCard, tryDiscordJsPromise } from "../discord/utils.ts";
-import { extractAssistantText, splitThinkingStatus } from "../prompt/text.ts";
 import { makePriorityDrainableWorker } from "../shared/priority-drainable-worker.ts";
+import { extractAssistantText, splitThinkingStatus } from "../discord/response-formatting.ts";
 
 export type AwaitToolDiscordAction = <T>(
   operation: Effect.Effect<T, unknown>,

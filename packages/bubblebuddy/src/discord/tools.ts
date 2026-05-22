@@ -14,10 +14,10 @@ import {
   normalizeReactionEmoji,
   type DiscordAssetContext,
 } from "./assets.ts";
-import { formatMessageForPrompt } from "./message-formatting.ts";
 import { WORKSPACE_CWD } from "../shared/constants.ts";
 import type { AwaitToolDiscordAction } from "../pi-session/discord-output-pump.ts";
 import { sendMessageWithAbort, tryDiscordJsPromise } from "./utils.ts";
+import { formatMessageForPrompt } from "./prompt-formatting.ts";
 
 const LIST_CUSTOM_EMOJIS_TOOL = "discord_list_custom_emojis";
 const LIST_STICKERS_TOOL = "discord_list_stickers";

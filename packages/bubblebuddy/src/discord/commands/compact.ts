@@ -2,7 +2,8 @@ import { SlashCommandBuilder } from "discord.js";
 import { Effect } from "effect";
 
 import { ChannelRuntimes } from "../../channels/channel-runtimes.ts";
-import { createPromptContext, isGuildTextChannel } from "../utils.ts";
+import { isGuildTextChannel } from "../utils.ts";
+import { createPromptContext } from "../prompt-formatting.ts";
 import type { CommandHandler } from "./types.ts";
 
 export const compactCommand: CommandHandler = {

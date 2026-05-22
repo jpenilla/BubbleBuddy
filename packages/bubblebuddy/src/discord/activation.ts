@@ -3,7 +3,8 @@ import { Effect, Layer } from "effect";
 
 import { ChannelRuntimes } from "../channels/channel-runtimes.ts";
 import { Discord } from "./client.ts";
-import { createPromptContext, isGuildTextChannel } from "./utils.ts";
+import { isGuildTextChannel } from "./utils.ts";
+import { createPromptContext } from "./prompt-formatting.ts";
 
 export interface ActivationContext {
   readonly mentionsBot: boolean;

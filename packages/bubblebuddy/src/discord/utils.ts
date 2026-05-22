@@ -1,7 +1,6 @@
 import {
   MessagePayload,
   Routes,
-  type Client,
   type GuildTextBasedChannel,
   type Message,
   type MessageCreateOptions,
@@ -11,8 +10,7 @@ import {
 import type { EmbedBuilder } from "discord.js";
 import { Effect } from "effect";
 
-import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
-import { splitDiscordMessage } from "../prompt/text.ts";
+import { splitDiscordMessage } from "./response-formatting.ts";
 
 export const tryDiscordJsPromise = <A>(
   evaluate: (signal: AbortSignal) => PromiseLike<A>,
@@ -28,23 +26,6 @@ export const isGuildTextChannel = (channel: unknown): channel is GuildTextBasedC
   "isSendable" in channel &&
   typeof channel.isSendable === "function" &&
   channel.isSendable();
-
-export const createPromptContext = (
-  client: Client<true>,
-  channel: GuildTextBasedChannel,
-  guildName: string,
-): PromptTemplateContext => ({
-  botName: client.user.username,
-  channelName:
-    "name" in channel && typeof channel.name === "string" ? channel.name : "unknown-channel",
-  channelStatusText:
-    "topic" in channel && typeof channel.topic === "string"
-      ? channel.topic.trim().length > 0
-        ? channel.topic.trim()
-        : "none"
-      : "none",
-  guildName,
-});
 
 export const sendOrEditStatusCard = async (
   channel: GuildTextBasedChannel,

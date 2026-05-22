@@ -3,7 +3,8 @@ import { Effect } from "effect";
 
 import type { ChannelStatus } from "../../channels/channel-runtime.ts";
 import { ChannelRuntimes } from "../../channels/channel-runtimes.ts";
-import { createPromptContext, isGuildTextChannel } from "../utils.ts";
+import { isGuildTextChannel } from "../utils.ts";
+import { createPromptContext } from "../prompt-formatting.ts";
 import type { CommandHandler } from "./types.ts";
 
 const formatNumber = (value: number): string => value.toLocaleString();

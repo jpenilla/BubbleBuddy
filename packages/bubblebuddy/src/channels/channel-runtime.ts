@@ -3,11 +3,11 @@ import type { GuildTextBasedChannel, Message } from "discord.js";
 import { Data, Effect, Option, Ref, Scope, Semaphore } from "effect";
 
 import { ChannelStateRepository } from "./state-repository.ts";
-import { formatMessageForPrompt } from "../discord/message-formatting.ts";
 import type { PromptTemplateContext } from "../prompt/system-prompt.ts";
 import type { PiChannelSessionModelInfo, ScopedPiChannelSession } from "../pi-session/session.ts";
 import { PiChannelSessionFactory } from "../pi-session/session-factory.ts";
 import type { SessionKeepAliveFactory } from "./keep-alive.ts";
+import { formatMessageForPrompt } from "../discord/prompt-formatting.ts";
 
 type RuntimeSessionParams = {
   channel: GuildTextBasedChannel;

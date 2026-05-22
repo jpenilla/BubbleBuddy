@@ -1,65 +1,3 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
-
-export const DISCORD_SAFE_MESSAGE_LIMIT = 1_900;
-
-export const formatDiscordUserReference = (username: string, userId: string): string =>
-  `@${username} mention=<@${userId}>`;
-
-export const normalizeIncomingUserMentions = (
-  content: string,
-  usernamesById: ReadonlyMap<string, string>,
-): string => {
-  let normalized = content;
-
-  for (const [id, username] of usernamesById.entries()) {
-    const reference = formatDiscordUserReference(username, id);
-    normalized = normalized.replaceAll(`<@${id}>`, reference);
-    normalized = normalized.replaceAll(`<@!${id}>`, reference);
-  }
-
-  return normalized;
-};
-
-export const formatIncomingDiscordMessage = (
-  messageId: string,
-  authorUsername: string,
-  authorId: string,
-  content: string,
-  usernamesById: ReadonlyMap<string, string>,
-  inReplyToMessageId?: string,
-): string => {
-  const normalizedContent = normalizeIncomingUserMentions(content, usernamesById).trim();
-  const replyReference = inReplyToMessageId !== undefined ? ` reply_to=${inReplyToMessageId}` : "";
-  const prefix = `[msg ${messageId} user=${authorUsername} mention=<@${authorId}>${replyReference}]`;
-  return normalizedContent.length === 0 ? prefix : `${prefix} ${normalizedContent}`;
-};
-
-export const extractAssistantText = (message: AssistantMessage): string =>
-  message.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("");
-
-const THINKING_PREFIX = "🧠 _Thinking..._\n\n";
-const THINKING_SUFFIX = "\n\n-# ──";
-
-export const formatThinkingStatus = (thinking: string): string =>
-  `${THINKING_PREFIX}${thinking}${THINKING_SUFFIX}`;
-
-export const splitThinkingStatus = (
-  thinking: string,
-  limit = DISCORD_SAFE_MESSAGE_LIMIT,
-): string[] => {
-  const bodyLimit = Math.max(1, limit - Math.max(THINKING_PREFIX.length, THINKING_SUFFIX.length));
-  const chunks = splitDiscordMessage(thinking, bodyLimit);
-
-  return chunks.map((chunk, index) => {
-    const prefix = index === 0 ? THINKING_PREFIX : "";
-    const suffix = index === chunks.length - 1 ? THINKING_SUFFIX : "";
-    return `${prefix}${chunk}${suffix}`;
-  });
-};
-
 interface FenceState {
   readonly language?: string;
   readonly open: boolean;
@@ -124,10 +62,7 @@ const findSplitIndex = (content: string, limit: number): number => {
   return limit;
 };
 
-export const splitDiscordMessage = (
-  content: string,
-  limit = DISCORD_SAFE_MESSAGE_LIMIT,
-): string[] => {
+export const splitAiResponse = (content: string, limit: number): string[] => {
   if (content.length === 0) {
     return [""];
   }
