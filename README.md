@@ -2,8 +2,8 @@
 
 # BubbleBuddy
 
-![Node.js](https://img.shields.io/badge/node-%3E%3D25.9.0-339933?logo=node.js&logoColor=white)
-![pnpm](https://img.shields.io/badge/pnpm-10.33.0-F69220?logo=pnpm&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
+![pnpm](https://img.shields.io/badge/pnpm-F69220?logo=pnpm&logoColor=white)
 ![Effect v4](https://img.shields.io/badge/Effect-v4-6B46C1)
 ![tsgo](https://img.shields.io/badge/typecheck-tsgo-3178C6?logo=typescript&logoColor=white)
 ![Status](https://img.shields.io/badge/status-personal%20WIP-8A2BE2)
@@ -22,8 +22,8 @@ BubbleBuddy is a fun Discord companion that lives in your servers. It gives Disc
 
 ### Requirements
 
-- Node.js `>=25.9.0`
-- pnpm `>=10.33.0`
+- Node.js
+- pnpm
 - A Discord account
 - Access to whichever Pi model provider you configure
 
@@ -80,15 +80,15 @@ The `$BUBBLEBUDDY_HOME/bubblebuddy.json` configuration file will be generated on
 
 ### `bubblebuddy.json` reference
 
-| Key | Description | Default |
-| --- | --- | --- |
-| `botProfileFile` | Bot profile to load. Use `"default"` for the bundled friendly profile, an absolute path, or a path relative to `BUBBLEBUDDY_HOME`. | `"default"` |
-| `modelProvider` | Pi model provider to use. Must be changed. | `"YOUR_PROVIDER"` |
-| `modelId` | Pi model ID to use. Must be changed. | `"YOUR_MODEL"` |
-| `enableAgenticWorkspace` | Enables the Incus-backed workspace and additional agentic capabilities. Requires a local Incus server with a `default` profile. | `false` |
-| `thinkingLevel` | Thinking level passed to Pi. Valid values are `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, and `"xhigh"`. Some models only accept a subset or do not support thinking. | `"minimal"` |
-| `channelIdleTimeoutMs` | How long idle channel sessions stay loaded before eviction. | `1800000` (30 minutes) |
-| `mcpServers` | MCP server definitions made available to Pi sessions. | `{}` |
+| Key                      | Description                                                                                                                                                                    | Default                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- |
+| `botProfileFile`         | Bot profile to load. Use `"default"` for the bundled friendly profile, an absolute path, or a path relative to `BUBBLEBUDDY_HOME`.                                             | `"default"`            |
+| `modelProvider`          | Pi model provider to use. Must be changed.                                                                                                                                     | `"YOUR_PROVIDER"`      |
+| `modelId`                | Pi model ID to use. Must be changed.                                                                                                                                           | `"YOUR_MODEL"`         |
+| `enableAgenticWorkspace` | Enables the Incus-backed workspace and additional agentic capabilities. Requires a local Incus server with a `default` profile.                                                | `false`                |
+| `thinkingLevel`          | Thinking level passed to Pi. Valid values are `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, and `"xhigh"`. Some models only accept a subset or do not support thinking. | `"minimal"`            |
+| `channelIdleTimeoutMs`   | How long idle channel sessions stay loaded before eviction.                                                                                                                    | `1800000` (30 minutes) |
+| `mcpServers`             | MCP server definitions made available to Pi sessions.                                                                                                                          | `{}`                   |
 
 ### MCP server definitions
 
@@ -96,18 +96,18 @@ The `$BUBBLEBUDDY_HOME/bubblebuddy.json` configuration file will be generated on
 
 HTTP/SSE server definition:
 
-| Key | Description | Required |
-| --- | --- | --- |
-| `url` | MCP server URL. | Yes |
-| `bearerTokenEnv` | Environment variable containing the bearer token to send when connecting. | No |
+| Key              | Description                                                               | Required |
+| ---------------- | ------------------------------------------------------------------------- | -------- |
+| `url`            | MCP server URL.                                                           | Yes      |
+| `bearerTokenEnv` | Environment variable containing the bearer token to send when connecting. | No       |
 
 Local command server definition:
 
-| Key | Description | Required |
-| --- | --- | --- |
-| `command` | Command to start the MCP server. | Yes |
-| `args` | Arguments passed to `command`. | No |
-| `env` | Additional environment variables for the MCP server process. | No |
+| Key       | Description                                                  | Required |
+| --------- | ------------------------------------------------------------ | -------- |
+| `command` | Command to start the MCP server.                             | Yes      |
+| `args`    | Arguments passed to `command`.                               | No       |
+| `env`     | Additional environment variables for the MCP server process. | No       |
 
 ## Running BubbleBuddy
 
