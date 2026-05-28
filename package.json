@@ -1,9 +1,9 @@
 {
   "name": "bubblebuddy-workspace",
   "private": true,
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@11.4.0",
   "engines": {
-    "node": ">=25.9.0"
+    "node": ">=26.2.0"
   },
   "scripts": {
     "check": "pnpm -r run check",
