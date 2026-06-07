@@ -1,31 +1,26 @@
 packages:
   - "packages/*"
 
+minimumReleaseAge: 2880
+
+catalogMode: strict
+
 catalog:
-  # Pi
-  "@earendil-works/pi-agent-core": 0.75.5
-  "@earendil-works/pi-ai": 0.75.5
-  "@earendil-works/pi-coding-agent": 0.75.5
-  typebox: ^1.1.38
-
-  # Effect
-  effect: 4.0.0-beta.70
-  "@effect/platform-node": 4.0.0-beta.70
-  "@effect/sql-sqlite-node": 4.0.0-beta.70
-  "@effect/tsgo": ^0.11.0
-  "@effect/vitest": 4.0.0-beta.70
-
-  # TypeScript
+  "@earendil-works/pi-agent-core": 0.78.1
+  "@earendil-works/pi-ai": 0.78.1
+  "@earendil-works/pi-coding-agent": 0.78.1
+  typebox: ^1.2.1
+  effect: 4.0.0-beta.78
+  "@effect/platform-node": 4.0.0-beta.78
+  "@effect/sql-sqlite-node": 4.0.0-beta.78
+  "@effect/tsgo": ^0.14.0
+  "@effect/vitest": 4.0.0-beta.78
   typescript: ^6.0.3
-  "@typescript/native-preview": 7.0.0-dev.20260525.1
+  "@typescript/native-preview": 7.0.0-dev.20260605.1
   "@types/node": ^25.9.1
-
-  # Tooling
-  oxfmt: ^0.51.0
-  oxlint: ^1.66.0
-  vitest: ^4.1.7
-
-  # Other deps
+  oxfmt: ^0.53.0
+  oxlint: ^1.68.0
+  vitest: ^4.1.8
   "@modelcontextprotocol/sdk": ^1.29.0
   discord.js: ^14.26.4
 
