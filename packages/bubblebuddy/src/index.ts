@@ -8,8 +8,8 @@ import { DatabaseLive } from "./database.ts";
 import { SlashCommandsLive } from "./discord/commands/index.ts";
 
 const AppLayer = Layer.mergeAll(ActivationLive, SlashCommandsLive).pipe(
-  Layer.provideMerge(DatabaseLive.pipe(Layer.provide(AppHome.layer))),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provide(DatabaseLive.pipe(Layer.provide(AppHome.layer))),
+  Layer.provide(NodeServices.layer),
 );
 
 NodeRuntime.runMain(Layer.launch(AppLayer));
