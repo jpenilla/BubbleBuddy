@@ -180,11 +180,10 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
         try: () =>
           createAgentSession({
             agentDir: piContext.agentDir,
-            authStorage: piContext.authStorage,
             customTools: allTools,
             cwd: WORKSPACE_CWD,
             model: piContext.model,
-            modelRegistry: piContext.modelRegistry,
+            modelRuntime: piContext.modelRuntime,
             resourceLoader,
             sessionManager: options.sessionManager,
             settingsManager,

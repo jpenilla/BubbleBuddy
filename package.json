@@ -1,9 +1,9 @@
 {
   "name": "bubblebuddy-workspace",
   "private": true,
-  "packageManager": "pnpm@11.5.2",
+  "packageManager": "pnpm@11.15.1",
   "engines": {
-    "node": ">=26.3.0"
+    "node": ">=26.5.0"
   },
   "scripts": {
     "check": "pnpm -r run check",
@@ -13,6 +13,6 @@
   },
   "devDependencies": {
     "@effect/tsgo": "catalog:",
-    "@typescript/native-preview": "catalog:"
+    "typescript": "catalog:"
   }
 }

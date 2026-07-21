@@ -11,7 +11,7 @@
     "lint:fix": "oxlint src test --fix",
     "fmt": "oxfmt src test",
     "fmt:check": "oxfmt src test --check",
-    "typecheck": "tsgo -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "catalog:",
@@ -29,7 +29,6 @@
     "@effect/tsgo": "catalog:",
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "typescript": "catalog:",
