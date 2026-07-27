@@ -1,0 +1,41 @@
+[submodule "repos/discord.js"]
+	path = repos/discord.js
+	url = https://github.com/discordjs/discord.js.git
+	shallow = true
+[submodule "repos/effect"]
+	path = repos/effect
+	url = https://github.com/Effect-TS/effect.git
+	shallow = true
+[submodule "repos/effect-solutions"]
+	path = repos/effect-solutions
+	url = https://github.com/kitlangton/effect-solutions.git
+	branch = main
+	shallow = true
+[submodule "repos/executor"]
+	path = repos/executor
+	url = https://github.com/RhysSullivan/executor.git
+	branch = main
+	shallow = true
+[submodule "repos/incus"]
+	path = repos/incus
+	url = https://github.com/lxc/incus.git
+	branch = main
+	shallow = true
+[submodule "repos/opencode"]
+	path = repos/opencode
+	url = https://github.com/anomalyco/opencode.git
+	branch = v2
+	shallow = true
+[submodule "repos/pi"]
+	path = repos/pi
+	url = https://github.com/earendil-works/pi.git
+	shallow = true
+[submodule "repos/t3code"]
+	path = repos/t3code
+	url = https://github.com/pingdotgg/t3code.git
+	branch = main
+	shallow = true
+[submodule "repos/typescript-sdk"]
+	path = repos/typescript-sdk
+	url = https://github.com/modelcontextprotocol/typescript-sdk.git
+	shallow = true

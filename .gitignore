@@ -11,5 +11,4 @@ storage/
 .idea/
 .vscode/
 .DS_Store
-/context/
 local-docs/
