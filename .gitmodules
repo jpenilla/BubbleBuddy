@@ -35,7 +35,7 @@
 	url = https://github.com/pingdotgg/t3code.git
 	branch = main
 	shallow = true
-[submodule "repos/typescript-sdk"]
-	path = repos/typescript-sdk
+[submodule "repos/mcp-typescript-sdk"]
+	path = repos/mcp-typescript-sdk
 	url = https://github.com/modelcontextprotocol/typescript-sdk.git
 	shallow = true
