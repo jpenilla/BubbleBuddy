@@ -3,7 +3,7 @@ import { Context, Deferred, Effect, FiberSet, Layer, Redacted, Schema, Scope } f
 
 import { EnvConfig } from "../config/env.ts";
 
-export class DiscordLoginError extends Schema.TaggedErrorClass<DiscordLoginError>()(
+export class DiscordLoginError extends Schema.TaggedError<DiscordLoginError>()(
   "DiscordLoginError",
   {
     message: Schema.String,

@@ -399,15 +399,13 @@ const instanceFileHead = (
   options: ProjectOptions,
 ) =>
   emptyRequest(client, "HEAD", instanceFilePath(name, path, options.project)).pipe(
-    Effect.map(
-      (response): IncusFileInfo => ({
-        type: header(response, "x-incus-type"),
-        uid: numberHeader(response, "x-incus-uid"),
-        gid: numberHeader(response, "x-incus-gid"),
-        mode: numberHeader(response, "x-incus-mode"),
-        modified: header(response, "x-incus-modified"),
-      }),
-    ),
+    Effect.map((response): IncusFileInfo => ({
+      type: header(response, "x-incus-type"),
+      uid: numberHeader(response, "x-incus-uid"),
+      gid: numberHeader(response, "x-incus-gid"),
+      mode: numberHeader(response, "x-incus-mode"),
+      modified: header(response, "x-incus-modified"),
+    })),
   );
 
 const emptyRequest = (client: HttpClient.HttpClient, method: HttpMethod.HttpMethod, path: string) =>
