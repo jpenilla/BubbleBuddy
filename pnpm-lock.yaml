@@ -55,6 +55,9 @@ catalogs:
       specifier: ^4.1.11
       version: 4.1.11
 
+patchedDependencies:
+  '@earendil-works/pi-coding-agent': 2d0a11736bb5a0cbd2ee166fbe887c5558ece5f899d379a081ac808ed303c6bc
+
 importers:
 
   .:
@@ -76,7 +79,7 @@ importers:
         version: 0.84.2(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.2(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.2(patch_hash=2d0a11736bb5a0cbd2ee166fbe887c5558ece5f899d379a081ac808ed303c6bc)(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)
       '@effect/platform-node':
         specifier: 'catalog:'
         version: 4.0.0-rc.110(effect@4.0.0-rc.110)(redis@6.2.1(@opentelemetry/api@1.9.0))
@@ -2437,7 +2440,7 @@ snapshots:
     dependencies:
       '@earendil-works/pi-protocol': 0.84.2
 
-  '@earendil-works/pi-coding-agent@0.84.2(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-coding-agent@0.84.2(patch_hash=2d0a11736bb5a0cbd2ee166fbe887c5558ece5f899d379a081ac808ed303c6bc)(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)':
     dependencies:
       '@earendil-works/pi-agent-core': 0.84.2(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-ai': 0.84.2(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)

@@ -31,3 +31,6 @@ allowBuilds:
   msgpackr-extract: true
   protobufjs: true
   ssh2: true
+
+patchedDependencies:
+  '@earendil-works/pi-coding-agent': patches/@earendil-works__pi-coding-agent.patch

@@ -1,0 +1,36 @@
+diff --git a/dist/utils/mime.d.ts b/dist/utils/mime.d.ts
+index 882ba74b3acacf17452c0a2e28d1d3e9af3298e6..b4d4b245e4d7a6853e2b30d99072b8eabec2d57c 100644
+--- a/dist/utils/mime.d.ts
++++ b/dist/utils/mime.d.ts
+@@ -1,3 +1,4 @@
++export declare const IMAGE_TYPE_SNIFF_BYTES = 4100;
+ export declare function detectSupportedImageMimeType(buffer: Uint8Array): string | null;
+ export declare function detectSupportedImageMimeTypeFromFile(filePath: string): Promise<string | null>;
+ //# sourceMappingURL=mime.d.ts.map
+\ No newline at end of file
+diff --git a/dist/utils/mime.js b/dist/utils/mime.js
+index 4b516598edb18a19abc76092b03a8f5caa511fd5..fb679663871cff80093f47647fbc2b29d62ddfb0 100644
+--- a/dist/utils/mime.js
++++ b/dist/utils/mime.js
+@@ -1,5 +1,5 @@
+ import { open } from "node:fs/promises";
+-const IMAGE_TYPE_SNIFF_BYTES = 4100;
++export const IMAGE_TYPE_SNIFF_BYTES = 4100;
+ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+ export function detectSupportedImageMimeType(buffer) {
+     if (startsWith(buffer, [0xff, 0xd8, 0xff])) {
+diff --git a/package.json b/package.json
+index 58d9dd64d57ce37477fd0376904513a3d470e109..052db008cd61297a27c3527827acffa7c78fd095 100644
+--- a/package.json
++++ b/package.json
+@@ -22,6 +22,10 @@
+ 		"./client": {
+ 			"types": "./dist/client/index.d.ts",
+ 			"import": "./dist/client/index.js"
++		},
++		"./utils/mime": {
++			"types": "./dist/utils/mime.d.ts",
++			"import": "./dist/utils/mime.js"
+ 		}
+ 	},
+ 	"files": [

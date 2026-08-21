@@ -1,6 +1,10 @@
 import { Buffer } from "node:buffer";
 
 import {
+  detectSupportedImageMimeType,
+  IMAGE_TYPE_SNIFF_BYTES,
+} from "@earendil-works/pi-coding-agent/utils/mime";
+import {
   createBashToolDefinition,
   createEditToolDefinition,
   createReadToolDefinition,
@@ -25,8 +29,6 @@ export interface IncusExtension {
   readonly dispose: () => Promise<void>;
   readonly extensionFactory: ExtensionFactory;
 }
-
-const IMAGE_MIME_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
 
 const shQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
@@ -100,16 +102,30 @@ export const createIncusExtension = (options: IncusExtensionOptions): IncusExten
     },
     detectImageMimeType: async (path) => {
       try {
-        let stdout = "";
+        const chunks: Uint8Array[] = [];
         await runInContainer((c) =>
-          c.exec(["/bin/sh", "-lc", `file --mime-type -b ${shQuote(path)} 2>/dev/null || true`], {
-            onStdout: (chunk) => {
-              stdout += new TextDecoder().decode(chunk);
+          c.exec(
+            [
+              "/bin/sh",
+              "-lc",
+              `head -c ${IMAGE_TYPE_SNIFF_BYTES} ${shQuote(path)} 2>/dev/null || true`,
+            ],
+            {
+              onStdout: (chunk) => {
+                // copy chunk as exec may reuse buffer
+                chunks.push(chunk.slice() as Uint8Array);
+              },
             },
-          }),
+          ),
         );
-        const mimeType = stdout.trim();
-        return mimeType.length > 0 && IMAGE_MIME_TYPES.has(mimeType) ? mimeType : null;
+        const total = chunks.reduce((sum, c) => sum + c.length, 0);
+        const bytes = new Uint8Array(total);
+        let offset = 0;
+        for (const c of chunks) {
+          bytes.set(c, offset);
+          offset += c.length;
+        }
+        return detectSupportedImageMimeType(bytes);
       } catch {
         return null;
       }
