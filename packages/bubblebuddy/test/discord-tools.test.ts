@@ -4,6 +4,7 @@ import { open } from "node:fs/promises";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Collection } from "discord.js";
 import type { Message } from "discord.js";
 import { Effect, FileSystem, Path } from "effect";
 
@@ -32,6 +33,7 @@ const makeOriginMessage = (
   send: (payload?: unknown) => Promise<unknown> = async () => undefined,
 ): Message<true> =>
   ({
+    attachments: new Collection(),
     channel: {
       send,
       id: "channel-id",
@@ -69,6 +71,7 @@ const makeFetchedMessage = (options: {
   mentions: { users: options.mentions ?? new Map() },
   reference: options.reference ?? null,
   channelId: options.channelId,
+  attachments: new Collection(),
 });
 
 type FetchToolResult = {
