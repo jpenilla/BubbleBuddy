@@ -104,28 +104,14 @@ export const createIncusExtension = (options: IncusExtensionOptions): IncusExten
       try {
         const chunks: Uint8Array[] = [];
         await runInContainer((c) =>
-          c.exec(
-            [
-              "/bin/sh",
-              "-lc",
-              `head -c ${IMAGE_TYPE_SNIFF_BYTES} ${shQuote(path)} 2>/dev/null || true`,
-            ],
-            {
-              onStdout: (chunk) => {
-                // copy chunk as exec may reuse buffer
-                chunks.push(chunk.slice() as Uint8Array);
-              },
+          c.exec(["/bin/sh", "-lc", `head -c ${IMAGE_TYPE_SNIFF_BYTES} ${shQuote(path)}`], {
+            onStdout: (chunk) => {
+              // copy chunk: buffer reuse is an implementation detail of the exec transport
+              chunks.push(chunk.slice());
             },
-          ),
+          }),
         );
-        const total = chunks.reduce((sum, c) => sum + c.length, 0);
-        const bytes = new Uint8Array(total);
-        let offset = 0;
-        for (const c of chunks) {
-          bytes.set(c, offset);
-          offset += c.length;
-        }
-        return detectSupportedImageMimeType(bytes);
+        return detectSupportedImageMimeType(Buffer.concat(chunks));
       } catch {
         return null;
       }
