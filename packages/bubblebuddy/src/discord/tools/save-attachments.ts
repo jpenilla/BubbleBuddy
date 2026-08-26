@@ -46,7 +46,6 @@ const saveDiscordAttachment = Effect.fn("saveDiscordAttachment")(function* (
     yield* http.get(attachment.url).pipe(
       Effect.flatMap(HttpClientResponse.filterStatusOk),
       Effect.flatMap((response) => Stream.run(response.stream, fs.sink(temporaryPath))),
-      Effect.timeout("90 seconds"),
     );
     yield* fs.rename(temporaryPath, destination);
   }).pipe(
