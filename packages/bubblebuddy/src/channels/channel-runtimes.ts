@@ -8,7 +8,6 @@ import {
 } from "./channel-runtime.ts";
 import { ChannelStateRepository } from "./state-repository.ts";
 import { PiChannelSessionFactory } from "../pi-session/session-factory.ts";
-import { MessageAttachments } from "../discord/attachments.ts";
 
 const makeChannelRuntimes = Effect.gen(function* () {
   const config = yield* FileConfig;
@@ -58,6 +57,5 @@ export class ChannelRuntimes extends Context.Service<
     Layer.provide(FileConfig.layer),
     Layer.provide(ChannelStateRepository.layer),
     Layer.provide(PiChannelSessionFactory.layer),
-    Layer.provide(MessageAttachments.layer),
   );
 }

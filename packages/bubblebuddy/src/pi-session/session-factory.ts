@@ -2,6 +2,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
 
 import { Context, Data, Effect, FileSystem, Layer, Path, Scope } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 
 import { ChannelStateRepository } from "../channels/state-repository.ts";
 import { FileConfig } from "../config/file.ts";
@@ -35,6 +36,7 @@ const makePiChannelSessionFactory = Effect.gen(function* () {
   const resources = yield* LoadedResources;
   const piContext = yield* PiContext;
   const workspacePaths = yield* WorkspacePaths;
+  const http = yield* HttpClient.HttpClient;
 
   const loadSessionManager = (
     channelId: string,
@@ -120,6 +122,10 @@ const makePiChannelSessionFactory = Effect.gen(function* () {
         Effect.provideService(FileConfig, config),
         Effect.provideService(LoadedResources, resources),
         Effect.provideService(PiContext, piContext),
+        Effect.provideService(FileSystem.FileSystem, fs),
+        Effect.provideService(HttpClient.HttpClient, http),
+        Effect.provideService(Path.Path, path),
+        Effect.provideService(WorkspacePaths, workspacePaths),
       ),
   });
 });
@@ -139,5 +145,6 @@ export class PiChannelSessionFactory extends Context.Service<
     Layer.provide(ChannelStateRepository.layer),
     Layer.provide(PiContext.layer),
     Layer.provide(WorkspacePaths.layer),
+    Layer.provide(FetchHttpClient.layer),
   );
 }

@@ -3,7 +3,6 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, FileSystem, Layer } from "effect";
 import { TestClock } from "effect/testing";
 
-import { MessageAttachments } from "../src/discord/attachments.ts";
 import { ChannelStateRepository } from "../src/channels/state-repository.ts";
 import { PiChannelSessionFactory } from "../src/pi-session/session-factory.ts";
 import { ChannelRuntimes } from "../src/channels/channel-runtimes.ts";
@@ -29,7 +28,6 @@ const testLayer = (config: FileConfigShape, appHome: string) =>
         create: () => Effect.die("Pi session creation is not expected in these tests"),
       }),
     ),
-    Layer.provideMerge(Layer.succeed(MessageAttachments, { save: () => Effect.void })),
     Layer.provideMerge(AppHome.layerNoDeps),
     Layer.provideMerge(makeTestEnvLayer({ appHome })),
     Layer.provideMerge(NodeServices.layer),

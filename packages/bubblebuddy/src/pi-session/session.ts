@@ -10,9 +10,11 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
-import { Data, Effect, FiberHandle, Exit, Scope, Semaphore } from "effect";
+import { Data, Effect, FiberHandle, Exit, FileSystem, Layer, Path, Scope, Semaphore } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
-import { createDiscordTools } from "../discord/tools.ts";
+import { discordCoreTools, discordWorkspaceTools } from "../discord/tools.ts";
+import { ChannelWorkspace, DiscordToolContext } from "../discord/tool-context.ts";
 import { connectMcpServers } from "../mcp/adapter.ts";
 import { FileConfig } from "../config/file.ts";
 import type { PromptTemplateContext } from "./system-prompt.ts";
@@ -24,6 +26,8 @@ import { makeDiscordOutputPump } from "../discord/session-output-pump.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
 import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
+import { WorkspacePaths } from "../shared/workspace.ts";
+import { toPiToolDefinition } from "../tools/effect-tool.ts";
 
 export interface PiChannelSessionOptions {
   readonly channel: GuildTextBasedChannel;
@@ -74,7 +78,13 @@ export const createPiChannelSession = (
 ): Effect.Effect<
   ScopedPiChannelSession,
   ChannelSessionInitError,
-  FileConfig | LoadedResources | PiContext
+  | FileConfig
+  | FileSystem.FileSystem
+  | HttpClient.HttpClient
+  | LoadedResources
+  | Path.Path
+  | PiContext
+  | WorkspacePaths
 > =>
   Effect.gen(function* () {
     const scope = yield* Scope.make("sequential");
@@ -144,19 +154,33 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
       channel: options.channel,
       getShowThinking: options.getShowThinking,
     });
-
-    const discordTools = createDiscordTools(
-      {
-        channel: options.channel,
-        client: options.channel.client,
-        guild: options.channel.guild,
-      },
-      output.awaitToolDiscordAction,
-      {
-        enableAgenticWorkspace: config.enableAgenticWorkspace,
-        workspaceDir: options.hostWorkspaceDir,
-      },
+    const toolContextLayer = Layer.mergeAll(
+      Layer.succeed(
+        DiscordToolContext,
+        DiscordToolContext.of({
+          channel: options.channel,
+          awaitAction: output.awaitToolDiscordAction,
+        }),
+      ),
+      Layer.succeed(ChannelWorkspace, ChannelWorkspace.of({ hostDir: options.hostWorkspaceDir })),
     );
+
+    const discordToolDefinitions = yield* Effect.gen(function* () {
+      const core = yield* discordCoreTools();
+      if (!config.enableAgenticWorkspace) return core;
+      return [...core, ...(yield* discordWorkspaceTools())];
+    }).pipe(
+      Effect.provide(toolContextLayer),
+      Effect.mapError(
+        (error) =>
+          new ChannelSessionInitError({
+            message: "Failed to configure Discord tools",
+            cause: error,
+          }),
+      ),
+    );
+
+    const discordTools = discordToolDefinitions.map(toPiToolDefinition);
 
     let mcpTools: ToolDefinition[] = [];
     if (Object.keys(config.mcpServers).length > 0) {

@@ -7,7 +7,6 @@ import type { PromptTemplateContext } from "../pi-session/system-prompt.ts";
 import type { PiChannelSessionModelInfo, ScopedPiChannelSession } from "../pi-session/session.ts";
 import { PiChannelSessionFactory } from "../pi-session/session-factory.ts";
 import type { SessionKeepAliveFactory } from "./keep-alive.ts";
-import { MessageAttachments } from "../discord/attachments.ts";
 import { formatMessageForPrompt } from "../discord/prompt-formatting.ts";
 
 type RuntimeSessionParams = {
@@ -65,12 +64,11 @@ export const makeChannelRuntime = (
 ): Effect.Effect<
   ChannelRuntime,
   ChannelRuntimeError,
-  ChannelStateRepository | PiChannelSessionFactory | MessageAttachments | Scope.Scope
+  ChannelStateRepository | PiChannelSessionFactory | Scope.Scope
 > =>
   Effect.gen(function* () {
     const repository = yield* ChannelStateRepository;
     const sessionFactory = yield* PiChannelSessionFactory;
-    const attachments = yield* MessageAttachments;
     const lock = yield* Semaphore.make(1);
     const wrapRuntimeError = <E>() =>
       Effect.mapError(
@@ -160,7 +158,6 @@ export const makeChannelRuntime = (
     ): Effect.Effect<void, ChannelRuntimeError, Scope.Scope> =>
       lock.withPermit(
         Effect.gen(function* () {
-          yield* attachments.save(input.originMessage, options.channelId);
           const session = yield* getOrCreatePi(input);
           yield* session
             .activate(formatMessageForPrompt(input.originMessage), input.originMessage.id)
