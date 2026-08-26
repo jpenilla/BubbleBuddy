@@ -27,7 +27,6 @@ import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
 import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
 import { WorkspacePaths } from "../shared/workspace.ts";
-import { toPiToolDefinition } from "../tools/effect-tool.ts";
 
 export interface PiChannelSessionOptions {
   readonly channel: GuildTextBasedChannel;
@@ -165,22 +164,11 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
       Layer.succeed(ChannelWorkspace, ChannelWorkspace.of({ hostDir: options.hostWorkspaceDir })),
     );
 
-    const discordToolDefinitions = yield* Effect.gen(function* () {
+    const discordTools = yield* Effect.gen(function* () {
       const core = yield* discordCoreTools();
       if (!config.enableAgenticWorkspace) return core;
       return [...core, ...(yield* discordWorkspaceTools())];
-    }).pipe(
-      Effect.provide(toolContextLayer),
-      Effect.mapError(
-        (error) =>
-          new ChannelSessionInitError({
-            message: "Failed to configure Discord tools",
-            cause: error,
-          }),
-      ),
-    );
-
-    const discordTools = yield* Effect.forEach(discordToolDefinitions, toPiToolDefinition);
+    }).pipe(Effect.provide(toolContextLayer));
 
     let mcpTools: ToolDefinition[] = [];
     if (Object.keys(config.mcpServers).length > 0) {

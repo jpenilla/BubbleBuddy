@@ -10,14 +10,14 @@ import { uploadFileTool } from "./tools/upload-file.ts";
 
 export const discordCoreTools = Effect.fn("discordCoreTools")(function* () {
   return [
-    yield* listCustomEmojisTool(),
-    yield* listStickersTool(),
-    yield* sendStickerTool(),
-    yield* reactTool(),
-    yield* fetchMessageTool(),
+    yield* listCustomEmojisTool,
+    yield* listStickersTool,
+    yield* sendStickerTool,
+    yield* reactTool,
+    yield* fetchMessageTool,
   ];
 });
 
 export const discordWorkspaceTools = Effect.fn("discordWorkspaceTools")(function* () {
-  return [yield* saveAttachmentsTool(), yield* uploadFileTool()];
+  return [yield* saveAttachmentsTool, yield* uploadFileTool];
 });

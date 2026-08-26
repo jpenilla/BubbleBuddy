@@ -4,14 +4,14 @@ import { describe, expect, test } from "vitest";
 import { Type } from "typebox";
 
 import { DiscordJsError } from "../src/discord/utils.ts";
-import { AgentToolError, toPiToolDefinition } from "../src/tools/effect-tool.ts";
+import { AgentToolError, defineEffectTool } from "../src/tools/effect-tool.ts";
 
 const mockCtx = {} as ExtensionContext;
 
 describe("Effect tool adapter", () => {
   test("forwards typed params and preserves structured results", async () => {
     const tool = await Effect.runPromise(
-      toPiToolDefinition({
+      defineEffectTool({
         name: "test_effect_tool",
         label: "Test Effect Tool",
         description: "Tests the Effect tool adapter.",
@@ -41,7 +41,7 @@ describe("Effect tool adapter", () => {
   test("preserves typed tool errors and normalizes defects", async () => {
     const parameters = Type.Object({});
     const expectedFailure = await Effect.runPromise(
-      toPiToolDefinition({
+      defineEffectTool({
         name: "expected_failure",
         label: "Expected Failure",
         description: "Fails with an agent-actionable error.",
@@ -50,7 +50,7 @@ describe("Effect tool adapter", () => {
       }),
     );
     const unexpectedFailure = await Effect.runPromise(
-      toPiToolDefinition({
+      defineEffectTool({
         name: "unexpected_failure",
         label: "Unexpected Failure",
         description: "Fails unexpectedly.",
@@ -65,7 +65,7 @@ describe("Effect tool adapter", () => {
       }),
     );
     const defect = await Effect.runPromise(
-      toPiToolDefinition({
+      defineEffectTool({
         name: "defect",
         label: "Defect",
         description: "Dies unexpectedly.",

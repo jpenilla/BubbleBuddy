@@ -4,7 +4,7 @@ import { open } from "node:fs/promises";
 
 import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Collection } from "discord.js";
+import { Collection, GuildPremiumTier } from "discord.js";
 import type { GuildTextBasedChannel, Message } from "discord.js";
 import { Effect, FileSystem, Layer, Path } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -12,7 +12,6 @@ import { FetchHttpClient } from "effect/unstable/http";
 import { discordCoreTools, discordWorkspaceTools } from "../src/discord/tools.ts";
 import { ChannelWorkspace, DiscordToolContext } from "../src/discord/tool-context.ts";
 import { WorkspacePaths } from "../src/shared/workspace.ts";
-import { toPiToolDefinition } from "../src/tools/effect-tool.ts";
 import type { AwaitToolDiscordAction } from "../src/discord/session-output-pump.ts";
 
 const mockCtx = {} as unknown as ExtensionContext;
@@ -37,7 +36,7 @@ const buildTools = async (options: {
   readonly awaitAction?: AwaitToolDiscordAction;
 }): Promise<readonly ToolDefinition[]> => {
   const channel = options.message.channel as unknown as GuildTextBasedChannel;
-  const definitions = await Effect.runPromise(
+  return await Effect.runPromise(
     Effect.gen(function* () {
       const core = yield* discordCoreTools();
       if (options.workspaceDir === undefined) return core;
@@ -70,12 +69,10 @@ const buildTools = async (options: {
       ),
     ),
   );
-
-  return await Effect.runPromise(Effect.forEach(definitions, toPiToolDefinition));
 };
 
 const makeOriginMessage = (
-  premiumTier: number,
+  premiumTier: GuildPremiumTier,
   send: (payload?: unknown) => Promise<unknown> = async () => undefined,
 ): Message<true> =>
   ({
@@ -200,7 +197,7 @@ const makeWorkspace = Effect.fn("makeWorkspace")(function* () {
 it.layer(NodeServices.layer)("discord upload tool", (it) => {
   it.effect("is only registered when agentic workspace is enabled", () =>
     Effect.promise(async () => {
-      const originMessage = makeOriginMessage(0);
+      const originMessage = makeOriginMessage(GuildPremiumTier.None);
       const enabled = await buildTools({ message: originMessage, workspaceDir: "/tmp" });
       const disabled = await buildTools({ message: originMessage });
 
@@ -213,7 +210,7 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
     Effect.gen(function* () {
       const workspaceDir = yield* makeWorkspace();
       const result = yield* Effect.promise(() =>
-        executeUploadTool(makeUploadTool(makeOriginMessage(0), workspaceDir), {
+        executeUploadTool(makeUploadTool(makeOriginMessage(GuildPremiumTier.None), workspaceDir), {
           path: "/etc/passwd",
         }),
       );
@@ -238,7 +235,7 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
       const filePath = path.join(workspaceDir, "report.txt");
       yield* fs.writeFileString(filePath, "hello world");
 
-      const originMessage = makeOriginMessage(0, async (payload) => {
+      const originMessage = makeOriginMessage(GuildPremiumTier.None, async (payload) => {
         const message = payload as { files: Array<{ data: Buffer; name: string }> };
         sentName = message.files[0]?.name;
         sentAttachment = message.files[0]?.data;
@@ -270,19 +267,25 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
   for (const testCase of [
     {
       name: "rejects files larger than default tier limit",
-      premiumTier: 0,
+      premiumTier: GuildPremiumTier.None,
       size: 10 * 1024 * 1024 + 1,
       expectedLimit: 10 * 1024 * 1024,
     },
     {
       name: "rejects files larger than tier 2 limit",
-      premiumTier: 2,
+      premiumTier: GuildPremiumTier.Tier2,
       size: 50 * 1000 * 1000 + 1,
       expectedLimit: 50 * 1000 * 1000,
     },
     {
       name: "rejects files larger than tier 3 limit",
-      premiumTier: 3,
+      premiumTier: GuildPremiumTier.Tier3,
+      size: 100 * 1000 * 1000 + 1,
+      expectedLimit: 100 * 1000 * 1000,
+    },
+    {
+      name: "rejects files larger than a future higher-tier limit using the highest known cap",
+      premiumTier: (GuildPremiumTier.Tier3 + 1) as GuildPremiumTier,
       size: 100 * 1000 * 1000 + 1,
       expectedLimit: 100 * 1000 * 1000,
     },
@@ -320,7 +323,7 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
       const result = yield* Effect.promise(() =>
         executeUploadTool(
           makeUploadTool(
-            makeOriginMessage(2, async () => {
+            makeOriginMessage(GuildPremiumTier.Tier2, async () => {
               sent = true;
               return undefined;
             }),

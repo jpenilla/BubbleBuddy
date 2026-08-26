@@ -7,16 +7,12 @@ import {
 import { Effect, Schema } from "effect";
 import type { Static, TSchema } from "typebox";
 
-const INTERNAL_TOOL_ERROR_MESSAGE = "This tool encountered an internal error.";
-
-const internalToolError = (): Error => new Error(INTERNAL_TOOL_ERROR_MESSAGE);
-
 export class AgentToolError extends Schema.TaggedError<AgentToolError>()("AgentToolError", {
   message: Schema.String,
   cause: Schema.optional(Schema.Defect()),
 }) {}
 
-export interface EffectTool<TParams extends TSchema = TSchema, Details = unknown, E = never> {
+export interface EffectTool<TParams extends TSchema, Details, E, R> {
   readonly name: string;
   readonly label: string;
   readonly description: string;
@@ -28,20 +24,14 @@ export interface EffectTool<TParams extends TSchema = TSchema, Details = unknown
     params: Static<TParams>,
     onUpdate: AgentToolUpdateCallback<Details> | undefined,
     ctx: ExtensionContext,
-  ): Effect.Effect<AgentToolResult<Details>, E>;
+  ): Effect.Effect<AgentToolResult<Details>, E, R>;
 }
 
-export type AnyEffectTool = EffectTool<TSchema, unknown, unknown>;
-
-export const defineEffectTool = <TParams extends TSchema, Details, E>(
-  tool: EffectTool<TParams, Details, E>,
-): AnyEffectTool => tool;
-
-export const toPiToolDefinition = <TParams extends TSchema, Details, E>(
-  tool: EffectTool<TParams, Details, E>,
+export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
+  tool: EffectTool<TParams, Details, E, R>,
 ) =>
   Effect.gen(function* () {
-    const context = yield* Effect.context();
+    const context = yield* Effect.context<R>();
     return defineTool({
       name: tool.name,
       label: tool.label,
@@ -58,7 +48,11 @@ export const toPiToolDefinition = <TParams extends TSchema, Details, E>(
             ),
             Effect.catchDefect((defect) =>
               Effect.logError("Tool defect", { toolName: tool.name, toolCallId, defect }).pipe(
-                Effect.andThen(Effect.fail(internalToolError())),
+                Effect.andThen(
+                  Effect.fail(
+                    new AgentToolError({ message: "This tool encountered an internal error." }),
+                  ),
+                ),
               ),
             ),
             Effect.withSpan("EffectTool.execute", {
