@@ -1,5 +1,5 @@
 import { type ChatInputCommandInteraction, Events, type Interaction } from "discord.js";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Layer } from "effect";
 
 import { ChannelRuntimes } from "../../channels/channel-runtimes.ts";
 import { Discord } from "../client.ts";
@@ -30,18 +30,36 @@ export const handleCommand = (
     const handler = commandRegistry.get(interaction.commandName);
     if (handler === undefined) return;
     yield* handler.execute(interaction, context).pipe(
-      Effect.withSpan(interaction.commandName),
-      Effect.tapError(() =>
-        Effect.tryPromise(async () => {
-          if (interaction.deferred) {
-            await interaction.editReply("Error handling slash command");
-          } else if (!interaction.replied) {
-            await interaction.reply("Error handling slash command");
-          }
-        }),
-      ),
       Effect.scoped,
-      Effect.ignore({ log: "Warn", message: "Error handling slash command" }),
+      Effect.onError((cause) => {
+        const interrupted = Cause.hasInterruptsOnly(cause);
+        return Effect.gen(function* () {
+          yield* interrupted
+            ? Effect.logDebug("Slash command interrupted", {
+                commandName: interaction.commandName,
+                cause,
+              })
+            : Effect.logWarning("Error handling slash command", {
+                commandName: interaction.commandName,
+                cause,
+              });
+          yield* Effect.tryPromise(async () => {
+            if (interaction.deferred) {
+              await interaction.editReply(
+                interrupted ? "Command interrupted." : "Error handling slash command",
+              );
+            } else if (!interaction.replied) {
+              await interaction.reply(
+                interrupted ? "Command interrupted." : "Error handling slash command",
+              );
+            }
+          }).pipe(Effect.timeout("3 seconds"), Effect.ignore());
+        });
+      }),
+      Effect.ignore(),
+      Effect.withSpan("CommandHandler.execute", {
+        attributes: { commandName: interaction.commandName },
+      }),
     );
   });
 

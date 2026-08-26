@@ -180,7 +180,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
       ),
     );
 
-    const discordTools = discordToolDefinitions.map(toPiToolDefinition);
+    const discordTools = yield* Effect.forEach(discordToolDefinitions, toPiToolDefinition);
 
     let mcpTools: ToolDefinition[] = [];
     if (Object.keys(config.mcpServers).length > 0) {

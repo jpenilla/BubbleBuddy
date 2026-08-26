@@ -13,6 +13,7 @@ import { Effect, Schema } from "effect";
 import { splitDiscordMessage } from "./response-formatting.ts";
 
 export class DiscordJsError extends Schema.TaggedError<DiscordJsError>()("DiscordJsError", {
+  message: Schema.String,
   cause: Schema.Defect(),
 }) {}
 
@@ -21,7 +22,7 @@ export const tryDiscordJsPromise = <A>(
 ): Effect.Effect<A, DiscordJsError> =>
   Effect.tryPromise({
     try: evaluate,
-    catch: (cause) => new DiscordJsError({ cause }),
+    catch: (cause) => new DiscordJsError({ message: "Discord operation failed.", cause }),
   });
 
 export const isGuildTextChannel = (channel: unknown): channel is GuildTextBasedChannel =>

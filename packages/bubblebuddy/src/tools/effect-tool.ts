@@ -3,7 +3,6 @@ import {
   type AgentToolResult,
   type AgentToolUpdateCallback,
   type ExtensionContext,
-  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { Effect, Schema } from "effect";
 import type { Static, TSchema } from "typebox";
@@ -12,10 +11,6 @@ const INTERNAL_TOOL_ERROR_MESSAGE = "This tool encountered an internal error.";
 
 const internalToolError = (): Error => new Error(INTERNAL_TOOL_ERROR_MESSAGE);
 
-/**
- * Failure that is safe to surface verbatim to the model. Anything else a tool
- * fails with is logged and scrubbed to a generic internal-error message.
- */
 export class AgentToolError extends Schema.TaggedError<AgentToolError>()("AgentToolError", {
   message: Schema.String,
   cause: Schema.optional(Schema.Defect()),
@@ -44,30 +39,33 @@ export const defineEffectTool = <TParams extends TSchema, Details, E>(
 
 export const toPiToolDefinition = <TParams extends TSchema, Details, E>(
   tool: EffectTool<TParams, Details, E>,
-): ToolDefinition =>
-  defineTool({
-    name: tool.name,
-    label: tool.label,
-    description: tool.description,
-    promptSnippet: tool.promptSnippet,
-    promptGuidelines: tool.promptGuidelines === undefined ? undefined : [...tool.promptGuidelines],
-    parameters: tool.parameters,
-    execute: async (toolCallId, input, signal, onUpdate, ctx) =>
-      Effect.runPromise(
-        tool.execute(toolCallId, input, onUpdate, ctx).pipe(
-          Effect.catch((error) =>
-            error instanceof AgentToolError
-              ? Effect.fail(error)
-              : Effect.logError("Unhandled tool error", error).pipe(
-                  Effect.andThen(Effect.fail(internalToolError())),
-                ),
-          ),
-          Effect.catchDefect((defect) =>
-            Effect.logError("Unhandled tool defect", defect).pipe(
-              Effect.andThen(Effect.fail(internalToolError())),
+) =>
+  Effect.gen(function* () {
+    const context = yield* Effect.context();
+    return defineTool({
+      name: tool.name,
+      label: tool.label,
+      description: tool.description,
+      promptSnippet: tool.promptSnippet,
+      promptGuidelines:
+        tool.promptGuidelines === undefined ? undefined : [...tool.promptGuidelines],
+      parameters: tool.parameters,
+      execute: async (toolCallId, input, signal, onUpdate, ctx) =>
+        Effect.runPromiseWith(context)(
+          tool.execute(toolCallId, input, onUpdate, ctx).pipe(
+            Effect.tapError((error) =>
+              Effect.logDebug("Tool failed", { toolName: tool.name, toolCallId, error }),
             ),
+            Effect.catchDefect((defect) =>
+              Effect.logError("Tool defect", { toolName: tool.name, toolCallId, defect }).pipe(
+                Effect.andThen(Effect.fail(internalToolError())),
+              ),
+            ),
+            Effect.withSpan("EffectTool.execute", {
+              attributes: { toolName: tool.name, toolCallId },
+            }),
           ),
+          { signal },
         ),
-        { signal },
-      ),
+    });
   });

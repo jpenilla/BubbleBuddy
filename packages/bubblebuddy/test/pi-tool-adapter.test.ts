@@ -10,20 +10,22 @@ const mockCtx = {} as ExtensionContext;
 
 describe("Effect tool adapter", () => {
   test("forwards typed params and preserves structured results", async () => {
-    const tool = toPiToolDefinition({
-      name: "test_effect_tool",
-      label: "Test Effect Tool",
-      description: "Tests the Effect tool adapter.",
-      parameters: Type.Object({ count: Type.Number() }),
-      execute: (_toolCallId, input) =>
-        Effect.succeed({
-          content: [
-            { type: "text", text: `count=${input.count}` },
-            { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
-          ],
-          details: { count: input.count },
-        }),
-    });
+    const tool = await Effect.runPromise(
+      toPiToolDefinition({
+        name: "test_effect_tool",
+        label: "Test Effect Tool",
+        description: "Tests the Effect tool adapter.",
+        parameters: Type.Object({ count: Type.Number() }),
+        execute: (_toolCallId, input) =>
+          Effect.succeed({
+            content: [
+              { type: "text", text: `count=${input.count}` },
+              { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+            ],
+            details: { count: input.count },
+          }),
+      }),
+    );
 
     await expect(
       tool.execute("tool-call", { count: 3 }, undefined, undefined, mockCtx),
@@ -36,40 +38,51 @@ describe("Effect tool adapter", () => {
     });
   });
 
-  test("preserves tool errors and normalizes unexpected failures", async () => {
+  test("preserves typed tool errors and normalizes defects", async () => {
     const parameters = Type.Object({});
-    const expectedFailure = toPiToolDefinition({
-      name: "expected_failure",
-      label: "Expected Failure",
-      description: "Fails with an agent-actionable error.",
-      parameters,
-      execute: () => Effect.fail(new AgentToolError({ message: "Message is unavailable." })),
-    });
-    const unexpectedFailure = toPiToolDefinition({
-      name: "unexpected_failure",
-      label: "Unexpected Failure",
-      description: "Fails unexpectedly.",
-      parameters,
-      execute: () =>
-        Effect.fail(new DiscordJsError({ cause: new Error("sensitive implementation detail") })),
-    });
-    const defect = toPiToolDefinition({
-      name: "defect",
-      label: "Defect",
-      description: "Dies unexpectedly.",
-      parameters,
-      execute: () =>
-        Effect.sync(() => {
-          throw new Error("sensitive defect detail");
-        }),
-    });
+    const expectedFailure = await Effect.runPromise(
+      toPiToolDefinition({
+        name: "expected_failure",
+        label: "Expected Failure",
+        description: "Fails with an agent-actionable error.",
+        parameters,
+        execute: () => Effect.fail(new AgentToolError({ message: "Message is unavailable." })),
+      }),
+    );
+    const unexpectedFailure = await Effect.runPromise(
+      toPiToolDefinition({
+        name: "unexpected_failure",
+        label: "Unexpected Failure",
+        description: "Fails unexpectedly.",
+        parameters,
+        execute: () =>
+          Effect.fail(
+            new DiscordJsError({
+              message: "Discord operation failed.",
+              cause: new Error("sensitive implementation detail"),
+            }),
+          ),
+      }),
+    );
+    const defect = await Effect.runPromise(
+      toPiToolDefinition({
+        name: "defect",
+        label: "Defect",
+        description: "Dies unexpectedly.",
+        parameters,
+        execute: () =>
+          Effect.sync(() => {
+            throw new Error("sensitive defect detail");
+          }),
+      }),
+    );
 
     await expect(
       expectedFailure.execute("tool-call", {}, undefined, undefined, mockCtx),
     ).rejects.toThrow("Message is unavailable.");
     await expect(
       unexpectedFailure.execute("tool-call", {}, undefined, undefined, mockCtx),
-    ).rejects.toThrow("This tool encountered an internal error.");
+    ).rejects.toThrow("Discord operation failed.");
     await expect(defect.execute("tool-call", {}, undefined, undefined, mockCtx)).rejects.toThrow(
       "This tool encountered an internal error.",
     );

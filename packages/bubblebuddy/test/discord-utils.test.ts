@@ -16,6 +16,7 @@ describe("Discord promise errors", () => {
     );
 
     expect(error).toBeInstanceOf(DiscordJsError);
+    expect(error?.message).toBe("Discord operation failed.");
     expect(error?.cause).toBe(cause);
   });
 });

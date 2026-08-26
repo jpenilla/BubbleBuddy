@@ -71,7 +71,7 @@ const buildTools = async (options: {
     ),
   );
 
-  return definitions.map(toPiToolDefinition);
+  return await Effect.runPromise(Effect.forEach(definitions, toPiToolDefinition));
 };
 
 const makeOriginMessage = (
@@ -337,7 +337,7 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
 });
 
 describe("discord fetch message tool", () => {
-  test("returns a generic internal error when message lookup fails unexpectedly", async () => {
+  test("returns a generic discord error when message lookup fails", async () => {
     const notFoundError = new Error("DiscordAPIError[10008]: Unknown Message");
 
     const originMessage = makeOriginMessageWithFetch(async () => {
@@ -346,7 +346,7 @@ describe("discord fetch message tool", () => {
 
     await expect(
       executeFetchTool(makeFetchTool(originMessage), { messageId: "123" }),
-    ).rejects.toThrow("This tool encountered an internal error.");
+    ).rejects.toThrow("Discord operation failed.");
   });
 
   test.each([
