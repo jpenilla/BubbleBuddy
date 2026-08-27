@@ -4,7 +4,7 @@ import {
   type AgentToolUpdateCallback,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 import type { Static, TSchema } from "typebox";
 
 export class AgentToolError extends Schema.TaggedError<AgentToolError>()("AgentToolError", {
@@ -40,8 +40,8 @@ export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
       promptGuidelines:
         tool.promptGuidelines === undefined ? undefined : [...tool.promptGuidelines],
       parameters: tool.parameters,
-      execute: async (toolCallId, input, signal, onUpdate, ctx) =>
-        Effect.runPromiseWith(context)(
+      execute: async (toolCallId, input, signal, onUpdate, ctx) => {
+        const exit = await Effect.runPromiseExitWith(context)(
           tool.execute(toolCallId, input, onUpdate, ctx).pipe(
             Effect.tapError((error) =>
               Effect.logDebug("Tool failed", { toolName: tool.name, toolCallId, error }),
@@ -60,6 +60,11 @@ export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
             }),
           ),
           { signal },
-        ),
+        );
+        if (Exit.isSuccess(exit)) return exit.value;
+        // Pi surfaces the thrown message verbatim; keep aborts readable instead of Effect's squashed interrupt error.
+        if (Cause.hasInterruptsOnly(exit.cause)) throw new Error("Operation aborted.");
+        throw Cause.squash(exit.cause);
+      },
     });
   });
