@@ -4,7 +4,7 @@ import { open } from "node:fs/promises";
 
 import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Collection, GuildPremiumTier } from "discord.js";
+import { Collection, DiscordAPIError, GuildPremiumTier } from "discord.js";
 import type { GuildTextBasedChannel, Message } from "discord.js";
 import { Effect, FileSystem, Layer, Path } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -30,6 +30,12 @@ type UploadToolResult = {
 const passthroughDiscordAction: AwaitToolDiscordAction = <A, E>(
   operation: Effect.Effect<A, E>,
 ): Effect.Effect<A, E> => operation;
+
+const makeDiscordAPIError = (code: number, message: string): DiscordAPIError =>
+  new DiscordAPIError({ code, message }, code, 400, "GET", "https://discord.com/api", {
+    body: undefined,
+    files: undefined,
+  });
 
 const buildTools = async (options: {
   readonly message: Message<true>;
@@ -336,16 +342,14 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
 });
 
 describe("discord fetch message tool", () => {
-  test("returns a generic discord error when message lookup fails", async () => {
-    const notFoundError = new Error("DiscordAPIError[10008]: Unknown Message");
-
+  test("surfaces the Discord API error when message lookup fails", async () => {
     const originMessage = makeOriginMessageWithFetch(async () => {
-      throw notFoundError;
+      throw makeDiscordAPIError(10008, "Unknown Message");
     });
 
     await expect(
       executeFetchTool(makeFetchTool(originMessage), { messageId: "123" }),
-    ).rejects.toThrow("Discord operation failed.");
+    ).rejects.toThrow("Discord API error 10008: Unknown Message");
   });
 
   test.each([
@@ -444,7 +448,7 @@ describe("discord react tool", () => {
     const msg = {
       id: "m1",
       react: async (e: string) => {
-        if (e === "🎉") throw new Error("blocked");
+        if (e === "🎉") throw makeDiscordAPIError(90001, "Reaction blocked");
         reacted.push(e);
       },
     };
@@ -466,6 +470,6 @@ describe("discord react tool", () => {
     expect(reacted).toEqual(["👍"]);
     expect(String(error)).toContain("Failed to add reactions");
     expect(String(error)).toContain(":bad:");
-    expect(String(error)).toContain("blocked");
+    expect(String(error)).toContain("Discord API error 90001: Reaction blocked");
   });
 });

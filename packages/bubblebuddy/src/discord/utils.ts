@@ -1,5 +1,11 @@
 import {
+  DiscordAPIError,
+  DiscordjsError,
+  DiscordjsRangeError,
+  DiscordjsTypeError,
+  HTTPError,
   MessagePayload,
+  RateLimitError,
   Routes,
   type GuildTextBasedChannel,
   type Message,
@@ -17,12 +23,36 @@ export class DiscordJsError extends Schema.TaggedError<DiscordJsError>()("Discor
   cause: Schema.Defect(),
 }) {}
 
+// These messages reach agent prompts, so only bounded discord.js error fields are
+// surfaced; unrecognized causes stay generic because their content is unbounded
+// (hosts, paths). The full cause is always retained for logs.
+const describeDiscordJsCause = (cause: unknown): string => {
+  if (cause instanceof DiscordAPIError) {
+    return `Discord API error ${cause.code}: ${cause.message}`;
+  }
+  if (cause instanceof HTTPError) {
+    return `Discord HTTP error ${cause.status}: ${cause.message}`;
+  }
+  // Only thrown if the client opts into rejectOnRateLimit; queued/retried otherwise.
+  if (cause instanceof RateLimitError) {
+    return `Discord rate limit on ${cause.method} ${cause.route} (retry after ${cause.retryAfter}ms)`;
+  }
+  if (
+    cause instanceof DiscordjsError ||
+    cause instanceof DiscordjsTypeError ||
+    cause instanceof DiscordjsRangeError
+  ) {
+    return `discord.js client error ${cause.code}: ${cause.message}`;
+  }
+  return "Discord operation failed.";
+};
+
 export const tryDiscordJsPromise = <A>(
   evaluate: (signal: AbortSignal) => PromiseLike<A>,
 ): Effect.Effect<A, DiscordJsError> =>
   Effect.tryPromise({
     try: evaluate,
-    catch: (cause) => new DiscordJsError({ message: "Discord operation failed.", cause }),
+    catch: (cause) => new DiscordJsError({ message: describeDiscordJsCause(cause), cause }),
   });
 
 export const isGuildTextChannel = (channel: unknown): channel is GuildTextBasedChannel =>
