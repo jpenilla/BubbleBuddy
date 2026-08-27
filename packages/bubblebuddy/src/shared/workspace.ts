@@ -6,6 +6,7 @@ export const sanitizeAttachmentFilename = (filename: string): string => {
   const base = filename.trim().split("/").at(-1)?.split("\\").at(-1) ?? "";
   const sanitized = base
     .replaceAll("\0", "")
+    // oxlint-disable-next-line no-control-regex -- stripping control characters is the point
     .replace(/[\x00-\x1f\x7f]/g, "")
     .trim();
   if (sanitized.length === 0 || sanitized === "." || sanitized === "..") return "file";
