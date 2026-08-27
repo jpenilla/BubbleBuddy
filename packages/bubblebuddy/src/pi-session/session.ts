@@ -10,9 +10,11 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
-import { Data, Effect, FiberHandle, Exit, Scope, Semaphore } from "effect";
+import { Data, Effect, FiberHandle, Exit, FileSystem, Layer, Path, Scope, Semaphore } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
-import { createDiscordTools } from "../discord/tools.ts";
+import { discordCoreTools, discordWorkspaceTools } from "../discord/tools.ts";
+import { ChannelWorkspace, DiscordToolContext } from "../discord/tool-context.ts";
 import { connectMcpServers } from "../mcp/adapter.ts";
 import { FileConfig } from "../config/file.ts";
 import type { PromptTemplateContext } from "./system-prompt.ts";
@@ -23,12 +25,13 @@ import { createIncusExtension } from "./incus-extension.ts";
 import { makeDiscordOutputPump } from "../discord/session-output-pump.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
-import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
+import { SHUTDOWN_ABORT_TIMEOUT } from "../shared/constants.ts";
+import type { MountedWorkspace } from "../shared/workspace.ts";
 
 export interface PiChannelSessionOptions {
   readonly channel: GuildTextBasedChannel;
   readonly getShowThinking: () => boolean;
-  readonly hostWorkspaceDir: string;
+  readonly workspace: MountedWorkspace;
   readonly promptContext: PromptTemplateContext;
   readonly sessionManager: SessionManager;
   readonly makeKeepAlive: SessionKeepAliveFactory;
@@ -74,7 +77,12 @@ export const createPiChannelSession = (
 ): Effect.Effect<
   ScopedPiChannelSession,
   ChannelSessionInitError,
-  FileConfig | LoadedResources | PiContext
+  | FileConfig
+  | FileSystem.FileSystem
+  | HttpClient.HttpClient
+  | LoadedResources
+  | Path.Path
+  | PiContext
 > =>
   Effect.gen(function* () {
     const scope = yield* Scope.make("sequential");
@@ -111,9 +119,9 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
         Effect.sync(() =>
           createIncusExtension({
             channelId: options.channel.id,
-            sessionCwd: WORKSPACE_CWD,
+            sessionCwd: options.workspace.root.container,
             sessionLabel: `bubblebuddy:${options.channel.id}`,
-            workspaceDir: options.hostWorkspaceDir,
+            workspaceDir: options.workspace.root.host,
           }),
         ),
         (ext) =>
@@ -129,7 +137,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
       enableAgenticWorkspace: config.enableAgenticWorkspace,
       extensionFactories,
       settingsManager,
-      workspaceDir: options.hostWorkspaceDir,
+      workspace: options.workspace,
     });
     yield* Effect.tryPromise({
       try: () => resourceLoader.reload(),
@@ -144,19 +152,22 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
       channel: options.channel,
       getShowThinking: options.getShowThinking,
     });
-
-    const discordTools = createDiscordTools(
-      {
-        channel: options.channel,
-        client: options.channel.client,
-        guild: options.channel.guild,
-      },
-      output.awaitToolDiscordAction,
-      {
-        enableAgenticWorkspace: config.enableAgenticWorkspace,
-        workspaceDir: options.hostWorkspaceDir,
-      },
+    const toolContextLayer = Layer.mergeAll(
+      Layer.succeed(
+        DiscordToolContext,
+        DiscordToolContext.of({
+          channel: options.channel,
+          awaitAction: output.awaitToolDiscordAction,
+        }),
+      ),
+      Layer.succeed(ChannelWorkspace, ChannelWorkspace.of(options.workspace)),
     );
+
+    const discordTools = yield* Effect.gen(function* () {
+      const core = yield* discordCoreTools();
+      if (!config.enableAgenticWorkspace) return core;
+      return [...core, ...(yield* discordWorkspaceTools())];
+    }).pipe(Effect.provide(toolContextLayer));
 
     let mcpTools: ToolDefinition[] = [];
     if (Object.keys(config.mcpServers).length > 0) {
@@ -181,7 +192,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
           createAgentSession({
             agentDir: piContext.agentDir,
             customTools: allTools,
-            cwd: WORKSPACE_CWD,
+            cwd: options.workspace.root.container,
             model: piContext.model,
             modelRuntime: piContext.modelRuntime,
             resourceLoader,

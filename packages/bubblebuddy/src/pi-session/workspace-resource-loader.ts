@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 import {
   DefaultResourceLoader,
@@ -8,7 +7,7 @@ import {
   type SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 
-import { WORKSPACE_CWD } from "../shared/constants.ts";
+import type { MountedWorkspace } from "../shared/workspace.ts";
 import { normalizeLineEndings } from "../shared/text.ts";
 
 export interface ChannelWorkspaceResourceLoaderOptions {
@@ -16,18 +15,19 @@ export interface ChannelWorkspaceResourceLoaderOptions {
   readonly enableAgenticWorkspace: boolean;
   readonly extensionFactories: ExtensionFactory[];
   readonly settingsManager: SettingsManager;
-  readonly workspaceDir: string;
+  readonly workspace: MountedWorkspace;
 }
 
 const readWorkspaceAgentsFile = (
-  workspaceDir: string,
+  workspace: MountedWorkspace,
 ): Array<{ path: string; content: string }> => {
+  const agentsFile = workspace.resolve("AGENTS.md");
   try {
-    const content = normalizeLineEndings(readFileSync(join(workspaceDir, "AGENTS.md"), "utf8"));
+    const content = normalizeLineEndings(readFileSync(agentsFile.host, "utf8"));
     return [
       {
         content,
-        path: `${WORKSPACE_CWD}/AGENTS.md`,
+        path: agentsFile.container,
       },
     ];
   } catch (error) {
@@ -44,9 +44,13 @@ const readWorkspaceAgentsFile = (
   }
 };
 
-const workspaceSkillPaths = (workspaceDir: string): string[] => [
-  join(workspaceDir, ".pi", "skills"),
-  join(workspaceDir, ".agents", "skills"),
+// Host paths: Pi's loader reads these with host fs.
+// formatSkillsForPrompt dumps skill.filePath into <location>, so the model
+// still sees host paths. Remap at prompt compose time; do not rewrite Skill.filePath
+// (Pi still readFileSyncs it).
+const workspaceSkillPaths = (workspace: MountedWorkspace): string[] => [
+  workspace.resolve(".pi", "skills").host,
+  workspace.resolve(".agents", "skills").host,
 ];
 
 export const createChannelWorkspaceResourceLoader = (
@@ -54,16 +58,14 @@ export const createChannelWorkspaceResourceLoader = (
 ): ResourceLoader =>
   new DefaultResourceLoader({
     additionalSkillPaths: options.enableAgenticWorkspace
-      ? workspaceSkillPaths(options.workspaceDir)
+      ? workspaceSkillPaths(options.workspace)
       : [],
     agentDir: options.agentDir,
     agentsFilesOverride: () => ({
-      agentsFiles: options.enableAgenticWorkspace
-        ? readWorkspaceAgentsFile(options.workspaceDir)
-        : [],
+      agentsFiles: options.enableAgenticWorkspace ? readWorkspaceAgentsFile(options.workspace) : [],
     }),
     appendSystemPromptOverride: () => [],
-    cwd: options.workspaceDir,
+    cwd: options.workspace.root.host,
     extensionFactories: options.extensionFactories,
     noContextFiles: true,
     noExtensions: true,

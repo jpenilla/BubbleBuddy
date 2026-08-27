@@ -2,12 +2,18 @@ import { it } from "@effect/vitest";
 import { describe, expect, test } from "vitest";
 import { open } from "node:fs/promises";
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import type { Message } from "discord.js";
-import { Effect, FileSystem, Path } from "effect";
+import { Collection, GuildPremiumTier } from "discord.js";
+import type { GuildTextBasedChannel, Message } from "discord.js";
+import { Effect, FileSystem, Layer, Path } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 
-import { createDiscordTools } from "../src/discord/tools.ts";
+import { discordCoreTools, discordWorkspaceTools } from "../src/discord/tools.ts";
+import { ChannelWorkspace, DiscordToolContext } from "../src/discord/tool-context.ts";
+import { makeMountedWorkspace } from "../src/shared/workspace.ts";
+import { WORKSPACE_CWD } from "../src/shared/constants.ts";
+import type { AwaitToolDiscordAction } from "../src/discord/session-output-pump.ts";
 
 const mockCtx = {} as unknown as ExtensionContext;
 
@@ -15,23 +21,58 @@ const UPLOAD_FILE_TOOL = "discord_upload_file";
 const FETCH_MESSAGE_TOOL = "discord_fetch_message";
 const REACT_TOOL = "discord_react";
 
-type DiscordTool = ReturnType<typeof createDiscordTools>[number];
-
 type UploadToolResult = {
   content: Array<{ type: string; text: string }>;
   details: Record<string, unknown>;
   isError?: boolean;
 };
 
-const passthroughDiscordAction = <T>(
-  operation: Effect.Effect<T, unknown>,
-): Effect.Effect<T, unknown> => operation;
+const passthroughDiscordAction: AwaitToolDiscordAction = <A, E>(
+  operation: Effect.Effect<A, E>,
+): Effect.Effect<A, E> => operation;
+
+const buildTools = async (options: {
+  readonly message: Message<true>;
+  readonly workspaceDir?: string;
+  readonly awaitAction?: AwaitToolDiscordAction;
+}): Promise<readonly ToolDefinition[]> => {
+  const channel = options.message.channel as unknown as GuildTextBasedChannel;
+  return await Effect.runPromise(
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const core = yield* discordCoreTools();
+      if (options.workspaceDir === undefined) return core;
+      const workspaceTools = yield* discordWorkspaceTools().pipe(
+        Effect.provideService(
+          ChannelWorkspace,
+          ChannelWorkspace.of(makeMountedWorkspace(path, options.workspaceDir, WORKSPACE_CWD)),
+        ),
+      );
+      return [...core, ...workspaceTools];
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NodeServices.layer,
+          FetchHttpClient.layer,
+          Layer.succeed(
+            DiscordToolContext,
+            DiscordToolContext.of({
+              channel,
+              awaitAction: options.awaitAction ?? passthroughDiscordAction,
+            }),
+          ),
+        ),
+      ),
+    ),
+  );
+};
 
 const makeOriginMessage = (
-  premiumTier: number,
+  premiumTier: GuildPremiumTier,
   send: (payload?: unknown) => Promise<unknown> = async () => undefined,
 ): Message<true> =>
   ({
+    attachments: new Collection(),
     channel: {
       send,
       id: "channel-id",
@@ -43,8 +84,9 @@ const makeOriginMessage = (
             send({ ...(payload.body as object), files: payload.files }),
         },
       },
+      guild: { premiumTier, id: "guild-id", emojis: { cache: new Map() } },
     },
-    guild: { premiumTier },
+    guild: { premiumTier, id: "guild-id", emojis: { cache: new Map() } },
   }) as unknown as Message<true>;
 
 const makeOriginMessageWithFetch = (fetch: (id: string) => Promise<unknown>): Message<true> =>
@@ -69,6 +111,7 @@ const makeFetchedMessage = (options: {
   mentions: { users: options.mentions ?? new Map() },
   reference: options.reference ?? null,
   channelId: options.channelId,
+  attachments: new Collection(),
 });
 
 type FetchToolResult = {
@@ -77,7 +120,7 @@ type FetchToolResult = {
   isError?: boolean;
 };
 
-const findFetchTool = (tools: readonly DiscordTool[]): DiscordTool => {
+const findFetchTool = (tools: readonly ToolDefinition[]): ToolDefinition => {
   const tool = tools.find((candidate) => candidate.name === FETCH_MESSAGE_TOOL);
   if (tool === undefined) {
     throw new Error("fetch tool missing");
@@ -85,28 +128,19 @@ const findFetchTool = (tools: readonly DiscordTool[]): DiscordTool => {
   return tool;
 };
 
-const makeFetchTool = (originMessage: Message<true>): DiscordTool =>
-  findFetchTool(
-    createDiscordTools(originMessage, passthroughDiscordAction, {
-      enableAgenticWorkspace: false,
-      workspaceDir: "/tmp",
-    }),
-  );
+const makeFetchTool = (originMessage: Message<true>): Promise<ToolDefinition> =>
+  buildTools({ message: originMessage }).then(findFetchTool);
 
 const executeFetchTool = async (
-  tool: DiscordTool,
+  tool: ToolDefinition | Promise<ToolDefinition>,
   params: { messageId: string },
 ): Promise<FetchToolResult> => {
-  return (await tool.execute(
-    "tool-call",
-    params,
-    undefined,
-    undefined,
-    mockCtx,
-  )) as FetchToolResult;
+  return (await (
+    await tool
+  ).execute("tool-call", params, undefined, undefined, mockCtx)) as FetchToolResult;
 };
 
-const findUploadTool = (tools: readonly DiscordTool[]): DiscordTool => {
+const findUploadTool = (tools: readonly ToolDefinition[]): ToolDefinition => {
   const tool = tools.find((candidate) => candidate.name === UPLOAD_FILE_TOOL);
   if (tool === undefined) {
     throw new Error("upload tool missing");
@@ -118,26 +152,21 @@ const makeUploadTool = (
   originMessage: Message<true>,
   workspaceDir: string,
   runDiscordAction = passthroughDiscordAction,
-): DiscordTool =>
-  findUploadTool(
-    createDiscordTools(originMessage, runDiscordAction, {
-      enableAgenticWorkspace: true,
-      workspaceDir,
-    }),
-  );
+): Promise<ToolDefinition> =>
+  buildTools({
+    message: originMessage,
+    workspaceDir,
+    awaitAction: runDiscordAction,
+  }).then(findUploadTool);
 
 const executeUploadTool = async (
-  tool: DiscordTool,
+  tool: ToolDefinition | Promise<ToolDefinition>,
   params: { path: string; caption?: string; fileName?: string },
 ): Promise<UploadToolResult> => {
   try {
-    return (await tool.execute(
-      "tool-call",
-      params,
-      undefined,
-      undefined,
-      mockCtx,
-    )) as UploadToolResult;
+    return (await (
+      await tool
+    ).execute("tool-call", params, undefined, undefined, mockCtx)) as UploadToolResult;
   } catch (error) {
     return {
       content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
@@ -156,24 +185,17 @@ const createSparseFile = async (path: string, size: number): Promise<void> => {
   }
 };
 
-const makeWorkspace = Effect.fn("discord-tools.test.makeWorkspace")(function* () {
+const makeWorkspace = Effect.fn("makeWorkspace")(function* () {
   const fs = yield* FileSystem.FileSystem;
   return yield* fs.makeTempDirectoryScoped({ prefix: "bubblebuddy-upload-" });
 });
 
 it.layer(NodeServices.layer)("discord upload tool", (it) => {
   it.effect("is only registered when agentic workspace is enabled", () =>
-    Effect.sync(() => {
-      const originMessage = makeOriginMessage(0);
-
-      const enabled = createDiscordTools(originMessage, passthroughDiscordAction, {
-        enableAgenticWorkspace: true,
-        workspaceDir: "/tmp",
-      });
-      const disabled = createDiscordTools(originMessage, passthroughDiscordAction, {
-        enableAgenticWorkspace: false,
-        workspaceDir: "/tmp",
-      });
+    Effect.promise(async () => {
+      const originMessage = makeOriginMessage(GuildPremiumTier.None);
+      const enabled = await buildTools({ message: originMessage, workspaceDir: "/tmp" });
+      const disabled = await buildTools({ message: originMessage });
 
       expect(enabled.some((tool) => tool.name === UPLOAD_FILE_TOOL)).toBe(true);
       expect(disabled.some((tool) => tool.name === UPLOAD_FILE_TOOL)).toBe(false);
@@ -184,7 +206,7 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
     Effect.gen(function* () {
       const workspaceDir = yield* makeWorkspace();
       const result = yield* Effect.promise(() =>
-        executeUploadTool(makeUploadTool(makeOriginMessage(0), workspaceDir), {
+        executeUploadTool(makeUploadTool(makeOriginMessage(GuildPremiumTier.None), workspaceDir), {
           path: "/etc/passwd",
         }),
       );
@@ -209,7 +231,7 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
       const filePath = path.join(workspaceDir, "report.txt");
       yield* fs.writeFileString(filePath, "hello world");
 
-      const originMessage = makeOriginMessage(0, async (payload) => {
+      const originMessage = makeOriginMessage(GuildPremiumTier.None, async (payload) => {
         const message = payload as { files: Array<{ data: Buffer; name: string }> };
         sentName = message.files[0]?.name;
         sentAttachment = message.files[0]?.data;
@@ -241,19 +263,25 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
   for (const testCase of [
     {
       name: "rejects files larger than default tier limit",
-      premiumTier: 0,
+      premiumTier: GuildPremiumTier.None,
       size: 10 * 1024 * 1024 + 1,
       expectedLimit: 10 * 1024 * 1024,
     },
     {
       name: "rejects files larger than tier 2 limit",
-      premiumTier: 2,
+      premiumTier: GuildPremiumTier.Tier2,
       size: 50 * 1000 * 1000 + 1,
       expectedLimit: 50 * 1000 * 1000,
     },
     {
       name: "rejects files larger than tier 3 limit",
-      premiumTier: 3,
+      premiumTier: GuildPremiumTier.Tier3,
+      size: 100 * 1000 * 1000 + 1,
+      expectedLimit: 100 * 1000 * 1000,
+    },
+    {
+      name: "rejects files larger than a future higher-tier limit using the highest known cap",
+      premiumTier: (GuildPremiumTier.Tier3 + 1) as GuildPremiumTier,
       size: 100 * 1000 * 1000 + 1,
       expectedLimit: 100 * 1000 * 1000,
     },
@@ -291,7 +319,7 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
       const result = yield* Effect.promise(() =>
         executeUploadTool(
           makeUploadTool(
-            makeOriginMessage(2, async () => {
+            makeOriginMessage(GuildPremiumTier.Tier2, async () => {
               sent = true;
               return undefined;
             }),
@@ -308,16 +336,16 @@ it.layer(NodeServices.layer)("discord upload tool", (it) => {
 });
 
 describe("discord fetch message tool", () => {
-  test("throws when message is not found", async () => {
+  test("returns a generic discord error when message lookup fails", async () => {
     const notFoundError = new Error("DiscordAPIError[10008]: Unknown Message");
 
     const originMessage = makeOriginMessageWithFetch(async () => {
       throw notFoundError;
     });
 
-    await expect(executeFetchTool(makeFetchTool(originMessage), { messageId: "123" })).rejects.toBe(
-      notFoundError,
-    );
+    await expect(
+      executeFetchTool(makeFetchTool(originMessage), { messageId: "123" }),
+    ).rejects.toThrow("Discord operation failed.");
   });
 
   test.each([
@@ -359,6 +387,14 @@ describe("discord react tool", () => {
       channel: {
         messages: { fetch },
         permissionsFor: () => null,
+        client: {
+          user: { id: "bot1" },
+          emojis: { cache: new Map() },
+        },
+        guild: {
+          id: "g1",
+          emojis: { cache: new Map() },
+        },
       },
       guild: {
         id: "g1",
@@ -372,11 +408,12 @@ describe("discord react tool", () => {
 
   const makeReactTool = (
     fetch: (id: string) => Promise<{ id: string; react: (emoji: string) => Promise<void> }>,
-  ) =>
-    createDiscordTools(makeOriginMessageForReact(fetch), passthroughDiscordAction, {
-      enableAgenticWorkspace: false,
-      workspaceDir: "/tmp",
-    }).find((t) => t.name === REACT_TOOL)!;
+  ): Promise<ToolDefinition> =>
+    buildTools({ message: makeOriginMessageForReact(fetch) }).then((tools) => {
+      const tool = tools.find((candidate) => candidate.name === REACT_TOOL);
+      if (tool === undefined) throw new Error("react tool missing");
+      return tool;
+    });
 
   test("adds multiple reactions", async () => {
     const reacted: string[] = [];
@@ -386,7 +423,7 @@ describe("discord react tool", () => {
         reacted.push(e);
       },
     };
-    const tool = makeReactTool(async () => msg);
+    const tool = await makeReactTool(async () => msg);
 
     const result = (await tool.execute(
       "tool-call",
@@ -411,7 +448,7 @@ describe("discord react tool", () => {
         reacted.push(e);
       },
     };
-    const tool = makeReactTool(async () => msg);
+    const tool = await makeReactTool(async () => msg);
 
     let error: unknown;
     try {

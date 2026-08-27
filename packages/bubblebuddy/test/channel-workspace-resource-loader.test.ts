@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Effect, Path } from "effect";
 
+import { makeMountedWorkspace } from "../src/shared/workspace.ts";
 import { createChannelWorkspaceResourceLoader } from "../src/pi-session/workspace-resource-loader.ts";
 
 describe("channel workspace resource loader", () => {
@@ -24,13 +27,26 @@ describe("channel workspace resource loader", () => {
     await rm(tempDir, { force: true, recursive: true });
   });
 
+  // A container root distinct from the production WORKSPACE_CWD constant, so
+  // these tests fail if the loader falls back to the constant instead of the
+  // workspace it was given.
+  const containerRoot = "/scope-root";
+
+  const workspace = () =>
+    Effect.runSync(
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        return makeMountedWorkspace(path, workspaceDir, containerRoot);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    );
+
   const makeLoader = (enableAgenticWorkspace: boolean) =>
     createChannelWorkspaceResourceLoader({
       agentDir,
       enableAgenticWorkspace,
       extensionFactories: [],
       settingsManager: SettingsManager.create(workspaceDir, agentDir),
-      workspaceDir,
+      workspace: workspace(),
     });
 
   test("loads only the channel workspace AGENTS.md", async () => {
@@ -43,7 +59,7 @@ describe("channel workspace resource loader", () => {
     expect(loader.getAgentsFiles().agentsFiles).toEqual([
       {
         content: "inner\nworkspace\n",
-        path: "/workspace/AGENTS.md",
+        path: "/scope-root/AGENTS.md",
       },
     ]);
   });
@@ -54,12 +70,10 @@ describe("channel workspace resource loader", () => {
     await writeFile(
       join(workspaceDir, ".pi", "skills", "workspace-skill", "SKILL.md"),
       ["---", "description: Use the workspace skill.", "---", "# Workspace Skill"].join("\n"),
-      "utf8",
     );
     await writeFile(
       join(tempDir, ".agents", "skills", "ancestor-skill", "SKILL.md"),
       ["---", "description: Use the ancestor skill.", "---", "# Ancestor Skill"].join("\n"),
-      "utf8",
     );
 
     const loader = makeLoader(true);

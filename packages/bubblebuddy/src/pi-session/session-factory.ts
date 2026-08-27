@@ -1,18 +1,19 @@
-import { join } from "node:path";
-
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
-import { Context, Data, Effect, FileSystem, Layer, Scope } from "effect";
+
+import { Context, Data, Effect, FileSystem, Layer, Path, Scope } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 
 import { ChannelStateRepository } from "../channels/state-repository.ts";
-import { AppHome } from "../config/env.ts";
 import { FileConfig } from "../config/file.ts";
 import { LoadedResources } from "../resources.ts";
 import type { SessionKeepAliveFactory } from "../channels/keep-alive.ts";
 import type { PromptTemplateContext } from "../pi-session/system-prompt.ts";
 import { createPiChannelSession, type ScopedPiChannelSession } from "./session.ts";
 import { PiContext } from "./context.ts";
+import { AppHome } from "../config/env.ts";
 import { WORKSPACE_CWD } from "../shared/constants.ts";
+import { channelHostSessionsDir, makeChannelMountedWorkspace } from "../shared/workspace.ts";
 
 export class PiChannelSessionFactoryError extends Data.TaggedError("PiChannelSessionFactoryError")<{
   readonly channelId: string;
@@ -30,21 +31,19 @@ export interface PiChannelSessionFactoryCreateInput {
 
 const makePiChannelSessionFactory = Effect.gen(function* () {
   const config = yield* FileConfig;
-  const appHome = yield* AppHome;
   const stateRepository = yield* ChannelStateRepository;
   const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const resources = yield* LoadedResources;
   const piContext = yield* PiContext;
-
-  const channelStorageDirectory = (channelId: string) => join(appHome, "channel", channelId);
-  const workspaceDir = (channelId: string) => join(channelStorageDirectory(channelId), "workspace");
-  const sessionsDir = (channelId: string) => join(channelStorageDirectory(channelId), "sessions");
+  const appHome = yield* AppHome;
+  const http = yield* HttpClient.HttpClient;
 
   const loadSessionManager = (
     channelId: string,
     activeSession?: string,
   ): Effect.Effect<SessionManager, PiChannelSessionFactoryError> => {
-    const dir = sessionsDir(channelId);
+    const dir = channelHostSessionsDir(path, appHome, channelId);
     return Effect.gen(function* () {
       yield* fs
         .makeDirectory(dir, { recursive: true })
@@ -59,7 +58,7 @@ const makePiChannelSessionFactory = Effect.gen(function* () {
       }
 
       return yield* Effect.try({
-        try: () => SessionManager.open(join(dir, activeSession), dir, WORKSPACE_CWD),
+        try: () => SessionManager.open(path.join(dir, activeSession), dir, WORKSPACE_CWD),
         catch: (cause) =>
           new PiChannelSessionFactoryError({ channelId, operation: "storage", cause }),
       }).pipe(
@@ -87,7 +86,13 @@ const makePiChannelSessionFactory = Effect.gen(function* () {
               }),
           ),
         );
-        yield* fs.makeDirectory(workspaceDir(input.channel.id), { recursive: true }).pipe(
+        const workspace = makeChannelMountedWorkspace(
+          path,
+          appHome,
+          input.channel.id,
+          WORKSPACE_CWD,
+        );
+        yield* fs.makeDirectory(workspace.root.host, { recursive: true }).pipe(
           Effect.mapError(
             (cause) =>
               new PiChannelSessionFactoryError({
@@ -102,7 +107,7 @@ const makePiChannelSessionFactory = Effect.gen(function* () {
         const pi = yield* createPiChannelSession({
           channel: input.channel,
           getShowThinking: input.getShowThinking,
-          hostWorkspaceDir: workspaceDir(input.channel.id),
+          workspace,
           promptContext: input.promptContext,
           sessionManager,
           makeKeepAlive: input.makeKeepAlive,
@@ -122,6 +127,9 @@ const makePiChannelSessionFactory = Effect.gen(function* () {
         Effect.provideService(FileConfig, config),
         Effect.provideService(LoadedResources, resources),
         Effect.provideService(PiContext, piContext),
+        Effect.provideService(FileSystem.FileSystem, fs),
+        Effect.provideService(HttpClient.HttpClient, http),
+        Effect.provideService(Path.Path, path),
       ),
   });
 });
@@ -138,8 +146,9 @@ export class PiChannelSessionFactory extends Context.Service<
   static readonly layer = PiChannelSessionFactory.layerNoDeps.pipe(
     Layer.provide(FileConfig.layer),
     Layer.provide(LoadedResources.layer),
-    Layer.provide(AppHome.layer),
     Layer.provide(ChannelStateRepository.layer),
     Layer.provide(PiContext.layer),
+    Layer.provide(AppHome.layer),
+    Layer.provide(FetchHttpClient.layer),
   );
 }

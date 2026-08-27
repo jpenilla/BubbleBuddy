@@ -2,8 +2,6 @@ import {
   PermissionFlagsBits,
   StickerType,
   parseEmoji,
-  type Client,
-  type Guild,
   type GuildEmoji,
   type GuildTextBasedChannel,
   type Sticker,
@@ -11,8 +9,6 @@ import {
 
 export type DiscordAssetContext = {
   readonly channel: GuildTextBasedChannel;
-  readonly client: Client<true>;
-  readonly guild: Guild;
 };
 
 export type UsableSticker = {
@@ -23,7 +19,7 @@ export type UsableSticker = {
 };
 
 const currentContextPermissions = (context: DiscordAssetContext) =>
-  context.channel.permissionsFor(context.client.user);
+  context.channel.permissionsFor(context.channel.client.user);
 
 const sortByContextAndName = <T extends { readonly id: string; readonly name: string }>(
   items: ReadonlyArray<T>,
@@ -70,11 +66,11 @@ export const formatCustomEmojiReactionSyntax = (emoji: GuildEmoji): string =>
 export const listUsableCustomEmojis = (context: DiscordAssetContext): GuildEmoji[] => {
   const allowExternal =
     currentContextPermissions(context)?.has(PermissionFlagsBits.UseExternalEmojis) ?? false;
-  const currentGuildId = context.guild.id;
+  const currentGuildId = context.channel.guild.id;
   const candidates = [
-    ...context.guild.emojis.cache.values(),
+    ...context.channel.guild.emojis.cache.values(),
     ...(allowExternal
-      ? [...context.client.emojis.cache.values()].filter(
+      ? [...context.channel.client.emojis.cache.values()].filter(
           (emoji) => emoji.guild.id !== currentGuildId,
         )
       : []),
@@ -145,24 +141,25 @@ export const listUsableStickers = async (
 ): Promise<UsableSticker[]> => {
   const allowExternal =
     currentContextPermissions(context)?.has(PermissionFlagsBits.UseExternalStickers) ?? false;
-  const currentGuildId = context.guild.id;
+  const currentGuildId = context.channel.guild.id;
   const guildCandidates = [
-    ...context.guild.stickers.cache.values(),
+    ...context.channel.guild.stickers.cache.values(),
     ...(allowExternal
-      ? [...context.client.guilds.cache.values()]
+      ? [...context.channel.client.guilds.cache.values()]
           .filter((guild) => guild.id !== currentGuildId)
           .flatMap((guild) => [...guild.stickers.cache.values()])
       : []),
   ];
 
-  const standardCandidates = [...(await context.client.fetchStickerPacks()).values()].flatMap(
-    (pack) =>
-      [...pack.stickers.values()].map((sticker) => ({
-        guildId: null,
-        guildName: null,
-        packName: pack.name,
-        sticker,
-      })),
+  const standardCandidates = [
+    ...(await context.channel.client.fetchStickerPacks()).values(),
+  ].flatMap((pack) =>
+    [...pack.stickers.values()].map((sticker) => ({
+      guildId: null,
+      guildName: null,
+      packName: pack.name,
+      sticker,
+    })),
   );
 
   const usable = uniqueBy(

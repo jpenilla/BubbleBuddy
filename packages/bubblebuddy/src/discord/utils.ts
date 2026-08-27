@@ -8,16 +8,21 @@ import {
   type ReplyOptions,
 } from "discord.js";
 import type { EmbedBuilder } from "discord.js";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { splitDiscordMessage } from "./response-formatting.ts";
 
+export class DiscordJsError extends Schema.TaggedError<DiscordJsError>()("DiscordJsError", {
+  message: Schema.String,
+  cause: Schema.Defect(),
+}) {}
+
 export const tryDiscordJsPromise = <A>(
   evaluate: (signal: AbortSignal) => PromiseLike<A>,
-): Effect.Effect<A, unknown> =>
+): Effect.Effect<A, DiscordJsError> =>
   Effect.tryPromise({
     try: evaluate,
-    catch: (cause) => cause,
+    catch: (cause) => new DiscordJsError({ message: "Discord operation failed.", cause }),
   });
 
 export const isGuildTextChannel = (channel: unknown): channel is GuildTextBasedChannel =>
