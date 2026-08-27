@@ -4,7 +4,6 @@ import { Type } from "typebox";
 
 import { ChannelWorkspace, DiscordToolContext } from "../tool-context.ts";
 import { sendMessageWithAbort, tryDiscordJsPromise } from "../utils.ts";
-import { WORKSPACE_CWD } from "../../shared/constants.ts";
 import { AgentToolError, defineEffectTool } from "../../tools/effect-tool.ts";
 
 const getGuildUploadLimit = (premiumTier: GuildPremiumTier): bigint => {
@@ -16,53 +15,18 @@ const getGuildUploadLimit = (premiumTier: GuildPremiumTier): bigint => {
 const resolveWorkspaceFile = Effect.fn("resolveWorkspaceFile")(function* (inputPath: string) {
   const workspace = yield* ChannelWorkspace;
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const rawPath = inputPath.trim();
-  if (rawPath.length === 0)
-    return yield* new AgentToolError({ message: "Path must not be empty." });
-
-  let workspaceRelativePath: string;
-  if (rawPath.startsWith(`${WORKSPACE_CWD}/`)) {
-    workspaceRelativePath = rawPath.slice(`${WORKSPACE_CWD}/`.length);
-  } else if (rawPath === WORKSPACE_CWD) {
-    return yield* new AgentToolError({
-      message: `${WORKSPACE_CWD} is a directory. Provide a file path.`,
-    });
-  } else if (path.isAbsolute(rawPath)) {
-    return yield* new AgentToolError({
-      message: `Absolute paths outside ${WORKSPACE_CWD} are not allowed.`,
-    });
-  } else {
-    workspaceRelativePath = rawPath;
-  }
-
-  const workspaceRoot = path.resolve(workspace.hostDir);
-  const candidatePath = path.resolve(workspaceRoot, workspaceRelativePath);
-  const realWorkspaceRoot = yield* fs
-    .realPath(workspaceRoot)
-    .pipe(Effect.orElseSucceed(() => workspaceRoot));
-  const realCandidatePath = yield* fs.realPath(candidatePath).pipe(
+  const dual = yield* workspace.inside(inputPath).pipe(
     Effect.mapError(
-      (cause) =>
+      (error) =>
         new AgentToolError({
-          message: `File not found in ${WORKSPACE_CWD}: ${inputPath}`,
-          cause,
+          message: error.message,
+          ...(error.cause !== undefined ? { cause: error.cause } : {}),
         }),
     ),
   );
-  const relativePath = path.relative(realWorkspaceRoot, realCandidatePath);
-  if (
-    relativePath === ".." ||
-    relativePath.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(relativePath)
-  ) {
-    return yield* new AgentToolError({
-      message: `File resolves outside ${WORKSPACE_CWD}: ${inputPath}`,
-    });
-  }
 
   const info = yield* fs
-    .stat(realCandidatePath)
+    .stat(dual.host)
     .pipe(
       Effect.mapError(
         (cause) => new AgentToolError({ message: `Path cannot be read: ${inputPath}`, cause }),
@@ -71,11 +35,7 @@ const resolveWorkspaceFile = Effect.fn("resolveWorkspaceFile")(function* (inputP
   if (info.type !== "File")
     return yield* new AgentToolError({ message: `Path is not a regular file: ${inputPath}` });
 
-  return {
-    hostPath: realCandidatePath,
-    size: info.size,
-    workspacePath: `${WORKSPACE_CWD}/${relativePath.replaceAll(path.sep, "/")}`,
-  };
+  return { ...dual, size: info.size };
 });
 
 export const uploadFileTool = defineEffectTool({
@@ -104,12 +64,12 @@ export const uploadFileTool = defineEffectTool({
         });
       }
 
-      const fileName = params.fileName?.trim() || path.basename(resolved.hostPath);
+      const fileName = params.fileName?.trim() || path.basename(resolved.host);
       yield* context.awaitAction(
         tryDiscordJsPromise((signal) =>
           sendMessageWithAbort(context.channel, signal, {
             content: params.caption,
-            files: [{ attachment: resolved.hostPath, name: fileName }],
+            files: [{ attachment: resolved.host, name: fileName }],
           }),
         ),
       );
@@ -118,7 +78,7 @@ export const uploadFileTool = defineEffectTool({
         content: [
           {
             type: "text",
-            text: `Uploaded file ${fileName} from ${resolved.workspacePath} (${resolved.size} bytes).`,
+            text: `Uploaded file ${fileName} from ${resolved.container} (${resolved.size} bytes).`,
           },
         ],
         details: undefined,

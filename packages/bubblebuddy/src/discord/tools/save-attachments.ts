@@ -3,9 +3,9 @@ import { Effect, FileSystem, Path, Stream } from "effect";
 import { Type } from "typebox";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
-import { sanitizeAttachmentFilename, WorkspacePaths } from "../../shared/workspace.ts";
-import { ATTACHMENTS_SEGMENT, WORKSPACE_CWD } from "../../shared/constants.ts";
-import { DiscordToolContext } from "../tool-context.ts";
+import { sanitizeAttachmentFilename } from "../../shared/workspace.ts";
+import { ATTACHMENTS_SEGMENT } from "../../shared/constants.ts";
+import { ChannelWorkspace, DiscordToolContext } from "../tool-context.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
 import { defineEffectTool } from "../../tools/effect-tool.ts";
 
@@ -61,12 +61,10 @@ const saveDiscordAttachment = Effect.fn("saveDiscordAttachment")(function* (
 });
 
 const saveDiscordMessageAttachments = Effect.fn("saveDiscordMessageAttachments")(function* (
-  channelId: string,
   message: Message<true>,
   indices?: readonly number[],
 ) {
-  const path = yield* Path.Path;
-  const workspacePaths = yield* WorkspacePaths;
+  const workspace = yield* ChannelWorkspace;
   const attachments = [...message.attachments.values()];
   const selected = indices ?? attachments.map((_, index) => index);
 
@@ -78,15 +76,14 @@ const saveDiscordMessageAttachments = Effect.fn("saveDiscordMessageAttachments")
         if (attachment === undefined) return failed(index, "not found");
 
         const filename = sanitizeAttachmentFilename(attachment.name);
-        const destination = path.join(
-          workspacePaths.hostAttachmentDir(channelId, message.id, index),
+        const destination = workspace.resolve(
+          ATTACHMENTS_SEGMENT,
+          message.id,
+          String(index),
           filename,
         );
-        yield* saveDiscordAttachment(attachment, destination);
-        return saved(
-          index,
-          `${WORKSPACE_CWD}/${ATTACHMENTS_SEGMENT}/${message.id}/${index}/${filename}`,
-        );
+        yield* saveDiscordAttachment(attachment, destination.host);
+        return saved(index, destination.container);
       }).pipe(
         Effect.tapError((error) => Effect.logDebug("Failed to save Discord attachment", error)),
         Effect.catch((error) => Effect.succeed(failed(index, error.message))),
@@ -112,11 +109,7 @@ export const saveAttachmentsTool = defineEffectTool({
       const message = yield* tryDiscordJsPromise(() =>
         context.channel.messages.fetch(params.messageId),
       );
-      const results = yield* saveDiscordMessageAttachments(
-        context.channel.id,
-        message,
-        params.indices,
-      );
+      const results = yield* saveDiscordMessageAttachments(message, params.indices);
       return {
         content: [
           {

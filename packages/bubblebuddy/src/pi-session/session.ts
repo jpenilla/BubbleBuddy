@@ -25,13 +25,13 @@ import { createIncusExtension } from "./incus-extension.ts";
 import { makeDiscordOutputPump } from "../discord/session-output-pump.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
-import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
-import { WorkspacePaths } from "../shared/workspace.ts";
+import { SHUTDOWN_ABORT_TIMEOUT } from "../shared/constants.ts";
+import type { MountedWorkspace } from "../shared/workspace.ts";
 
 export interface PiChannelSessionOptions {
   readonly channel: GuildTextBasedChannel;
   readonly getShowThinking: () => boolean;
-  readonly hostWorkspaceDir: string;
+  readonly workspace: MountedWorkspace;
   readonly promptContext: PromptTemplateContext;
   readonly sessionManager: SessionManager;
   readonly makeKeepAlive: SessionKeepAliveFactory;
@@ -83,7 +83,6 @@ export const createPiChannelSession = (
   | LoadedResources
   | Path.Path
   | PiContext
-  | WorkspacePaths
 > =>
   Effect.gen(function* () {
     const scope = yield* Scope.make("sequential");
@@ -120,9 +119,9 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
         Effect.sync(() =>
           createIncusExtension({
             channelId: options.channel.id,
-            sessionCwd: WORKSPACE_CWD,
+            sessionCwd: options.workspace.root.container,
             sessionLabel: `bubblebuddy:${options.channel.id}`,
-            workspaceDir: options.hostWorkspaceDir,
+            workspaceDir: options.workspace.root.host,
           }),
         ),
         (ext) =>
@@ -138,7 +137,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
       enableAgenticWorkspace: config.enableAgenticWorkspace,
       extensionFactories,
       settingsManager,
-      workspaceDir: options.hostWorkspaceDir,
+      workspace: options.workspace,
     });
     yield* Effect.tryPromise({
       try: () => resourceLoader.reload(),
@@ -161,7 +160,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
           awaitAction: output.awaitToolDiscordAction,
         }),
       ),
-      Layer.succeed(ChannelWorkspace, ChannelWorkspace.of({ hostDir: options.hostWorkspaceDir })),
+      Layer.succeed(ChannelWorkspace, ChannelWorkspace.of(options.workspace)),
     );
 
     const discordTools = yield* Effect.gen(function* () {
@@ -193,7 +192,7 @@ const createPiChannelSessionInScope = (options: PiChannelSessionOptions) =>
           createAgentSession({
             agentDir: piContext.agentDir,
             customTools: allTools,
-            cwd: WORKSPACE_CWD,
+            cwd: options.workspace.root.container,
             model: piContext.model,
             modelRuntime: piContext.modelRuntime,
             resourceLoader,

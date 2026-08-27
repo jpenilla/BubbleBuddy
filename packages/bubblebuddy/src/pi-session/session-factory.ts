@@ -11,8 +11,9 @@ import type { SessionKeepAliveFactory } from "../channels/keep-alive.ts";
 import type { PromptTemplateContext } from "../pi-session/system-prompt.ts";
 import { createPiChannelSession, type ScopedPiChannelSession } from "./session.ts";
 import { PiContext } from "./context.ts";
+import { AppHome } from "../config/env.ts";
 import { WORKSPACE_CWD } from "../shared/constants.ts";
-import { WorkspacePaths } from "../shared/workspace.ts";
+import { channelHostSessionsDir, makeChannelMountedWorkspace } from "../shared/workspace.ts";
 
 export class PiChannelSessionFactoryError extends Data.TaggedError("PiChannelSessionFactoryError")<{
   readonly channelId: string;
@@ -35,14 +36,14 @@ const makePiChannelSessionFactory = Effect.gen(function* () {
   const path = yield* Path.Path;
   const resources = yield* LoadedResources;
   const piContext = yield* PiContext;
-  const workspacePaths = yield* WorkspacePaths;
+  const appHome = yield* AppHome;
   const http = yield* HttpClient.HttpClient;
 
   const loadSessionManager = (
     channelId: string,
     activeSession?: string,
   ): Effect.Effect<SessionManager, PiChannelSessionFactoryError> => {
-    const dir = workspacePaths.sessionsDir(channelId);
+    const dir = channelHostSessionsDir(path, appHome, channelId);
     return Effect.gen(function* () {
       yield* fs
         .makeDirectory(dir, { recursive: true })
@@ -85,24 +86,28 @@ const makePiChannelSessionFactory = Effect.gen(function* () {
               }),
           ),
         );
-        yield* fs
-          .makeDirectory(workspacePaths.hostWorkspaceDir(input.channel.id), { recursive: true })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new PiChannelSessionFactoryError({
-                  channelId: input.channel.id,
-                  operation: "storage",
-                  cause,
-                }),
-            ),
-          );
+        const workspace = makeChannelMountedWorkspace(
+          path,
+          appHome,
+          input.channel.id,
+          WORKSPACE_CWD,
+        );
+        yield* fs.makeDirectory(workspace.root.host, { recursive: true }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new PiChannelSessionFactoryError({
+                channelId: input.channel.id,
+                operation: "storage",
+                cause,
+              }),
+          ),
+        );
         const sessionManager = yield* loadSessionManager(input.channel.id, activeSession);
 
         const pi = yield* createPiChannelSession({
           channel: input.channel,
           getShowThinking: input.getShowThinking,
-          hostWorkspaceDir: workspacePaths.hostWorkspaceDir(input.channel.id),
+          workspace,
           promptContext: input.promptContext,
           sessionManager,
           makeKeepAlive: input.makeKeepAlive,
@@ -125,7 +130,6 @@ const makePiChannelSessionFactory = Effect.gen(function* () {
         Effect.provideService(FileSystem.FileSystem, fs),
         Effect.provideService(HttpClient.HttpClient, http),
         Effect.provideService(Path.Path, path),
-        Effect.provideService(WorkspacePaths, workspacePaths),
       ),
   });
 });
@@ -144,7 +148,7 @@ export class PiChannelSessionFactory extends Context.Service<
     Layer.provide(LoadedResources.layer),
     Layer.provide(ChannelStateRepository.layer),
     Layer.provide(PiContext.layer),
-    Layer.provide(WorkspacePaths.layer),
+    Layer.provide(AppHome.layer),
     Layer.provide(FetchHttpClient.layer),
   );
 }

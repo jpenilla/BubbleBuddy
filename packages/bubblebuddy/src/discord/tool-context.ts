@@ -1,6 +1,7 @@
 import { Context } from "effect";
 import type { GuildTextBasedChannel } from "discord.js";
 
+import type { MountedWorkspace } from "../shared/workspace.ts";
 import type { AwaitToolDiscordAction } from "./session-output-pump.ts";
 
 export class DiscordToolContext extends Context.Service<
@@ -11,9 +12,6 @@ export class DiscordToolContext extends Context.Service<
   }
 >()("bubblebuddy/discord/DiscordToolContext") {}
 
-export class ChannelWorkspace extends Context.Service<
-  ChannelWorkspace,
-  {
-    readonly hostDir: string;
-  }
->()("bubblebuddy/discord/ChannelWorkspace") {}
+export class ChannelWorkspace extends Context.Service<ChannelWorkspace, MountedWorkspace>()(
+  "bubblebuddy/discord/ChannelWorkspace",
+) {}

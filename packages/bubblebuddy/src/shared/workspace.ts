@@ -1,7 +1,6 @@
-import { Context, Effect, Layer, Path } from "effect";
+import { posix as posixPath } from "node:path";
 
-import { AppHome } from "../config/env.ts";
-import { ATTACHMENTS_SEGMENT } from "./constants.ts";
+import { Effect, FileSystem, Path, Schema } from "effect";
 
 export const sanitizeAttachmentFilename = (filename: string): string => {
   const base = filename.trim().split("/").at(-1)?.split("\\").at(-1) ?? "";
@@ -17,41 +16,100 @@ export const sanitizeAttachmentFilename = (filename: string): string => {
   return sanitized;
 };
 
-export interface WorkspacePathsShape {
-  readonly hostWorkspaceDir: (channelId: string) => string;
-  readonly sessionsDir: (channelId: string) => string;
-  readonly hostAttachmentDir: (channelId: string, messageId: string, index: number) => string;
-}
+export type DualPath = {
+  readonly host: string;
+  readonly container: string;
+};
 
-export class WorkspacePaths extends Context.Service<WorkspacePaths, WorkspacePathsShape>()(
-  "bubblebuddy/WorkspacePaths",
-) {
-  static readonly layerNoDeps = Layer.effect(
-    WorkspacePaths,
-    Effect.gen(function* () {
-      const appHome = yield* AppHome;
-      const path = yield* Path.Path;
+export type MountedWorkspace = {
+  readonly root: DualPath;
+  resolve(...segments: string[]): DualPath;
+  inside(
+    agentPath: string,
+  ): Effect.Effect<DualPath, WorkspacePathError, FileSystem.FileSystem | Path.Path>;
+};
 
-      const hostWorkspaceDir = (channelId: string) =>
-        path.join(appHome, "channel", channelId, "workspace");
-      const sessionsDir = (channelId: string) =>
-        path.join(appHome, "channel", channelId, "sessions");
-      const hostAttachmentDir = (channelId: string, messageId: string, index: number) =>
-        path.join(
-          appHome,
-          "channel",
-          channelId,
-          "workspace",
-          ATTACHMENTS_SEGMENT,
-          messageId,
-          String(index),
-        );
-      return WorkspacePaths.of({
-        hostWorkspaceDir,
-        sessionsDir,
-        hostAttachmentDir,
+export class WorkspacePathError extends Schema.TaggedError<WorkspacePathError>()(
+  "WorkspacePathError",
+  {
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
+const channelHostWorkspaceDir = (path: Path.Path, appHome: string, channelId: string) =>
+  path.join(appHome, "channel", channelId, "workspace");
+
+export const channelHostSessionsDir = (path: Path.Path, appHome: string, channelId: string) =>
+  path.join(appHome, "channel", channelId, "sessions");
+
+export const makeChannelMountedWorkspace = (
+  path: Path.Path,
+  appHome: string,
+  channelId: string,
+  containerRoot: string,
+): MountedWorkspace =>
+  makeMountedWorkspace(path, channelHostWorkspaceDir(path, appHome, channelId), containerRoot);
+
+export const makeMountedWorkspace = (
+  path: Path.Path,
+  hostDir: string,
+  containerRoot: string,
+): MountedWorkspace => ({
+  root: { host: hostDir, container: containerRoot },
+  resolve: (...segments: string[]): DualPath => ({
+    host: path.resolve(hostDir, ...segments),
+    container: posixPath.resolve(containerRoot, ...segments),
+  }),
+  inside: Effect.fn("MountedWorkspace.inside")(function* (agentPath: string) {
+    const fs = yield* FileSystem.FileSystem;
+    const rawPath = agentPath.trim();
+    if (rawPath.length === 0)
+      return yield* new WorkspacePathError({ message: "Path must not be empty." });
+
+    let workspaceRelativePath: string;
+    if (rawPath.startsWith(`${containerRoot}/`)) {
+      workspaceRelativePath = rawPath.slice(`${containerRoot}/`.length);
+    } else if (rawPath === containerRoot) {
+      return yield* new WorkspacePathError({
+        message: `${containerRoot} is a directory. Provide a file path.`,
       });
-    }),
-  );
-  static readonly layer = WorkspacePaths.layerNoDeps.pipe(Layer.provide(AppHome.layer));
-}
+    } else if (path.isAbsolute(rawPath)) {
+      return yield* new WorkspacePathError({
+        message: `Absolute paths outside ${containerRoot} are not allowed.`,
+      });
+    } else {
+      workspaceRelativePath = rawPath;
+    }
+
+    const workspaceRoot = path.resolve(hostDir);
+    const candidatePath = path.resolve(workspaceRoot, workspaceRelativePath);
+    const realWorkspaceRoot = yield* fs
+      .realPath(workspaceRoot)
+      .pipe(Effect.orElseSucceed(() => workspaceRoot));
+    const realCandidatePath = yield* fs.realPath(candidatePath).pipe(
+      Effect.mapError(
+        (cause) =>
+          new WorkspacePathError({
+            message: `File not found in ${containerRoot}: ${agentPath}`,
+            cause,
+          }),
+      ),
+    );
+    const relativePath = path.relative(realWorkspaceRoot, realCandidatePath);
+    if (
+      relativePath === ".." ||
+      relativePath.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativePath)
+    ) {
+      return yield* new WorkspacePathError({
+        message: `File resolves outside ${containerRoot}: ${agentPath}`,
+      });
+    }
+
+    return {
+      host: realCandidatePath,
+      container: posixPath.resolve(containerRoot, relativePath.replaceAll(path.sep, "/")),
+    };
+  }),
+});

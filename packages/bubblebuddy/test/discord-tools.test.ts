@@ -11,7 +11,8 @@ import { FetchHttpClient } from "effect/unstable/http";
 
 import { discordCoreTools, discordWorkspaceTools } from "../src/discord/tools.ts";
 import { ChannelWorkspace, DiscordToolContext } from "../src/discord/tool-context.ts";
-import { WorkspacePaths } from "../src/shared/workspace.ts";
+import { makeMountedWorkspace } from "../src/shared/workspace.ts";
+import { WORKSPACE_CWD } from "../src/shared/constants.ts";
 import type { AwaitToolDiscordAction } from "../src/discord/session-output-pump.ts";
 
 const mockCtx = {} as unknown as ExtensionContext;
@@ -38,9 +39,16 @@ const buildTools = async (options: {
   const channel = options.message.channel as unknown as GuildTextBasedChannel;
   return await Effect.runPromise(
     Effect.gen(function* () {
+      const path = yield* Path.Path;
       const core = yield* discordCoreTools();
       if (options.workspaceDir === undefined) return core;
-      return [...core, ...(yield* discordWorkspaceTools())];
+      const workspaceTools = yield* discordWorkspaceTools().pipe(
+        Effect.provideService(
+          ChannelWorkspace,
+          ChannelWorkspace.of(makeMountedWorkspace(path, options.workspaceDir, WORKSPACE_CWD)),
+        ),
+      );
+      return [...core, ...workspaceTools];
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
@@ -51,18 +59,6 @@ const buildTools = async (options: {
             DiscordToolContext.of({
               channel,
               awaitAction: options.awaitAction ?? passthroughDiscordAction,
-            }),
-          ),
-          Layer.succeed(
-            ChannelWorkspace,
-            ChannelWorkspace.of({ hostDir: options.workspaceDir ?? "/tmp" }),
-          ),
-          Layer.succeed(
-            WorkspacePaths,
-            WorkspacePaths.of({
-              hostWorkspaceDir: () => "/tmp",
-              sessionsDir: () => "/tmp",
-              hostAttachmentDir: () => "/tmp",
             }),
           ),
         ),
