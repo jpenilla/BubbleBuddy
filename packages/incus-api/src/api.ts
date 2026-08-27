@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, Option, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 
 import { IncusHttpClient } from "./http-client.ts";
 import {
@@ -11,25 +11,34 @@ import {
   Headers,
 } from "effect/unstable/http";
 
-export class IncusApiStatusCodeError extends Data.TaggedError("IncusApiStatusCodeError")<{
-  readonly method: string;
-  readonly path: string;
-  readonly status: number;
-  readonly body: string;
-}> {}
+export class IncusApiStatusCodeError extends Schema.TaggedError<IncusApiStatusCodeError>()(
+  "IncusApiStatusCodeError",
+  {
+    method: Schema.String,
+    path: Schema.String,
+    status: Schema.Finite,
+    body: Schema.String,
+  },
+) {}
 
-export class IncusApiOperationError extends Data.TaggedError("IncusApiOperationError")<{
-  readonly operation: string;
-  readonly message: string;
-  readonly metadata: unknown;
-}> {}
+export class IncusApiOperationError extends Schema.TaggedError<IncusApiOperationError>()(
+  "IncusApiOperationError",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    metadata: Schema.Unknown,
+  },
+) {}
 
-export class IncusApiTimeoutError extends Data.TaggedError("IncusApiTimeoutError")<{
-  readonly method: string;
-  readonly path: string;
-  readonly requestedTimeoutSeconds: number;
-  readonly clientTimeoutSeconds: number;
-}> {}
+export class IncusApiTimeoutError extends Schema.TaggedError<IncusApiTimeoutError>()(
+  "IncusApiTimeoutError",
+  {
+    method: Schema.String,
+    path: Schema.String,
+    requestedTimeoutSeconds: Schema.Finite,
+    clientTimeoutSeconds: Schema.Finite,
+  },
+) {}
 
 export type IncusApiError =
   | HttpBody.HttpBodyError

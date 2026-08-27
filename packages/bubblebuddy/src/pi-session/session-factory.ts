@@ -1,7 +1,7 @@
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
 
-import { Context, Data, Effect, FileSystem, Layer, Path, Scope } from "effect";
+import { Context, Effect, FileSystem, Layer, Path, Schema, Scope } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 
 import { ChannelStateRepository } from "../channels/state-repository.ts";
@@ -15,11 +15,14 @@ import { AppHome } from "../config/env.ts";
 import { WORKSPACE_CWD } from "../shared/constants.ts";
 import { channelHostSessionsDir, makeChannelMountedWorkspace } from "../shared/workspace.ts";
 
-export class PiChannelSessionFactoryError extends Data.TaggedError("PiChannelSessionFactoryError")<{
-  readonly channelId: string;
-  readonly operation: "storage" | "session";
-  readonly cause: unknown;
-}> {}
+export class PiChannelSessionFactoryError extends Schema.TaggedError<PiChannelSessionFactoryError>()(
+  "PiChannelSessionFactoryError",
+  {
+    channelId: Schema.String,
+    operation: Schema.Literals(["storage", "session"]),
+    cause: Schema.Defect(),
+  },
+) {}
 
 export interface PiChannelSessionFactoryCreateInput {
   readonly channelId: string;

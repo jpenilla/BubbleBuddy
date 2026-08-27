@@ -8,27 +8,29 @@ import {
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-import { Data, Effect, Scope } from "effect";
+import { Effect, Schema, Scope } from "effect";
 import { Type } from "typebox";
 
 import type { McpServerConfigEntry } from "../config/file.ts";
 
 export type McpServerConfig = McpServerConfigEntry & { readonly name: string };
 
-class McpConfigurationError extends Data.TaggedError("McpConfigurationError")<{
-  readonly message: string;
-  readonly cause?: unknown;
-}> {
-  constructor(message: string, options?: ErrorOptions) {
-    super({ message, cause: options?.cause });
-  }
-}
+class McpConfigurationError extends Schema.TaggedError<McpConfigurationError>()(
+  "McpConfigurationError",
+  {
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
 
-class McpServerConnectionError extends Data.TaggedError("McpServerConnectionError")<{
-  readonly serverName: string;
-  readonly operation: string;
-  readonly cause: unknown;
-}> {
+class McpServerConnectionError extends Schema.TaggedError<McpServerConnectionError>()(
+  "McpServerConnectionError",
+  {
+    serverName: Schema.String,
+    operation: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
   get message(): string {
     return `MCP ${this.operation} for server ${this.serverName} failed`;
   }
@@ -52,9 +54,9 @@ const sanitizeToolNamePart = (
   Effect.gen(function* () {
     const sanitized = sanitizeNamePart(name);
     if (sanitized.length === 0) {
-      return yield* new McpConfigurationError(
-        `Invalid MCP ${kind} name "${name}": no valid characters after sanitizing.`,
-      );
+      return yield* new McpConfigurationError({
+        message: `Invalid MCP ${kind} name "${name}": no valid characters after sanitizing.`,
+      });
     }
     return sanitized;
   });
@@ -75,9 +77,9 @@ const formatBearerTokenEnvName = (
   Effect.gen(function* () {
     const sanitized = sanitizeNamePart(serverName).toUpperCase();
     if (sanitized.length === 0) {
-      return yield* new McpConfigurationError(
-        `Invalid MCP server name "${serverName}": cannot derive bearer token environment variable.`,
-      );
+      return yield* new McpConfigurationError({
+        message: `Invalid MCP server name "${serverName}": cannot derive bearer token environment variable.`,
+      });
     }
     return `${sanitized}_API_KEY`;
   });
@@ -190,9 +192,9 @@ const buildToolDefinition = (
     const source = `${serverName}.${mcpTool.name}`;
     const existingSource = toolSources.get(name);
     if (existingSource) {
-      return yield* new McpConfigurationError(
-        `MCP tool name conflict for "${name}": ${existingSource} and ${source}.`,
-      );
+      return yield* new McpConfigurationError({
+        message: `MCP tool name conflict for "${name}": ${existingSource} and ${source}.`,
+      });
     }
     toolSources.set(name, source);
 
@@ -240,7 +242,8 @@ const createTransport = (server: McpServerConfig): Effect.Effect<Transport, McpC
       const url = yield* Effect.try({
         try: () => new URL(server.url),
         catch: (error) =>
-          new McpConfigurationError(`Invalid MCP URL for server "${server.name}".`, {
+          new McpConfigurationError({
+            message: `Invalid MCP URL for server "${server.name}".`,
             cause: error,
           }),
       });

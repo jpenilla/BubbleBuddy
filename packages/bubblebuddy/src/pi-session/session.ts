@@ -10,7 +10,17 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
-import { Data, Effect, FiberHandle, Exit, FileSystem, Layer, Path, Scope, Semaphore } from "effect";
+import {
+  Effect,
+  Exit,
+  FiberHandle,
+  FileSystem,
+  Layer,
+  Path,
+  Schema,
+  Scope,
+  Semaphore,
+} from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 import { discordCoreTools, discordWorkspaceTools } from "../discord/tools.ts";
@@ -37,15 +47,21 @@ export interface PiChannelSessionOptions {
   readonly makeKeepAlive: SessionKeepAliveFactory;
 }
 
-export class ChannelSessionInitError extends Data.TaggedError("ChannelSessionInitError")<{
-  readonly message: string;
-  readonly cause?: unknown;
-}> {}
+export class ChannelSessionInitError extends Schema.TaggedError<ChannelSessionInitError>()(
+  "ChannelSessionInitError",
+  {
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
 
-export class ChannelSessionOperationError extends Data.TaggedError("ChannelSessionOperationError")<{
-  readonly operation: "abort" | "activate" | "compact";
-  readonly cause: unknown;
-}> {}
+export class ChannelSessionOperationError extends Schema.TaggedError<ChannelSessionOperationError>()(
+  "ChannelSessionOperationError",
+  {
+    operation: Schema.Literals(["abort", "activate", "compact"]),
+    cause: Schema.Defect(),
+  },
+) {}
 
 export interface PiChannelSessionModelInfo {
   readonly id: string;

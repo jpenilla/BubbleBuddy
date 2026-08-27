@@ -1,5 +1,5 @@
 import { NodeSocket } from "@effect/platform-node";
-import { Cause, Data, Effect, Exit, Fiber, Option, Schema, Scope } from "effect";
+import { Cause, Effect, Exit, Fiber, Option, Schema, Scope } from "effect";
 import * as net from "node:net";
 import * as Socket from "effect/unstable/socket/Socket";
 
@@ -10,30 +10,34 @@ import type { IncusOperationsService } from "./operations.ts";
 const SIGTERM = 15;
 const SIGKILL = 9;
 
-export class IncusContainerExecCallbackError extends Data.TaggedError(
+export class IncusContainerExecCallbackError extends Schema.TaggedError<IncusContainerExecCallbackError>()(
   "IncusContainerExecCallbackError",
-)<{
-  readonly cause: unknown;
-}> {}
+  {
+    cause: Schema.Defect(),
+  },
+) {}
 
-export class IncusContainerExecInvalidOptionsError extends Data.TaggedError(
+export class IncusContainerExecInvalidOptionsError extends Schema.TaggedError<IncusContainerExecInvalidOptionsError>()(
   "IncusContainerExecInvalidOptionsError",
-)<{
-  readonly message: string;
-}> {}
+  {
+    message: Schema.String,
+  },
+) {}
 
-export class IncusContainerExecTransportError extends Data.TaggedError(
+export class IncusContainerExecTransportError extends Schema.TaggedError<IncusContainerExecTransportError>()(
   "IncusContainerExecTransportError",
-)<{
-  readonly message: string;
-  readonly cause?: unknown;
-}> {}
+  {
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
 
-export class IncusContainerExecTimeoutError extends Data.TaggedError(
+export class IncusContainerExecTimeoutError extends Schema.TaggedError<IncusContainerExecTimeoutError>()(
   "IncusContainerExecTimeoutError",
-)<{
-  readonly timeoutSeconds: number;
-}> {}
+  {
+    timeoutSeconds: Schema.Finite,
+  },
+) {}
 
 export interface IncusExecOptions {
   readonly cwd?: string;

@@ -1,6 +1,6 @@
 import type { SessionStats } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel, Message } from "discord.js";
-import { Data, Effect, Option, Ref, Scope, Semaphore } from "effect";
+import { Effect, Option, Ref, Schema, Scope, Semaphore } from "effect";
 
 import { ChannelStateRepository } from "./state-repository.ts";
 import type { PromptTemplateContext } from "../pi-session/system-prompt.ts";
@@ -34,10 +34,13 @@ export interface ChannelStatus {
   readonly stats: SessionStats;
 }
 
-export class ChannelRuntimeError extends Data.TaggedError("ChannelRuntimeError")<{
-  readonly channelId: string;
-  readonly cause: unknown;
-}> {}
+export class ChannelRuntimeError extends Schema.TaggedError<ChannelRuntimeError>()(
+  "ChannelRuntimeError",
+  {
+    channelId: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {}
 
 export interface ChannelRuntime {
   readonly abort: () => Effect.Effect<AbortResult, ChannelRuntimeError>;

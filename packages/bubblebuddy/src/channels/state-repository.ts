@@ -1,13 +1,16 @@
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
 export const SHOW_THINKING_DEFAULT = false;
 
-export class ChannelStateRepositoryError extends Data.TaggedError("ChannelStateRepositoryError")<{
-  readonly channelId: string;
-  readonly operation: "load" | "save";
-  readonly cause: unknown;
-}> {}
+export class ChannelStateRepositoryError extends Schema.TaggedError<ChannelStateRepositoryError>()(
+  "ChannelStateRepositoryError",
+  {
+    channelId: Schema.String,
+    operation: Schema.Literals(["load", "save"]),
+    cause: Schema.Defect(),
+  },
+) {}
 
 const makeChannelStateRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

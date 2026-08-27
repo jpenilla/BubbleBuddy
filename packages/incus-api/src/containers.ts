@@ -1,4 +1,4 @@
-import { Cause, Data, Effect, Exit, Scope } from "effect";
+import { Cause, Effect, Exit, Schema, Scope } from "effect";
 import { posix } from "node:path";
 
 import { type IncusApiError, type IncusApiService } from "./api.ts";
@@ -14,17 +14,23 @@ import {
 } from "./exec.ts";
 import { type IncusOperationsError, type IncusOperationsService } from "./operations.ts";
 
-export class IncusContainerPathError extends Data.TaggedError("IncusContainerPathError")<{
-  readonly path: string;
-  readonly message: string;
-  readonly metadata?: unknown;
-}> {}
+export class IncusContainerPathError extends Schema.TaggedError<IncusContainerPathError>()(
+  "IncusContainerPathError",
+  {
+    path: Schema.String,
+    message: Schema.String,
+    metadata: Schema.optional(Schema.Unknown),
+  },
+) {}
 
-export class IncusContainerMetadataError extends Data.TaggedError("IncusContainerMetadataError")<{
-  readonly operation: string;
-  readonly message: string;
-  readonly metadata: unknown;
-}> {}
+export class IncusContainerMetadataError extends Schema.TaggedError<IncusContainerMetadataError>()(
+  "IncusContainerMetadataError",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    metadata: Schema.Unknown,
+  },
+) {}
 
 export type IncusContainerError =
   | IncusApiError

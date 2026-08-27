@@ -1,6 +1,6 @@
-import { Data } from "effect";
+import { Schema } from "effect";
 
-export class ConfigError extends Data.TaggedError("ConfigError")<{
-  readonly message: string;
-  readonly cause?: unknown;
-}> {}
+export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError", {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect()),
+}) {}
