@@ -11,8 +11,11 @@ export const sanitizeAttachmentFilename = (filename: string): string => {
     .trim();
   if (sanitized.length === 0 || sanitized === "." || sanitized === "..") return "file";
   if (sanitized.length > 120) {
-    const truncated = sanitized.slice(0, 120).trim();
-    return truncated.length === 0 ? "file" : truncated;
+    const dotIndex = sanitized.lastIndexOf(".");
+    const extension =
+      dotIndex > 0 && sanitized.length - dotIndex <= 20 ? sanitized.slice(dotIndex) : "";
+    const stem = sanitized.slice(0, 120 - extension.length).trim();
+    return `${stem}${extension}`;
   }
   return sanitized;
 };
