@@ -53,7 +53,7 @@ export interface IncusExecResult {
 
 const ControlSignal = Schema.Struct({
   command: Schema.Literal("signal"),
-  signal: Schema.Number,
+  signal: Schema.Int,
 });
 
 const ControlSignalJson = Schema.fromJsonString(ControlSignal);
@@ -62,7 +62,7 @@ const WebSocketSetupTimeoutMs = 5_000;
 const OutputDrainTimeoutSeconds = 5;
 
 const ExecResultMetadata = Schema.Struct({
-  return: Schema.Number,
+  return: Schema.Int,
 });
 
 const createWebSocket = (
