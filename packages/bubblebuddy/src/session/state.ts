@@ -1,6 +1,9 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
+import { AppHome } from "../config/env.ts";
+import { DatabaseLive } from "../database.ts";
+
 export const SHOW_THINKING_DEFAULT = false;
 
 export class ChannelStateRepositoryError extends Schema.TaggedError<ChannelStateRepositoryError>()(
@@ -93,5 +96,8 @@ export class ChannelStateRepository extends Context.Service<
     ): Effect.Effect<void, ChannelStateRepositoryError>;
   }
 >()("bubblebuddy/ChannelStateRepository") {
-  static readonly layer = Layer.effect(ChannelStateRepository, makeChannelStateRepository);
+  static readonly layerNoDeps = Layer.effect(ChannelStateRepository, makeChannelStateRepository);
+  static readonly layer = ChannelStateRepository.layerNoDeps.pipe(
+    Layer.provide(DatabaseLive.pipe(Layer.provide(AppHome.layer))),
+  );
 }

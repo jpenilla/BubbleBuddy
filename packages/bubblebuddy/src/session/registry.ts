@@ -1,8 +1,13 @@
 import { Context, Effect, Layer, RcMap, Scope } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 
+import { AppHome } from "../config/env.ts";
 import { FileConfig } from "../config/file.ts";
+import { PiContext } from "../pi/context.ts";
 import { makePiSession, type PiSessionServices } from "../pi/session.ts";
+import { LoadedResources } from "../resources.ts";
 import { makeChannelSession, type ChannelSession, type ChannelSessionError } from "./channel.ts";
+import { ChannelStateRepository } from "./state.ts";
 
 const makeChannelSessions = Effect.gen(function* () {
   const config = yield* FileConfig;
@@ -37,5 +42,13 @@ export class ChannelSessions extends Context.Service<
     ) => Effect.Effect<ChannelSession, ChannelSessionError, Scope.Scope>;
   }
 >()("bubblebuddy/ChannelSessions") {
-  static readonly layer = Layer.effect(ChannelSessions, makeChannelSessions);
+  static readonly layerNoDeps = Layer.effect(ChannelSessions, makeChannelSessions);
+  static readonly layer = ChannelSessions.layerNoDeps.pipe(
+    Layer.provide(ChannelStateRepository.layer),
+    Layer.provide(LoadedResources.layer),
+    Layer.provide(PiContext.layer),
+    Layer.provide(FileConfig.layer),
+    Layer.provide(AppHome.layer),
+    Layer.provide(FetchHttpClient.layer),
+  );
 }

@@ -14,7 +14,7 @@ const withRepo = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     const dir = yield* fs.makeTempDirectoryScoped({ prefix: "bb-channel-state-" });
     return yield* effect.pipe(
       Effect.provide(
-        ChannelStateRepository.layer.pipe(
+        ChannelStateRepository.layerNoDeps.pipe(
           Layer.provideMerge(DatabaseLive),
           Layer.provideMerge(AppHome.layerNoDeps),
           Layer.provideMerge(makeTestEnvLayer({ appHome: dir })),
