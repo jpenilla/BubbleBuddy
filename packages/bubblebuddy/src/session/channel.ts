@@ -80,12 +80,6 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
     );
     const piRef = yield* ScopedRef.make<PiSessionHandle | undefined>(() => undefined);
 
-    const setActiveSession = (value: string) =>
-      Effect.gen(function* () {
-        yield* repository.setActiveSession(input.channelId, value).pipe(mapToChannelSessionError);
-        yield* Ref.set(activeSessionRef, value);
-      });
-
     const clearActiveSession = () =>
       Effect.gen(function* () {
         yield* repository.clearActiveSession(input.channelId).pipe(mapToChannelSessionError);
@@ -105,7 +99,13 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
               channel: context.channel,
               showThinking: SynchronizedRef.get(showThinkingRef),
             });
-            return yield* createPiSession({ ...context, activeSession, output });
+            const pi = yield* createPiSession({ ...context, activeSession, output });
+            const activeSessionName = pi.getActiveSessionName();
+            if (activeSessionName !== undefined && activeSessionName !== activeSession) {
+              yield* repository.setActiveSession(input.channelId, activeSessionName);
+              yield* Ref.set(activeSessionRef, activeSessionName);
+            }
+            return pi;
           }),
         ).pipe(Effect.provide(piServices), mapToChannelSessionError);
         const pi = yield* ScopedRef.get(piRef);
@@ -113,10 +113,6 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
           return yield* Effect.die(new Error("Pi session acquisition produced no session"));
         }
 
-        const activeSessionName = pi.getActiveSessionName();
-        if (activeSessionName !== undefined && activeSessionName !== activeSession) {
-          yield* setActiveSession(activeSessionName);
-        }
         return pi;
       });
 
