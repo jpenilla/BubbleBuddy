@@ -191,6 +191,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
             return "rejected-busy" as const;
           }
 
+          // @effect-diagnostics-next-line effectSucceedWithVoid:off
           yield* ScopedRef.set(piRef, Effect.succeed(undefined));
           yield* clearActiveSession();
           return "discarded" as const;
