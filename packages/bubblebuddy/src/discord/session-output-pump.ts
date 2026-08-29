@@ -30,7 +30,7 @@ export interface DiscordOutputPump {
 
 interface DiscordOutputPumpOptions {
   readonly channel: GuildTextBasedChannel;
-  readonly getShowThinking: () => boolean;
+  readonly showThinking: Effect.Effect<boolean>;
 }
 
 const SUPPRESSED_TOOL_STATUS = new Set([
@@ -66,7 +66,6 @@ export const makeDiscordOutputPump = (
       ),
     );
     const channel = options.channel;
-    const getShowThinking = options.getShowThinking;
     const ctx = yield* Effect.context();
     const typingIndicator = yield* makeTypingIndicator({ channel });
 
@@ -268,7 +267,11 @@ export const makeDiscordOutputPump = (
 
     const onMessageUpdate = (event: SessionEvent<"message_update">) =>
       Effect.gen(function* () {
-        if (event.assistantMessageEvent.type !== "thinking_end" || !getShowThinking()) {
+        if (event.assistantMessageEvent.type !== "thinking_end") {
+          return;
+        }
+        const showThinking = yield* options.showThinking;
+        if (!showThinking) {
           return;
         }
         const thinking = event.assistantMessageEvent.content.trim();

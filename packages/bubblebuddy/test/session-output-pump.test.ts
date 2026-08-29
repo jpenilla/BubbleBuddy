@@ -42,7 +42,7 @@ const makeOutput = (onDiscordOutput: (description: string) => void) => {
   };
   return makeDiscordOutputPump({
     channel: channel as unknown as GuildTextBasedChannel,
-    getShowThinking: () => false,
+    showThinking: Effect.succeed(false),
   });
 };
 

@@ -2,11 +2,13 @@ import type { GuildTextBasedChannel, Message } from "discord.js";
 import { Effect, Option, Ref, Schema, Scope, ScopedRef, Semaphore } from "effect";
 
 import { formatMessageForPrompt } from "../discord/prompt-formatting.ts";
-import type {
-  PiSessionHandle,
-  PiSessionModelInfo,
-  PiSessionOpenOptions,
-  SessionStats,
+import { makeDiscordOutputPump } from "../discord/session-output-pump.ts";
+import {
+  makePiSession,
+  type PiSessionHandle,
+  type PiSessionModelInfo,
+  type PiSessionServices,
+  type SessionStats,
 } from "../pi/session.ts";
 import type { PromptTemplateContext } from "../pi/system-prompt.ts";
 import { ChannelStateRepository } from "./state.ts";
@@ -56,14 +58,12 @@ export interface ChannelSession {
 interface ChannelSessionOptions {
   readonly channelId: string;
   readonly retain: Effect.Effect<void, never, Scope.Scope>;
-  readonly openPiSession: (
-    options: PiSessionOpenOptions,
-  ) => Effect.Effect<PiSessionHandle, unknown, Scope.Scope>;
 }
 
 export const makeChannelSession = (options: ChannelSessionOptions) =>
   Effect.gen(function* () {
     const repository = yield* ChannelStateRepository;
+    const piServices = yield* Effect.context<PiSessionServices>();
     const lock = yield* Semaphore.make(1);
     const mapError = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(
@@ -78,8 +78,6 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
       yield* mapError(repository.getShowThinking(options.channelId)),
     );
     const piRef = yield* ScopedRef.make<PiSessionHandle | undefined>(() => undefined);
-
-    const getShowThinking = () => Ref.getUnsafe(showThinkingRef);
 
     const setShowThinking = (value: boolean) =>
       Effect.gen(function* () {
@@ -108,11 +106,14 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
         yield* mapError(
           ScopedRef.set(
             piRef,
-            options.openPiSession({
-              ...input,
-              activeSession,
-              getShowThinking,
-              retainChannelSession: options.retain,
+            Effect.gen(function* () {
+              const output = yield* makeDiscordOutputPump({
+                channel: input.channel,
+                showThinking: Ref.get(showThinkingRef),
+              });
+              return yield* makePiSession({ ...input, activeSession, output }).pipe(
+                Effect.provide(piServices),
+              );
             }),
           ),
         );
@@ -143,7 +144,11 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
         Effect.gen(function* () {
           const pi = yield* getOrCreatePiSession(input);
           yield* mapError(
-            pi.activate(formatMessageForPrompt(input.originMessage), input.originMessage.id),
+            pi.activate({
+              prompt: formatMessageForPrompt(input.originMessage),
+              replyToMessageId: input.originMessage.id,
+              retainChannelSession: options.retain,
+            }),
           );
         }),
       );

@@ -4,14 +4,12 @@ import { FetchHttpClient } from "effect/unstable/http";
 import { AppHome } from "../config/env.ts";
 import { FileConfig } from "../config/file.ts";
 import { PiContext } from "../pi/context.ts";
-import { makePiSession, type PiSessionServices } from "../pi/session.ts";
 import { LoadedResources } from "../resources.ts";
 import { makeChannelSession, type ChannelSession, type ChannelSessionError } from "./channel.ts";
 import { ChannelStateRepository } from "./state.ts";
 
 const makeChannelSessions = Effect.gen(function* () {
   const config = yield* FileConfig;
-  const piServices = yield* Effect.context<PiSessionServices>();
   let sessions: RcMap.RcMap<string, ChannelSession, ChannelSessionError>;
 
   const retain = (channelId: string) =>
@@ -22,7 +20,6 @@ const makeChannelSessions = Effect.gen(function* () {
       makeChannelSession({
         channelId,
         retain: retain(channelId),
-        openPiSession: (input) => makePiSession(input).pipe(Effect.provide(piServices)),
       }),
     idleTimeToLive: config.channelIdleTimeoutMs,
   });
