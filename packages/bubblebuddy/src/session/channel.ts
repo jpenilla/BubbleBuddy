@@ -80,41 +80,41 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
     );
     const piRef = yield* ScopedRef.make<PiSessionHandle | undefined>(() => undefined);
 
-    const clearActiveSession = () =>
-      Effect.gen(function* () {
-        yield* repository.clearActiveSession(input.channelId).pipe(mapToChannelSessionError);
-        yield* Ref.set(activeSessionRef, undefined);
-      });
+    const clearActiveSession = Effect.gen(function* () {
+      yield* repository.clearActiveSession(input.channelId).pipe(mapToChannelSessionError);
+      yield* Ref.set(activeSessionRef, undefined);
+    }).pipe(Effect.withSpan("ChannelSession.clearActiveSession"));
 
-    const getOrCreatePiSession = (context: ChannelSessionContext) =>
-      Effect.gen(function* () {
-        const current = yield* ScopedRef.get(piRef);
-        if (current !== undefined) return current;
+    const getOrCreatePiSession = Effect.fn("ChannelSession.getOrCreatePiSession")(function* (
+      context: ChannelSessionContext,
+    ) {
+      const current = yield* ScopedRef.get(piRef);
+      if (current !== undefined) return current;
 
-        const activeSession = yield* Ref.get(activeSessionRef);
-        yield* ScopedRef.set(
-          piRef,
-          Effect.gen(function* () {
-            const output = yield* createDiscordOutputPump({
-              channel: context.channel,
-              showThinking: SynchronizedRef.get(showThinkingRef),
-            });
-            const pi = yield* createPiSession({ ...context, activeSession, output });
-            const activeSessionName = pi.getActiveSessionName();
-            if (activeSessionName !== undefined && activeSessionName !== activeSession) {
-              yield* repository.setActiveSession(input.channelId, activeSessionName);
-              yield* Ref.set(activeSessionRef, activeSessionName);
-            }
-            return pi;
-          }),
-        ).pipe(Effect.provide(piServices), mapToChannelSessionError);
-        const pi = yield* ScopedRef.get(piRef);
-        if (pi === undefined) {
-          return yield* Effect.die(new Error("Pi session acquisition produced no session"));
-        }
+      const activeSession = yield* Ref.get(activeSessionRef);
+      yield* ScopedRef.set(
+        piRef,
+        Effect.gen(function* () {
+          const output = yield* createDiscordOutputPump({
+            channel: context.channel,
+            showThinking: SynchronizedRef.get(showThinkingRef),
+          });
+          const pi = yield* createPiSession({ ...context, activeSession, output });
+          const activeSessionName = pi.getActiveSessionName();
+          if (activeSessionName !== undefined && activeSessionName !== activeSession) {
+            yield* repository.setActiveSession(input.channelId, activeSessionName);
+            yield* Ref.set(activeSessionRef, activeSessionName);
+          }
+          return pi;
+        }),
+      ).pipe(Effect.provide(piServices), mapToChannelSessionError);
+      const pi = yield* ScopedRef.get(piRef);
+      if (pi === undefined) {
+        return yield* Effect.die(new Error("Pi session acquisition produced no session"));
+      }
 
-        return pi;
-      });
+      return pi;
+    });
 
     const abort = Effect.gen(function* () {
       const pi = yield* ScopedRef.get(piRef);
@@ -124,10 +124,12 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
 
       yield* pi.abort.pipe(mapToChannelSessionError);
       return "aborted" as const;
-    });
+    }).pipe(Effect.withSpan("ChannelSession.abort"));
 
-    const activate = (activation: ActivateChannelSessionInput) =>
-      lock.withPermit(
+    const activate = Effect.fn("ChannelSession.activate")(function* (
+      activation: ActivateChannelSessionInput,
+    ) {
+      yield* lock.withPermit(
         Effect.gen(function* () {
           const pi = yield* getOrCreatePiSession(activation);
           yield* pi
@@ -139,13 +141,16 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
             .pipe(mapToChannelSessionError);
         }),
       );
+    });
 
-    const compact = (compaction: CompactChannelSessionInput) => {
+    const compact = Effect.fn("ChannelSession.compact")(function* (
+      compaction: CompactChannelSessionInput,
+    ) {
       const pi = ScopedRef.getUnsafe(piRef);
-      if (pi?.isCompacting()) return Effect.succeed("rejected-compacting" as const);
-      if (pi?.isStreaming() || pi?.isRetrying()) return Effect.succeed("rejected-busy" as const);
+      if (pi?.isCompacting()) return "rejected-compacting" as const;
+      if (pi?.isStreaming() || pi?.isRetrying()) return "rejected-busy" as const;
 
-      return lock
+      return yield* lock
         .withPermitsIfAvailable(1)(
           Effect.gen(function* () {
             const currentPi = yield* ScopedRef.get(piRef);
@@ -169,7 +174,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
           }),
         )
         .pipe(Effect.map(Option.getOrElse(() => "rejected-busy" as const)));
-    };
+    });
 
     const discard = lock
       .withPermitsIfAvailable(1)(
@@ -181,14 +186,17 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
 
           // @effect-diagnostics-next-line effectSucceedWithVoid:off
           yield* ScopedRef.set(piRef, Effect.succeed(undefined));
-          yield* clearActiveSession();
+          yield* clearActiveSession;
           return "discarded" as const;
         }),
       )
-      .pipe(Effect.map(Option.getOrElse(() => "rejected-busy" as const)));
+      .pipe(
+        Effect.map(Option.getOrElse(() => "rejected-busy" as const)),
+        Effect.withSpan("ChannelSession.discard"),
+      );
 
-    const status = (context: ChannelSessionContext) =>
-      lock.withPermit(
+    const status = Effect.fn("ChannelSession.status")(function* (context: ChannelSessionContext) {
+      return yield* lock.withPermit(
         Effect.gen(function* () {
           const pi = yield* getOrCreatePiSession(context);
           return {
@@ -198,6 +206,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
           };
         }),
       );
+    });
 
     const toggleShowThinking = SynchronizedRef.updateAndGetEffect(showThinkingRef, (current) =>
       Effect.gen(function* () {
@@ -205,7 +214,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
         yield* repository.setShowThinking(input.channelId, next).pipe(mapToChannelSessionError);
         return next;
       }),
-    );
+    ).pipe(Effect.withSpan("ChannelSession.toggleShowThinking"));
 
     return {
       abort,
