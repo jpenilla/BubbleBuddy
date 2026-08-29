@@ -10,12 +10,12 @@ import { ChannelWorkspace, DiscordToolContext } from "../src/discord/tool-contex
 import { uploadFileTool } from "../src/discord/tools/upload-file.ts";
 import type { AwaitToolDiscordAction } from "../src/discord/session-output-pump.ts";
 import { WORKSPACE_CWD } from "../src/shared/constants.ts";
-import { makeMountedWorkspace } from "../src/shared/workspace.ts";
+import { createMountedWorkspace } from "../src/shared/workspace.ts";
 
 const extensionContext = {} as ExtensionContext;
 const passthrough: AwaitToolDiscordAction = (operation) => operation;
 
-const makeChannel = (
+const createChannel = (
   premiumTier: GuildPremiumTier,
   onSend: (payload: { body?: unknown; files?: unknown }) => void = () => undefined,
 ): GuildTextBasedChannel =>
@@ -32,7 +32,7 @@ const makeChannel = (
     guild: { premiumTier },
   }) as unknown as GuildTextBasedChannel;
 
-const makeTool = (
+const createTool = (
   channel: GuildTextBasedChannel,
   workspaceDir: string,
   awaitAction: AwaitToolDiscordAction = passthrough,
@@ -42,7 +42,7 @@ const makeTool = (
     return yield* uploadFileTool.pipe(
       Effect.provideService(
         ChannelWorkspace,
-        ChannelWorkspace.of(makeMountedWorkspace(path, workspaceDir, WORKSPACE_CWD)),
+        ChannelWorkspace.of(createMountedWorkspace(path, workspaceDir, WORKSPACE_CWD)),
       ),
       Effect.provideService(DiscordToolContext, DiscordToolContext.of({ channel, awaitAction })),
     );
@@ -51,7 +51,7 @@ const makeTool = (
 const execute = (tool: ToolDefinition, path: string) =>
   tool.execute("tool-call", { path }, undefined, undefined, extensionContext);
 
-const makeWorkspace = Effect.gen(function* () {
+const createWorkspace = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   return yield* fs.makeTempDirectoryScoped({ prefix: "bubblebuddy-upload-" });
 });
@@ -66,8 +66,8 @@ const createSparseFile = (path: string, size: number) =>
 it.layer(NodeServices.layer)("upload file tool", (it) => {
   it.effect("rejects paths outside workspace", () =>
     Effect.gen(function* () {
-      const workspace = yield* makeWorkspace;
-      const tool = yield* makeTool(makeChannel(GuildPremiumTier.None), workspace);
+      const workspace = yield* createWorkspace;
+      const tool = yield* createTool(createChannel(GuildPremiumTier.None), workspace);
 
       yield* Effect.promise(() =>
         expect(execute(tool, "/etc/passwd")).rejects.toThrow(
@@ -81,12 +81,12 @@ it.layer(NodeServices.layer)("upload file tool", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const workspace = yield* makeWorkspace;
+      const workspace = yield* createWorkspace;
       yield* fs.writeFileString(path.join(workspace, "report.txt"), "hello world");
 
       let sent: { body?: unknown; files?: unknown } | undefined;
-      const tool = yield* makeTool(
-        makeChannel(GuildPremiumTier.None, (payload) => {
+      const tool = yield* createTool(
+        createChannel(GuildPremiumTier.None, (payload) => {
           sent = payload;
         }),
         workspace,
@@ -131,9 +131,9 @@ it.layer(NodeServices.layer)("upload file tool", (it) => {
     it.effect(`enforces the ${testCase.name} upload limit`, () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const workspace = yield* makeWorkspace;
+        const workspace = yield* createWorkspace;
         yield* createSparseFile(path.join(workspace, "large.bin"), testCase.size);
-        const tool = yield* makeTool(makeChannel(testCase.premiumTier), workspace);
+        const tool = yield* createTool(createChannel(testCase.premiumTier), workspace);
 
         yield* Effect.promise(() =>
           expect(execute(tool, "/workspace/large.bin")).rejects.toThrow(

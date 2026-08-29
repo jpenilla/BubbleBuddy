@@ -18,7 +18,7 @@ import {
 import { Cause, Effect, Exit, FiberSet, Option, ScopedRef, Semaphore } from "effect";
 import { Incus, IncusContainerExecTimeoutError, type IncusContainer } from "incus-api";
 
-export interface IncusExtensionOptions {
+export interface CreateIncusExtensionInput {
   readonly channelId: string;
   readonly sessionCwd: string;
   readonly workspaceDir: string;
@@ -32,7 +32,7 @@ const debianImage = {
   server: "https://images.linuxcontainers.org",
 };
 
-export const makeIncusExtension = (options: IncusExtensionOptions) =>
+export const createIncusExtension = (input: CreateIncusExtensionInput) =>
   Effect.gen(function* () {
     const incus = yield* Incus;
     const containerRef = yield* ScopedRef.make<IncusContainer | undefined>(() => undefined);
@@ -47,20 +47,20 @@ export const makeIncusExtension = (options: IncusExtensionOptions) =>
         yield* ScopedRef.set(
           containerRef,
           Effect.gen(function* () {
-            yield* Effect.logInfo(`Starting Incus container for channel ${options.channelId}.`);
+            yield* Effect.logInfo(`Starting Incus container for channel ${input.channelId}.`);
             const container = yield* incus.project("default").containers.scoped({
               image: debianImage,
               profiles: ["default"],
-              mounts: [{ source: options.workspaceDir, path: options.sessionCwd }],
+              mounts: [{ source: input.workspaceDir, path: input.sessionCwd }],
             });
             yield* Effect.addFinalizer(() =>
-              Effect.logInfo(`Closing Incus container for channel ${options.channelId}.`),
+              Effect.logInfo(`Closing Incus container for channel ${input.channelId}.`),
             );
             return container;
           }).pipe(
             Effect.tapError((error) =>
               Effect.logWarning(
-                `Failed to start Incus container for channel ${options.channelId}: ${String(error)}`,
+                `Failed to start Incus container for channel ${input.channelId}: ${String(error)}`,
               ),
             ),
           ),
@@ -168,7 +168,7 @@ export const makeIncusExtension = (options: IncusExtensionOptions) =>
 
         await runPromise(
           Effect.logError(
-            `Sandbox bash command failed for channel ${options.channelId}: ${Cause.pretty(exit.cause)}`,
+            `Sandbox bash command failed for channel ${input.channelId}: ${Cause.pretty(exit.cause)}`,
           ),
         );
         throw new Error("Sandbox internal error");
@@ -176,11 +176,9 @@ export const makeIncusExtension = (options: IncusExtensionOptions) =>
     };
 
     return ((pi) => {
-      pi.registerTool(createBashToolDefinition(options.sessionCwd, { operations: bashOperations }));
-      pi.registerTool(createReadToolDefinition(options.sessionCwd, { operations: readOperations }));
-      pi.registerTool(
-        createWriteToolDefinition(options.sessionCwd, { operations: writeOperations }),
-      );
-      pi.registerTool(createEditToolDefinition(options.sessionCwd, { operations: editOperations }));
+      pi.registerTool(createBashToolDefinition(input.sessionCwd, { operations: bashOperations }));
+      pi.registerTool(createReadToolDefinition(input.sessionCwd, { operations: readOperations }));
+      pi.registerTool(createWriteToolDefinition(input.sessionCwd, { operations: writeOperations }));
+      pi.registerTool(createEditToolDefinition(input.sessionCwd, { operations: editOperations }));
     }) satisfies ExtensionFactory;
   }).pipe(Effect.provide(Incus.liveLocal()));

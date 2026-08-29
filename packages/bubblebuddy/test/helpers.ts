@@ -6,10 +6,10 @@ const defaultEnvConfig: EnvConfigShape = {
   discordToken: Redacted.make("test-token"),
 };
 
-export const makeTestEnvConfig = (overrides: Partial<EnvConfigShape> = {}): EnvConfigShape => ({
+export const createTestEnvConfig = (overrides: Partial<EnvConfigShape> = {}): EnvConfigShape => ({
   ...defaultEnvConfig,
   ...overrides,
 });
 
-export const makeTestEnvLayer = (overrides: Partial<EnvConfigShape> = {}) =>
-  Layer.succeed(EnvConfig, makeTestEnvConfig(overrides));
+export const createTestEnvLayer = (overrides: Partial<EnvConfigShape> = {}) =>
+  Layer.succeed(EnvConfig, createTestEnvConfig(overrides));

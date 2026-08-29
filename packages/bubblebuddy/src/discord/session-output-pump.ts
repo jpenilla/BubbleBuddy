@@ -2,7 +2,7 @@ import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel, Message } from "discord.js";
 import { Deferred, Effect, Fiber, HashMap, MutableRef, Option, Ref, Scope } from "effect";
 
-import { makeTypingIndicator } from "../discord/typing-indicator.ts";
+import { createTypingIndicator } from "../discord/typing-indicator.ts";
 
 import {
   createCompactionStatusEmbed,
@@ -16,7 +16,7 @@ import {
 } from "../discord/run-status-embed.ts";
 import { createToolStatusEmbed, type ToolStatusEmbed } from "../discord/tool-status-embed.ts";
 import { sendChunkedMessage, sendOrEditStatusCard, tryDiscordJsPromise } from "../discord/utils.ts";
-import { makePriorityDrainableWorker } from "../shared/priority-drainable-worker.ts";
+import { createPriorityDrainableWorker } from "../shared/priority-drainable-worker.ts";
 import { extractAssistantText, splitThinkingStatus } from "../discord/response-formatting.ts";
 
 export type AwaitToolDiscordAction = <A, E>(operation: Effect.Effect<A, E>) => Effect.Effect<A, E>;
@@ -28,7 +28,7 @@ export interface DiscordOutputPump {
   readonly pushActivationMessageId: (messageId: string) => void;
 }
 
-interface DiscordOutputPumpOptions {
+interface CreateDiscordOutputPumpInput {
   readonly channel: GuildTextBasedChannel;
   readonly showThinking: Effect.Effect<boolean>;
 }
@@ -53,21 +53,21 @@ type SessionEvent<Type extends AgentSessionEvent["type"]> = Extract<
   { type: Type }
 >;
 
-export const makeDiscordOutputPump = (
-  options: DiscordOutputPumpOptions,
+export const createDiscordOutputPump = (
+  input: CreateDiscordOutputPumpInput,
 ): Effect.Effect<DiscordOutputPump, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const worker = yield* makePriorityDrainableWorker((job: Effect.Effect<void, unknown>) =>
+    const worker = yield* createPriorityDrainableWorker((job: Effect.Effect<void, unknown>) =>
       job.pipe(
         Effect.ignore({
           log: "Warn",
-          message: `Discord output action failed for channel ${options.channel.id}`,
+          message: `Discord output action failed for channel ${input.channel.id}`,
         }),
       ),
     );
-    const channel = options.channel;
+    const channel = input.channel;
     const ctx = yield* Effect.context();
-    const typingIndicator = yield* makeTypingIndicator({ channel });
+    const typingIndicator = yield* createTypingIndicator({ channel });
 
     const latestTriggerMessageId = MutableRef.make("");
     const currentTurnReplyTo = yield* Ref.make("");
@@ -270,7 +270,7 @@ export const makeDiscordOutputPump = (
         if (event.assistantMessageEvent.type !== "thinking_end") {
           return;
         }
-        const showThinking = yield* options.showThinking;
+        const showThinking = yield* input.showThinking;
         if (!showThinking) {
           return;
         }
@@ -358,7 +358,7 @@ export const makeDiscordOutputPump = (
         Effect.timeout("3 seconds"),
         Effect.ignore({
           log: "Warn",
-          message: `Timed out waiting for output queue to drain for channel ${options.channel.id}`,
+          message: `Timed out waiting for output queue to drain for channel ${input.channel.id}`,
         }),
       ),
     );

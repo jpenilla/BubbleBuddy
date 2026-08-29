@@ -8,7 +8,7 @@ import { reactTool } from "../src/discord/tools/react.ts";
 
 const extensionContext = {} as ExtensionContext;
 
-const makeChannel = (
+const createChannel = (
   fetch: (id: string) => Promise<{ readonly react: (emoji: string) => Promise<void> }>,
 ): GuildTextBasedChannel =>
   ({
@@ -18,7 +18,7 @@ const makeChannel = (
     guild: { id: "guild", emojis: { cache: new Map() } },
   }) as unknown as GuildTextBasedChannel;
 
-const makeTool = (channel: GuildTextBasedChannel) =>
+const createTool = (channel: GuildTextBasedChannel) =>
   reactTool.pipe(
     Effect.provideService(
       DiscordToolContext,
@@ -30,8 +30,8 @@ const makeTool = (channel: GuildTextBasedChannel) =>
 describe("react tool", () => {
   test("adds multiple reactions", async () => {
     const reacted: string[] = [];
-    const tool = await makeTool(
-      makeChannel(async () => ({
+    const tool = await createTool(
+      createChannel(async () => ({
         react: async (emoji) => {
           reacted.push(emoji);
         },
@@ -52,8 +52,8 @@ describe("react tool", () => {
 
   test("applies valid reactions and reports all failures", async () => {
     const reacted: string[] = [];
-    const tool = await makeTool(
-      makeChannel(async () => ({
+    const tool = await createTool(
+      createChannel(async () => ({
         react: async (emoji) => {
           if (emoji === "🎉") throw new Error("blocked");
           reacted.push(emoji);

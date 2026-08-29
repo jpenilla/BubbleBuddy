@@ -7,7 +7,7 @@ export interface PriorityDrainableWorker<A> {
   readonly drain: Effect.Effect<void>;
 }
 
-export const makePriorityDrainableWorker = <A, R>(
+export const createPriorityDrainableWorker = <A, R>(
   process: (item: A) => Effect.Effect<void, never, R>,
 ): Effect.Effect<PriorityDrainableWorker<A>, never, Scope.Scope | R> =>
   Effect.gen(function* () {

@@ -5,7 +5,7 @@ import { TestClock } from "effect/testing";
 import { IncusApi, IncusApiTimeoutError, type IncusApiService } from "../src/api.ts";
 import { IncusOperations } from "../src/operations.ts";
 
-const makeApi = (overrides: Partial<IncusApiService["operations"]>): IncusApiService => ({
+const createApi = (overrides: Partial<IncusApiService["operations"]>): IncusApiService => ({
   instances: {
     create: () => Effect.die("unexpected"),
     exists: () => Effect.die("unexpected"),
@@ -37,7 +37,7 @@ const extractError = <E>(exit: Exit.Exit<unknown, E>): E | undefined => {
 
 describe("IncusOperations", () => {
   it.effect("returns running wait results without treating them as timeouts", () => {
-    const api = makeApi({
+    const api = createApi({
       wait: () => Effect.succeed({ status: "running", metadata: { progress: "still going" } }),
     });
 
@@ -53,7 +53,7 @@ describe("IncusOperations", () => {
   });
 
   it.effect("times out waits using the configured grace", () => {
-    const api = makeApi({});
+    const api = createApi({});
 
     return Effect.gen(function* () {
       const operations = yield* IncusOperations;

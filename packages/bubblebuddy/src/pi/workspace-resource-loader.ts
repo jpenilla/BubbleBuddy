@@ -10,7 +10,7 @@ import {
 import type { MountedWorkspace } from "../shared/workspace.ts";
 import { normalizeLineEndings } from "../shared/text.ts";
 
-export interface ChannelWorkspaceResourceLoaderOptions {
+export interface CreateChannelWorkspaceResourceLoaderInput {
   readonly agentDir: string;
   readonly enableAgenticWorkspace: boolean;
   readonly extensionFactories: ExtensionFactory[];
@@ -54,24 +54,22 @@ const workspaceSkillPaths = (workspace: MountedWorkspace): string[] => [
 ];
 
 export const createChannelWorkspaceResourceLoader = (
-  options: ChannelWorkspaceResourceLoaderOptions,
+  input: CreateChannelWorkspaceResourceLoaderInput,
 ): ResourceLoader =>
   new DefaultResourceLoader({
-    additionalSkillPaths: options.enableAgenticWorkspace
-      ? workspaceSkillPaths(options.workspace)
-      : [],
-    agentDir: options.agentDir,
+    additionalSkillPaths: input.enableAgenticWorkspace ? workspaceSkillPaths(input.workspace) : [],
+    agentDir: input.agentDir,
     agentsFilesOverride: () => ({
-      agentsFiles: options.enableAgenticWorkspace ? readWorkspaceAgentsFile(options.workspace) : [],
+      agentsFiles: input.enableAgenticWorkspace ? readWorkspaceAgentsFile(input.workspace) : [],
     }),
     appendSystemPromptOverride: () => [],
-    cwd: options.workspace.root.host,
-    extensionFactories: options.extensionFactories,
+    cwd: input.workspace.root.host,
+    extensionFactories: input.extensionFactories,
     noContextFiles: true,
     noExtensions: true,
     noPromptTemplates: true,
     noSkills: true,
     noThemes: true,
-    settingsManager: options.settingsManager,
+    settingsManager: input.settingsManager,
     systemPromptOverride: () => undefined,
   });

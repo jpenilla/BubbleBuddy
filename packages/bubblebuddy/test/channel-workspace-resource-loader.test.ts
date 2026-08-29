@@ -7,7 +7,7 @@ import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Path } from "effect";
 
-import { makeMountedWorkspace } from "../src/shared/workspace.ts";
+import { createMountedWorkspace } from "../src/shared/workspace.ts";
 import { createChannelWorkspaceResourceLoader } from "../src/pi/workspace-resource-loader.ts";
 
 describe("channel workspace resource loader", () => {
@@ -36,11 +36,11 @@ describe("channel workspace resource loader", () => {
     Effect.runSync(
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        return makeMountedWorkspace(path, workspaceDir, containerRoot);
+        return createMountedWorkspace(path, workspaceDir, containerRoot);
       }).pipe(Effect.provide(NodeServices.layer)),
     );
 
-  const makeLoader = (enableAgenticWorkspace: boolean) =>
+  const createLoader = (enableAgenticWorkspace: boolean) =>
     createChannelWorkspaceResourceLoader({
       agentDir,
       enableAgenticWorkspace,
@@ -53,7 +53,7 @@ describe("channel workspace resource loader", () => {
     await writeFile(join(tempDir, "AGENTS.md"), "outer instructions\n", "utf8");
     await writeFile(join(workspaceDir, "AGENTS.md"), "inner\r\nworkspace\r\n", "utf8");
 
-    const loader = makeLoader(true);
+    const loader = createLoader(true);
     await loader.reload();
 
     expect(loader.getAgentsFiles().agentsFiles).toEqual([
@@ -76,7 +76,7 @@ describe("channel workspace resource loader", () => {
       ["---", "description: Use the ancestor skill.", "---", "# Ancestor Skill"].join("\n"),
     );
 
-    const loader = makeLoader(true);
+    const loader = createLoader(true);
     await loader.reload();
 
     expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["workspace-skill"]);
@@ -85,7 +85,7 @@ describe("channel workspace resource loader", () => {
   test("omits workspace context when agentic workspace is off", async () => {
     await writeFile(join(workspaceDir, "AGENTS.md"), "workspace instructions\n", "utf8");
 
-    const loader = makeLoader(false);
+    const loader = createLoader(false);
     await loader.reload();
 
     expect(loader.getAgentsFiles().agentsFiles).toEqual([]);

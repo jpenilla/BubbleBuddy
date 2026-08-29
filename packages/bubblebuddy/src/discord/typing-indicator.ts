@@ -9,7 +9,7 @@ export interface TypingIndicator {
   readonly refresh: Effect.Effect<void>;
 }
 
-interface TypingIndicatorOptions {
+interface CreateTypingIndicatorInput {
   readonly channel: GuildTextBasedChannel;
 }
 
@@ -17,18 +17,18 @@ const SEND_TYPING_TIMEOUT_MS = 10_000;
 const STOP_TYPING_TIMEOUT_MS = 1000;
 const TYPING_INDICATOR_REFRESH_INTERVAL_MS = 8000;
 
-export const makeTypingIndicator = (
-  options: TypingIndicatorOptions,
+export const createTypingIndicator = (
+  input: CreateTypingIndicatorInput,
 ): Effect.Effect<TypingIndicator, never, Scope.Scope> =>
   Effect.gen(function* () {
     const handle = yield* FiberHandle.make<void, never>();
     const refreshSignals = yield* Effect.acquireRelease(TxQueue.sliding<void>(1), TxQueue.shutdown);
 
-    const sendTyping = tryDiscordJsPromise(() => options.channel.sendTyping()).pipe(
+    const sendTyping = tryDiscordJsPromise(() => input.channel.sendTyping()).pipe(
       Effect.timeout(SEND_TYPING_TIMEOUT_MS),
       Effect.ignore({
         log: "Warn",
-        message: `Failed to send typing indicator for channel ${options.channel.id}`,
+        message: `Failed to send typing indicator for channel ${input.channel.id}`,
       }),
     );
 

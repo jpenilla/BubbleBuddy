@@ -6,7 +6,7 @@ import { SqlClient } from "effect/unstable/sql";
 import { ChannelStateRepository } from "../src/session/state.ts";
 import { AppHome } from "../src/config/env.ts";
 import { DatabaseLive } from "../src/database.ts";
-import { makeTestEnvLayer } from "./helpers.ts";
+import { createTestEnvLayer } from "./helpers.ts";
 
 const withRepo = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
@@ -17,7 +17,7 @@ const withRepo = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
         ChannelStateRepository.layerNoDeps.pipe(
           Layer.provideMerge(DatabaseLive),
           Layer.provideMerge(AppHome.layerNoDeps),
-          Layer.provideMerge(makeTestEnvLayer({ appHome: dir })),
+          Layer.provideMerge(createTestEnvLayer({ appHome: dir })),
         ),
       ),
     );

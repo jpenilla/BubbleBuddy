@@ -15,7 +15,7 @@ export class ChannelStateRepositoryError extends Schema.TaggedError<ChannelState
   },
 ) {}
 
-const makeChannelStateRepository = Effect.gen(function* () {
+const createChannelStateRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
   const mapLoadError = (channelId: string) =>
@@ -96,7 +96,7 @@ export class ChannelStateRepository extends Context.Service<
     ): Effect.Effect<void, ChannelStateRepositoryError>;
   }
 >()("bubblebuddy/ChannelStateRepository") {
-  static readonly layerNoDeps = Layer.effect(ChannelStateRepository, makeChannelStateRepository);
+  static readonly layerNoDeps = Layer.effect(ChannelStateRepository, createChannelStateRepository);
   static readonly layer = ChannelStateRepository.layerNoDeps.pipe(
     Layer.provide(DatabaseLive.pipe(Layer.provide(AppHome.layer))),
   );

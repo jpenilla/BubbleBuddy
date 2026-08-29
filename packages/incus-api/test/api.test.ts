@@ -11,7 +11,7 @@ import { IncusHttpClient } from "../src/http-client.ts";
 const layerWithHttp = (client: HttpClient.HttpClient) =>
   IncusApi.layer.pipe(Layer.provide(Layer.succeed(IncusHttpClient, client)));
 
-const makeHttpClient = (
+const createHttpClient = (
   handler: (
     request: HttpClientRequest.HttpClientRequest,
   ) => Effect.Effect<HttpClientResponse.HttpClientResponse, HttpClientError.HttpClientError>,
@@ -31,7 +31,7 @@ const extractError = <E>(exit: Exit.Exit<unknown, E>): E | undefined => {
 
 describe("IncusApi error paths", () => {
   it.effect("raises HttpClientError on execute failure", () => {
-    const http = makeHttpClient(() =>
+    const http = createHttpClient(() =>
       Effect.fail(
         new HttpClientError.HttpClientError({
           reason: new HttpClientError.TransportError({
@@ -51,7 +51,7 @@ describe("IncusApi error paths", () => {
   });
 
   it.effect("raises IncusApiStatusCodeError on non-2xx status", () => {
-    const http = makeHttpClient((request) =>
+    const http = createHttpClient((request) =>
       Effect.succeed(
         HttpClientResponse.fromWeb(request, new Response("server error", { status: 500 })),
       ),
@@ -70,7 +70,7 @@ describe("IncusApi error paths", () => {
   });
 
   it.effect("raises HttpClientError on malformed JSON body", () => {
-    const http = makeHttpClient((request) =>
+    const http = createHttpClient((request) =>
       Effect.succeed(
         HttpClientResponse.fromWeb(
           request,
@@ -91,7 +91,7 @@ describe("IncusApi error paths", () => {
   });
 
   it.effect("raises IncusApiOperationError when operation metadata has status_code >= 400", () => {
-    const http = makeHttpClient((request) =>
+    const http = createHttpClient((request) =>
       Effect.succeed(
         HttpClientResponse.fromWeb(
           request,
@@ -122,7 +122,7 @@ describe("IncusApi error paths", () => {
   });
 
   it.effect("operations.wait preserves failed exec metadata when requested", () => {
-    const http = makeHttpClient((request) =>
+    const http = createHttpClient((request) =>
       Effect.succeed(
         HttpClientResponse.fromWeb(
           request,
@@ -158,7 +158,7 @@ describe("IncusApi error paths", () => {
   });
 
   it.effect("instances.exec decodes websocket fd secrets into named fields", () => {
-    const http = makeHttpClient((request) =>
+    const http = createHttpClient((request) =>
       Effect.succeed(
         HttpClientResponse.fromWeb(
           request,
@@ -205,7 +205,7 @@ describe("IncusApi error paths", () => {
   });
 
   it.effect("instances.exists returns false on 404", () => {
-    const http = makeHttpClient((request) =>
+    const http = createHttpClient((request) =>
       Effect.succeed(
         HttpClientResponse.fromWeb(request, new Response("not found", { status: 404 })),
       ),

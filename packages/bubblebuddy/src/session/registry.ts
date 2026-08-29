@@ -5,10 +5,10 @@ import { AppHome } from "../config/env.ts";
 import { FileConfig } from "../config/file.ts";
 import { PiContext } from "../pi/context.ts";
 import { LoadedResources } from "../resources.ts";
-import { makeChannelSession, type ChannelSession, type ChannelSessionError } from "./channel.ts";
+import { createChannelSession, type ChannelSession, type ChannelSessionError } from "./channel.ts";
 import { ChannelStateRepository } from "./state.ts";
 
-const makeChannelSessions = Effect.gen(function* () {
+const createChannelSessions = Effect.gen(function* () {
   const config = yield* FileConfig;
   let sessions: RcMap.RcMap<string, ChannelSession, ChannelSessionError>;
 
@@ -17,7 +17,7 @@ const makeChannelSessions = Effect.gen(function* () {
 
   sessions = yield* RcMap.make({
     lookup: (channelId: string) =>
-      makeChannelSession({
+      createChannelSession({
         channelId,
         retain: retain(channelId),
       }),
@@ -39,7 +39,7 @@ export class ChannelSessions extends Context.Service<
     ) => Effect.Effect<ChannelSession, ChannelSessionError, Scope.Scope>;
   }
 >()("bubblebuddy/ChannelSessions") {
-  static readonly layerNoDeps = Layer.effect(ChannelSessions, makeChannelSessions);
+  static readonly layerNoDeps = Layer.effect(ChannelSessions, createChannelSessions);
   static readonly layer = ChannelSessions.layerNoDeps.pipe(
     Layer.provide(ChannelStateRepository.layer),
     Layer.provide(LoadedResources.layer),

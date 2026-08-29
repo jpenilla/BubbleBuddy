@@ -27,7 +27,7 @@ export class Incus extends Context.Service<
       return Incus.of({
         project: (name) => ({
           name,
-          containers: Containers.make(name, api, operations, config),
+          containers: Containers.create(name, api, operations, config),
         }),
       });
     }),

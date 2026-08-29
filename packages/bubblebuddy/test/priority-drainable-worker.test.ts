@@ -1,20 +1,20 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Deferred, Effect } from "effect";
 
-import { makePriorityDrainableWorker } from "../src/shared/priority-drainable-worker.ts";
+import { createPriorityDrainableWorker } from "../src/shared/priority-drainable-worker.ts";
 
-const makeGate = Effect.gen(function* () {
+const createGate = Effect.gen(function* () {
   const started = yield* Deferred.make<void>();
   const release = yield* Deferred.make<void>();
   return { started, release };
 });
 
-describe("makePriorityDrainableWorker", () => {
+describe("createPriorityDrainableWorker", () => {
   it.effect("processes high priority work before low priority work", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const processed: string[] = [];
-        const worker = yield* makePriorityDrainableWorker((item: string) =>
+        const worker = yield* createPriorityDrainableWorker((item: string) =>
           Effect.sync(() => {
             processed.push(item);
           }),
@@ -39,10 +39,10 @@ describe("makePriorityDrainableWorker", () => {
         Effect.scoped(
           Effect.gen(function* () {
             const processed: string[] = [];
-            const active = yield* makeGate;
-            const queued = yield* makeGate;
+            const active = yield* createGate;
+            const queued = yield* createGate;
             const gates = { [testCase.active]: active, [testCase.queued]: queued };
-            const worker = yield* makePriorityDrainableWorker((item: "high" | "low") =>
+            const worker = yield* createPriorityDrainableWorker((item: "high" | "low") =>
               Effect.gen(function* () {
                 const gate = gates[item];
                 yield* Deferred.succeed(gate.started, undefined).pipe(Effect.orDie);

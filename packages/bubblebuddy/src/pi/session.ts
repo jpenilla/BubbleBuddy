@@ -20,12 +20,12 @@ import { AppHome } from "../config/env.ts";
 import { FileConfig } from "../config/file.ts";
 import { LoadedResources } from "../resources.ts";
 import { createChannelWorkspaceResourceLoader } from "./workspace-resource-loader.ts";
-import { makeIncusExtension } from "./incus-extension.ts";
+import { createIncusExtension } from "./incus-extension.ts";
 import type { DiscordOutputPump } from "../discord/session-output-pump.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
 import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
-import { channelHostSessionsDir, makeChannelMountedWorkspace } from "../shared/workspace.ts";
+import { channelHostSessionsDir, createChannelMountedWorkspace } from "../shared/workspace.ts";
 import type { PromptTemplateContext } from "./system-prompt.ts";
 
 export interface PiSessionModelInfo {
@@ -42,19 +42,21 @@ export interface PiSessionHandle {
   readonly getModelInfo: () => PiSessionModelInfo | undefined;
   readonly getSessionStats: () => SessionStats;
   readonly abort: Effect.Effect<void, PiSessionOperationError>;
-  readonly activate: (input: PiSessionActivation) => Effect.Effect<void, PiSessionOperationError>;
+  readonly activate: (
+    input: ActivatePiSessionInput,
+  ) => Effect.Effect<void, PiSessionOperationError>;
   readonly requestCompaction: (
     customInstructions?: string,
   ) => Effect.Effect<void, PiSessionOperationError>;
 }
 
-export interface PiSessionActivation {
+export interface ActivatePiSessionInput {
   readonly prompt: string;
   readonly replyToMessageId: string;
   readonly retainChannelSession: Effect.Effect<void, never, Scope.Scope>;
 }
 
-export interface PiSessionOpenInput {
+export interface CreatePiSessionInput {
   readonly channel: GuildTextBasedChannel;
   readonly promptContext: PromptTemplateContext;
   readonly activeSession?: string;
@@ -88,8 +90,8 @@ export type PiSessionServices =
   | PiContext
   | AppHome;
 
-export const makePiSession = (
-  options: PiSessionOpenInput,
+export const createPiSession = (
+  input: CreatePiSessionInput,
 ): Effect.Effect<PiSessionHandle, PiSessionInitError, PiSessionServices | Scope.Scope> =>
   Effect.gen(function* () {
     const config = yield* FileConfig;
@@ -98,8 +100,8 @@ export const makePiSession = (
     const appHome = yield* AppHome;
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const sessionsDir = channelHostSessionsDir(path, appHome, options.channel.id);
-    const workspace = makeChannelMountedWorkspace(path, appHome, options.channel.id, WORKSPACE_CWD);
+    const sessionsDir = channelHostSessionsDir(path, appHome, input.channel.id);
+    const workspace = createChannelMountedWorkspace(path, appHome, input.channel.id, WORKSPACE_CWD);
 
     yield* fs
       .makeDirectory(sessionsDir, { recursive: true })
@@ -118,7 +120,7 @@ export const makePiSession = (
         ),
       );
 
-    const activeSession = options.activeSession;
+    const activeSession = input.activeSession;
     const sessionManager =
       activeSession === undefined
         ? SessionManager.create(WORKSPACE_CWD, sessionsDir)
@@ -134,7 +136,7 @@ export const makePiSession = (
           }).pipe(
             Effect.tapError((error) =>
               Effect.logWarning(
-                `Failed to resume session for channel ${options.channel.id}. Starting a new session.`,
+                `Failed to resume session for channel ${input.channel.id}. Starting a new session.`,
                 error,
               ),
             ),
@@ -149,14 +151,14 @@ export const makePiSession = (
         botProfile: resources.botProfile,
         discordContextTemplate: resources.discordContextTemplate,
         enableAgenticWorkspace: config.enableAgenticWorkspace,
-        promptContext: options.promptContext,
+        promptContext: input.promptContext,
       }),
     ];
 
     if (config.enableAgenticWorkspace) {
       extensionFactories.push(
-        yield* makeIncusExtension({
-          channelId: options.channel.id,
+        yield* createIncusExtension({
+          channelId: input.channel.id,
           sessionCwd: workspace.root.container,
           workspaceDir: workspace.root.host,
         }),
@@ -179,12 +181,12 @@ export const makePiSession = (
         }),
     });
 
-    const output = options.output;
+    const output = input.output;
     const toolContextLayer = Layer.mergeAll(
       Layer.succeed(
         DiscordToolContext,
         DiscordToolContext.of({
-          channel: options.channel,
+          channel: input.channel,
           awaitAction: output.awaitToolDiscordAction,
         }),
       ),
@@ -276,27 +278,30 @@ export const makePiSession = (
       }
     };
 
-    const activate = (input: PiSessionActivation) =>
+    const activate = (activation: ActivatePiSessionInput) =>
       operationLock.withPermit(
         Effect.gen(function* () {
-          output.pushActivationMessageId(input.replyToMessageId);
+          output.pushActivationMessageId(activation.replyToMessageId);
 
           if (session.isStreaming || isActivating()) {
             yield* Effect.tryPromise({
-              try: () => session.steer(input.prompt),
+              try: () => session.steer(activation.prompt),
               catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
             });
             return;
           }
 
           if (session.isCompacting) {
-            pendingQueue.push({ text: input.prompt, replyToMessageId: input.replyToMessageId });
+            pendingQueue.push({
+              text: activation.prompt,
+              replyToMessageId: activation.replyToMessageId,
+            });
             return;
           }
 
           if (session.isRetrying) {
             yield* Effect.tryPromise({
-              try: () => session.steer(input.prompt),
+              try: () => session.steer(activation.prompt),
               catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
             });
             return;
@@ -305,11 +310,11 @@ export const makePiSession = (
           yield* FiberHandle.run(
             activationFiber,
             Effect.scoped(
-              input.retainChannelSession.pipe(
+              activation.retainChannelSession.pipe(
                 Effect.andThen(
                   Effect.tryPromise({
                     try: () =>
-                      session.prompt(input.prompt).catch((error) => {
+                      session.prompt(activation.prompt).catch((error) => {
                         output.reportUnexpectedError(error);
                       }),
                     catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),

@@ -8,10 +8,10 @@ import { fetchMessageTool } from "../src/discord/tools/fetch-message.ts";
 
 const extensionContext = {} as ExtensionContext;
 
-const makeChannel = (fetch: (id: string) => Promise<unknown>): GuildTextBasedChannel =>
+const createChannel = (fetch: (id: string) => Promise<unknown>): GuildTextBasedChannel =>
   ({ messages: { fetch } }) as unknown as GuildTextBasedChannel;
 
-const makeMessage = (options: {
+const createMessage = (options: {
   readonly content: string;
   readonly reference?: { readonly messageId: string; readonly channelId: string };
 }): Message<true> =>
@@ -25,7 +25,7 @@ const makeMessage = (options: {
     attachments: new Collection(),
   }) as unknown as Message<true>;
 
-const makeTool = (channel: GuildTextBasedChannel) =>
+const createTool = (channel: GuildTextBasedChannel) =>
   fetchMessageTool.pipe(
     Effect.provideService(
       DiscordToolContext,
@@ -36,8 +36,8 @@ const makeTool = (channel: GuildTextBasedChannel) =>
 
 describe("fetch message tool", () => {
   test("hides Discord lookup details", async () => {
-    const tool = await makeTool(
-      makeChannel(async () => {
+    const tool = await createTool(
+      createChannel(async () => {
         throw new Error("DiscordAPIError[10008]: Unknown Message");
       }),
     );
@@ -59,8 +59,8 @@ describe("fetch message tool", () => {
       expected: "[msg 456 user=alice mention=<@789> reply_to=111] Hello world",
     },
   ])("$name", async ({ reference, expected }) => {
-    const tool = await makeTool(
-      makeChannel(async () => makeMessage({ content: "Hello world", reference })),
+    const tool = await createTool(
+      createChannel(async () => createMessage({ content: "Hello world", reference })),
     );
     const result = await tool.execute(
       "tool-call",

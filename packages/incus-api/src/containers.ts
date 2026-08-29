@@ -112,7 +112,7 @@ export interface IncusContainers {
   readonly exists: (name: string) => Effect.Effect<boolean, IncusContainerError>;
 }
 
-export const make = (
+export const create = (
   project: string,
   api: IncusApiService,
   operations: IncusOperationsService,
@@ -134,7 +134,7 @@ const acquire = (
 ): Effect.Effect<IncusContainer, IncusContainerError> =>
   Effect.gen(function* () {
     const name = options.name ?? `incus-api-${crypto.randomUUID().slice(0, 8)}`;
-    const container = makeContainer(project, api, operations, config, name);
+    const container = createContainer(project, api, operations, config, name);
 
     const operation = yield* api.instances.create(
       {
@@ -219,7 +219,7 @@ const deleteContainer = Effect.fn("IncusContainer.delete")(function* (
   yield* operations.wait(operation.id, { project });
 });
 
-const makeContainer = (
+const createContainer = (
   project: string,
   api: IncusApiService,
   operations: IncusOperationsService,

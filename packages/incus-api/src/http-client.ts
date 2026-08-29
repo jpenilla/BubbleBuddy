@@ -35,7 +35,7 @@ export class IncusHttpClient extends Context.Service<IncusHttpClient, HttpClient
             Layer.effect(
               NodeHttpClient.HttpAgent,
               Effect.acquireRelease(
-                Effect.sync(() => makeAgents(config.endpoint)),
+                Effect.sync(() => createAgents(config.endpoint)),
                 ({ http, https }) =>
                   Effect.sync(() => {
                     http.destroy();
@@ -49,7 +49,7 @@ export class IncusHttpClient extends Context.Service<IncusHttpClient, HttpClient
     );
 }
 
-const makeAgents = (endpoint: IncusConfigService["endpoint"]) => {
+const createAgents = (endpoint: IncusConfigService["endpoint"]) => {
   if (endpoint.type === "unix") {
     return {
       http: new UnixSocketAgent(endpoint.socketPath),

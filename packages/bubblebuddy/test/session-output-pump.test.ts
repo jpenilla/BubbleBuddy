@@ -4,7 +4,7 @@ import type { GuildTextBasedChannel } from "discord.js";
 import { Deferred, Effect, Exit, Fiber } from "effect";
 
 import {
-  makeDiscordOutputPump,
+  createDiscordOutputPump,
   type DiscordOutputPump,
 } from "../src/discord/session-output-pump.ts";
 
@@ -28,7 +28,7 @@ const assistantMessage = (
   errorMessage?: string,
 ): AssistantMessage => ({ role: "assistant", stopReason, errorMessage }) as AssistantMessage;
 
-const makeOutput = (onDiscordOutput: (description: string) => void) => {
+const createOutput = (onDiscordOutput: (description: string) => void) => {
   const channel = {
     sendTyping: async () => undefined,
     send: async (payload: unknown) => {
@@ -40,7 +40,7 @@ const makeOutput = (onDiscordOutput: (description: string) => void) => {
       };
     },
   };
-  return makeDiscordOutputPump({
+  return createDiscordOutputPump({
     channel: channel as unknown as GuildTextBasedChannel,
     showThinking: Effect.succeed(false),
   });
@@ -51,7 +51,7 @@ describe("session output pump", () => {
     Effect.gen(function* () {
       const exit = yield* Effect.scoped(
         Effect.gen(function* () {
-          const output = yield* makeOutput(() => undefined);
+          const output = yield* createOutput(() => undefined);
           const started = yield* Deferred.make<void>();
           const fiber = yield* output
             .awaitToolDiscordAction(
@@ -77,7 +77,7 @@ describe("session output pump", () => {
       const observed = yield* Effect.scoped(
         Effect.gen(function* () {
           const outputObserved: string[] = [];
-          const output = yield* makeOutput((description) => {
+          const output = yield* createOutput((description) => {
             if (description.includes("**bash**")) {
               outputObserved.push(description.includes("⏳") ? "start" : "success");
             }
@@ -196,7 +196,7 @@ describe("session output pump", () => {
       const observed = yield* Effect.scoped(
         Effect.gen(function* () {
           const outputObserved: string[] = [];
-          const output = yield* makeOutput((description) => outputObserved.push(description));
+          const output = yield* createOutput((description) => outputObserved.push(description));
 
           for (const event of events) {
             output.handleSessionEvent(event);
