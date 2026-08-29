@@ -7,7 +7,7 @@ import {
   listUsableCustomEmojis,
 } from "../assets.ts";
 import { DiscordToolContext } from "../tool-context.ts";
-import { defineEffectTool } from "../../tools/effect-tool.ts";
+import { defineEffectTool } from "../../pi/effect-tool.ts";
 
 const NAME = "discord_list_custom_emojis";
 

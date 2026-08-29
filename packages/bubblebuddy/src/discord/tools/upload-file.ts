@@ -4,7 +4,7 @@ import { Type } from "typebox";
 
 import { ChannelWorkspace, DiscordToolContext } from "../tool-context.ts";
 import { sendMessageWithAbort, tryDiscordJsPromise } from "../utils.ts";
-import { AgentToolError, defineEffectTool } from "../../tools/effect-tool.ts";
+import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
 
 const getGuildUploadLimit = (premiumTier: GuildPremiumTier): bigint => {
   if (premiumTier >= GuildPremiumTier.Tier3) return 100_000_000n; // 100 MB
