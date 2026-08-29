@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from "discord.js";
+import { InteractionContextType, SlashCommandBuilder } from "discord.js";
 
 import { ChannelSessions } from "../../session/registry.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
@@ -7,7 +7,8 @@ import { createCommand, inGuildChannel } from "./command.ts";
 export const discardSessionCommand = createCommand({
   data: new SlashCommandBuilder()
     .setName("new")
-    .setDescription("Discard this channel's current pi session."),
+    .setDescription("Discard this channel's current pi session.")
+    .setContexts(InteractionContextType.Guild),
   execute: inGuildChannel(function* (interaction) {
     yield* tryDiscordJsPromise(() => interaction.deferReply());
     const sessions = yield* ChannelSessions;

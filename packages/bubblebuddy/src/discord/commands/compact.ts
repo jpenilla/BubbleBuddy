@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from "discord.js";
+import { InteractionContextType, SlashCommandBuilder } from "discord.js";
 
 import { ChannelSessions } from "../../session/registry.ts";
 import { isGuildTextChannel, tryDiscordJsPromise } from "../utils.ts";
@@ -9,6 +9,7 @@ export const compactCommand = createCommand({
   data: new SlashCommandBuilder()
     .setName("compact")
     .setDescription("Manually compact this channel's session context.")
+    .setContexts(InteractionContextType.Guild)
     .addStringOption((option) =>
       option
         .setName("instructions")

@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, InteractionContextType, SlashCommandBuilder } from "discord.js";
 
 import type { ChannelStatus } from "../../session/channel.ts";
 import { ChannelSessions } from "../../session/registry.ts";
@@ -68,7 +68,8 @@ const createStatusEmbed = (status: ChannelStatus): EmbedBuilder => {
 export const statusCommand = createCommand({
   data: new SlashCommandBuilder()
     .setName("status")
-    .setDescription("Show this channel's pi session token, cost, and runtime stats."),
+    .setDescription("Show this channel's pi session token, cost, and runtime stats.")
+    .setContexts(InteractionContextType.Guild),
   execute: inGuildChannel(function* (interaction) {
     if (!isGuildTextChannel(interaction.channel)) {
       yield* tryDiscordJsPromise(() =>
