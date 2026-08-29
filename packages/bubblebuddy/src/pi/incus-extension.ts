@@ -32,7 +32,7 @@ const debianImage = {
   server: "https://images.linuxcontainers.org",
 };
 
-const makeIncusExtensionWithService = (options: IncusExtensionOptions) =>
+export const makeIncusExtension = (options: IncusExtensionOptions) =>
   Effect.gen(function* () {
     const incus = yield* Incus;
     const containerRef = yield* ScopedRef.make<IncusContainer | undefined>(() => undefined);
@@ -183,7 +183,4 @@ const makeIncusExtensionWithService = (options: IncusExtensionOptions) =>
       );
       pi.registerTool(createEditToolDefinition(options.sessionCwd, { operations: editOperations }));
     }) satisfies ExtensionFactory;
-  });
-
-export const makeIncusExtension = (options: IncusExtensionOptions) =>
-  makeIncusExtensionWithService(options).pipe(Effect.provide(Incus.liveLocal()));
+  }).pipe(Effect.provide(Incus.liveLocal()));

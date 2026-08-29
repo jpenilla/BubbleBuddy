@@ -6,17 +6,15 @@ import {
   SettingsManager,
   type AgentSessionEvent,
   type ExtensionFactory,
+  type SessionStats,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import type { GuildTextBasedChannel } from "discord.js";
 import { Effect, FiberHandle, FileSystem, Layer, Path, Schema, Scope, Semaphore } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 import { discordCoreTools, discordWorkspaceTools } from "../discord/tools.ts";
 import { ChannelWorkspace, DiscordToolContext } from "../discord/tool-context.ts";
-import type {
-  ChannelAgentSession,
-  ChannelAgentSessionOptions,
-} from "../channels/channel-session.ts";
 import { connectMcpServers } from "../mcp/adapter.ts";
 import { AppHome } from "../config/env.ts";
 import { FileConfig } from "../config/file.ts";
@@ -28,6 +26,40 @@ import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
 import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
 import { channelHostSessionsDir, makeChannelMountedWorkspace } from "../shared/workspace.ts";
+import type { PromptTemplateContext } from "./system-prompt.ts";
+
+export interface PiSessionModelInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly provider: string;
+}
+
+export interface PiSessionHandle {
+  readonly isCompacting: () => boolean;
+  readonly isStreaming: () => boolean;
+  readonly isRetrying: () => boolean;
+  readonly getActiveSessionName: () => string | undefined;
+  readonly getModelInfo: () => PiSessionModelInfo | undefined;
+  readonly getSessionStats: () => SessionStats;
+  readonly abort: Effect.Effect<void, PiSessionOperationError>;
+  readonly activate: (
+    input: string,
+    replyToMessageId: string,
+  ) => Effect.Effect<void, PiSessionOperationError>;
+  readonly requestCompaction: (
+    customInstructions?: string,
+  ) => Effect.Effect<void, PiSessionOperationError>;
+}
+
+export interface PiSessionOpenOptions {
+  readonly channel: GuildTextBasedChannel;
+  readonly promptContext: PromptTemplateContext;
+  readonly activeSession?: string;
+  readonly getShowThinking: () => boolean;
+  readonly retainChannelSession: Effect.Effect<void, never, Scope.Scope>;
+}
+
+export type { SessionStats };
 
 export class PiSessionInitError extends Schema.TaggedError<PiSessionInitError>()(
   "PiSessionInitError",
@@ -55,8 +87,8 @@ export type PiSessionServices =
   | AppHome;
 
 export const makePiSession = (
-  options: ChannelAgentSessionOptions,
-): Effect.Effect<ChannelAgentSession, PiSessionInitError, PiSessionServices | Scope.Scope> =>
+  options: PiSessionOpenOptions,
+): Effect.Effect<PiSessionHandle, PiSessionInitError, PiSessionServices | Scope.Scope> =>
   Effect.gen(function* () {
     const config = yield* FileConfig;
     const resources = yield* LoadedResources;
@@ -271,20 +303,23 @@ export const makePiSession = (
             return;
           }
 
-          const lease = yield* options.acquireLease;
           yield* FiberHandle.run(
             activationFiber,
-            Effect.tryPromise({
-              try: () =>
-                session.prompt(input).catch((error) => {
-                  output.reportUnexpectedError(error);
-                }),
-              catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
-            }).pipe(
-              Effect.ensuring(lease.release),
-              Effect.ignore({ log: "Warn", message: "Session activation failed" }),
+            Effect.scoped(
+              options.retainChannelSession.pipe(
+                Effect.andThen(
+                  Effect.tryPromise({
+                    try: () =>
+                      session.prompt(input).catch((error) => {
+                        output.reportUnexpectedError(error);
+                      }),
+                    catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
+                  }),
+                ),
+                Effect.ignore({ log: "Warn", message: "Session activation failed" }),
+              ),
             ),
-          ).pipe(Effect.onError(() => lease.release));
+          );
         }),
       );
 
@@ -321,5 +356,5 @@ export const makePiSession = (
           : { id: model.id, name: model.name, provider: model.provider };
       },
       getSessionStats: () => session.getSessionStats(),
-    };
+    } satisfies PiSessionHandle;
   });

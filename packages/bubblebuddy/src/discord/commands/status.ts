@@ -1,8 +1,8 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { Effect } from "effect";
 
-import type { ChannelStatus } from "../../channels/channel-session.ts";
-import { ChannelSessions } from "../../channels/channel-sessions.ts";
+import type { ChannelStatus } from "../../session/channel.ts";
+import { ChannelSessions } from "../../session/registry.ts";
 import { isGuildTextChannel } from "../utils.ts";
 import { createPromptContext } from "../prompt-formatting.ts";
 import type { CommandHandler } from "./types.ts";

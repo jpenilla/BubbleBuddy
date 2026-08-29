@@ -2,8 +2,14 @@ import type { GuildTextBasedChannel, Message } from "discord.js";
 import { Effect, Option, Ref, Schema, Scope, ScopedRef, Semaphore } from "effect";
 
 import { formatMessageForPrompt } from "../discord/prompt-formatting.ts";
-import type { PromptTemplateContext } from "../pi-session/system-prompt.ts";
-import { ChannelStateRepository } from "./state-repository.ts";
+import type {
+  PiSessionHandle,
+  PiSessionModelInfo,
+  PiSessionOpenOptions,
+  SessionStats,
+} from "../pi/session.ts";
+import type { PromptTemplateContext } from "../pi/system-prompt.ts";
+import { ChannelStateRepository } from "./state.ts";
 
 type SessionParameters = {
   readonly channel: GuildTextBasedChannel;
@@ -22,35 +28,8 @@ export type AbortResult = "aborted" | "idle";
 export type CompactResult = "done" | "no-session" | "rejected-busy" | "rejected-compacting";
 export type DiscardResult = "discarded" | "rejected-busy";
 
-export interface SessionModelInfo {
-  readonly id: string;
-  readonly name: string;
-  readonly provider: string;
-}
-
-export interface SessionStats {
-  readonly userMessages: number;
-  readonly assistantMessages: number;
-  readonly toolCalls: number;
-  readonly toolResults: number;
-  readonly totalMessages: number;
-  readonly tokens: {
-    readonly input: number;
-    readonly output: number;
-    readonly cacheRead: number;
-    readonly cacheWrite: number;
-    readonly total: number;
-  };
-  readonly cost: number;
-  readonly contextUsage?: {
-    readonly tokens: number | null;
-    readonly contextWindow?: number;
-    readonly percent: number | null;
-  };
-}
-
 export interface ChannelStatus {
-  readonly model: SessionModelInfo | undefined;
+  readonly model: PiSessionModelInfo | undefined;
   readonly showThinking: boolean;
   readonly stats: SessionStats;
 }
@@ -74,34 +53,12 @@ export interface ChannelSession {
   readonly toggleShowThinking: Effect.Effect<boolean, ChannelSessionError>;
 }
 
-export interface ChannelSessionOptions {
+interface ChannelSessionOptions {
   readonly channelId: string;
-  readonly acquireLease: Effect.Effect<ChannelSessionLease>;
-  readonly makeAgent: (
-    options: ChannelAgentSessionOptions,
-  ) => Effect.Effect<ChannelAgentSession, unknown, Scope.Scope>;
-}
-
-export interface ChannelAgentSessionOptions extends SessionParameters {
-  readonly activeSession?: string;
-  readonly getShowThinking: () => boolean;
-  readonly acquireLease: Effect.Effect<ChannelSessionLease>;
-}
-
-export interface ChannelSessionLease {
-  readonly release: Effect.Effect<void>;
-}
-
-export interface ChannelAgentSession {
-  readonly isCompacting: () => boolean;
-  readonly isStreaming: () => boolean;
-  readonly isRetrying: () => boolean;
-  readonly getActiveSessionName: () => string | undefined;
-  readonly getModelInfo: () => SessionModelInfo | undefined;
-  readonly getSessionStats: () => SessionStats;
-  readonly abort: Effect.Effect<void, unknown>;
-  readonly activate: (input: string, replyToMessageId: string) => Effect.Effect<void, unknown>;
-  readonly requestCompaction: (customInstructions?: string) => Effect.Effect<void, unknown>;
+  readonly retain: Effect.Effect<void, never, Scope.Scope>;
+  readonly openPiSession: (
+    options: PiSessionOpenOptions,
+  ) => Effect.Effect<PiSessionHandle, unknown, Scope.Scope>;
 }
 
 export const makeChannelSession = (options: ChannelSessionOptions) =>
@@ -120,7 +77,7 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
     const showThinkingRef = yield* Ref.make(
       yield* mapError(repository.getShowThinking(options.channelId)),
     );
-    const piRef = yield* ScopedRef.make<ChannelAgentSession | undefined>(() => undefined);
+    const piRef = yield* ScopedRef.make<PiSessionHandle | undefined>(() => undefined);
 
     const getShowThinking = () => Ref.getUnsafe(showThinkingRef);
 
@@ -142,7 +99,7 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
         yield* Ref.set(activeSessionRef, undefined);
       });
 
-    const getOrCreatePi = (input: SessionParameters) =>
+    const getOrCreatePiSession = (input: SessionParameters) =>
       Effect.gen(function* () {
         const current = yield* ScopedRef.get(piRef);
         if (current !== undefined) return current;
@@ -151,11 +108,11 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
         yield* mapError(
           ScopedRef.set(
             piRef,
-            options.makeAgent({
+            options.openPiSession({
               ...input,
               activeSession,
-              acquireLease: options.acquireLease,
               getShowThinking,
+              retainChannelSession: options.retain,
             }),
           ),
         );
@@ -184,7 +141,7 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
     const activate = (input: ActivationParameters) =>
       lock.withPermit(
         Effect.gen(function* () {
-          const pi = yield* getOrCreatePi(input);
+          const pi = yield* getOrCreatePiSession(input);
           yield* mapError(
             pi.activate(formatMessageForPrompt(input.originMessage), input.originMessage.id),
           );
@@ -209,7 +166,7 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
             if (currentPi === undefined && activeSession === undefined)
               return "no-session" as const;
 
-            const session = yield* getOrCreatePi(input);
+            const session = yield* getOrCreatePiSession(input);
             yield* mapError(session.requestCompaction(input.customInstructions)).pipe(
               Effect.ignore({ log: "Warn", message: "Session compaction failed" }),
             );
@@ -227,7 +184,7 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
             return "rejected-busy" as const;
           }
 
-          yield* ScopedRef.set(piRef, Effect.succeed<ChannelAgentSession | undefined>(undefined));
+          yield* ScopedRef.set(piRef, Effect.succeed<PiSessionHandle | undefined>(undefined));
           yield* clearActiveSession();
           return "discarded" as const;
         }),
@@ -237,7 +194,7 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
     const status = (input: SessionParameters) =>
       lock.withPermit(
         Effect.gen(function* () {
-          const pi = yield* getOrCreatePi(input);
+          const pi = yield* getOrCreatePiSession(input);
           return {
             model: pi.getModelInfo(),
             showThinking: yield* Ref.get(showThinkingRef),
@@ -246,11 +203,13 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
         }),
       );
 
-    const toggleShowThinking = Effect.gen(function* () {
-      const value = !(yield* Ref.get(showThinkingRef));
-      yield* setShowThinking(value);
-      return value;
-    });
+    const toggleShowThinking = lock.withPermit(
+      Effect.gen(function* () {
+        const value = !(yield* Ref.get(showThinkingRef));
+        yield* setShowThinking(value);
+        return value;
+      }),
+    );
 
     return {
       abort,

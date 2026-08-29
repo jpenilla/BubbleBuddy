@@ -1,23 +1,10 @@
 import { Events, type Client, type Message } from "discord.js";
 import { Effect, Layer } from "effect";
 
-import { ChannelSessions } from "../channels/channel-sessions.ts";
+import { ChannelSessions } from "../session/registry.ts";
 import { Discord } from "./client.ts";
 import { isGuildTextChannel } from "./utils.ts";
 import { createPromptContext } from "./prompt-formatting.ts";
-
-export interface ActivationContext {
-  readonly mentionsBot: boolean;
-}
-
-export const isActivationMessage = (context: ActivationContext): boolean => context.mentionsBot;
-
-export const checkGuildMessageActivation = async (
-  message: Message<true>,
-  botUserId: string,
-): Promise<ActivationContext> => ({
-  mentionsBot: message.mentions.has(botUserId),
-});
 
 export const ActivationLive = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -32,7 +19,7 @@ export const ActivationLive = Layer.effectDiscard(
       }),
     );
   }),
-).pipe(Layer.provide(Discord.layer), Layer.provide(ChannelSessions.layer));
+);
 
 const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
   Effect.gen(function* () {
@@ -45,10 +32,7 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
       return;
     }
 
-    const activation = yield* Effect.tryPromise(() =>
-      checkGuildMessageActivation(message, client.user.id),
-    );
-    if (!isActivationMessage(activation)) {
+    if (!message.mentions.has(client.user.id)) {
       return;
     }
 

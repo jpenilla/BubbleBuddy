@@ -1,4 +1,6 @@
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "@effect/vitest";
+import type { GuildTextBasedChannel } from "discord.js";
 import { Deferred, Effect, Exit, Fiber } from "effect";
 
 import {
@@ -9,9 +11,22 @@ import {
 type SessionEvent = Parameters<DiscordOutputPump["handleSessionEvent"]>[0];
 
 const embedDescription = (payload: unknown): string => {
-  const embed = (payload as { embeds?: Array<{ data?: { description?: string } }> }).embeds?.[0];
-  return embed?.data?.description ?? "";
+  const embed = (payload as { embeds?: readonly unknown[] }).embeds?.[0];
+  if (
+    typeof embed !== "object" ||
+    embed === null ||
+    !("toJSON" in embed) ||
+    typeof embed.toJSON !== "function"
+  ) {
+    return "";
+  }
+  return (embed.toJSON() as { description?: string }).description ?? "";
 };
+
+const assistantMessage = (
+  stopReason: AssistantMessage["stopReason"],
+  errorMessage?: string,
+): AssistantMessage => ({ role: "assistant", stopReason, errorMessage }) as AssistantMessage;
 
 const makeOutput = (onDiscordOutput: (description: string) => void) => {
   const channel = {
@@ -26,7 +41,7 @@ const makeOutput = (onDiscordOutput: (description: string) => void) => {
     },
   };
   return makeDiscordOutputPump({
-    channel: channel as never,
+    channel: channel as unknown as GuildTextBasedChannel,
     getShowThinking: () => false,
   });
 };
@@ -77,7 +92,8 @@ describe("session output pump", () => {
               type: "tool_execution_start",
               toolCallId,
               toolName: "bash",
-            } as SessionEvent);
+              args: {},
+            } satisfies SessionEvent);
           }
 
           yield* Effect.forEach(
@@ -93,7 +109,9 @@ describe("session output pump", () => {
                   type: "tool_execution_end",
                   toolCallId,
                   toolName: "bash",
-                } as SessionEvent);
+                  result: undefined,
+                  isError: false,
+                } satisfies SessionEvent);
               }),
             { concurrency: "unbounded" },
           );
@@ -122,8 +140,8 @@ describe("session output pump", () => {
       events: [
         {
           type: "message_end",
-          message: { role: "assistant", stopReason: "error", errorMessage: "API timeout" },
-        } as SessionEvent,
+          message: assistantMessage("error", "API timeout"),
+        } satisfies SessionEvent,
       ],
       expected: ["❌ **Run failed**\nAPI timeout"],
     },
@@ -132,8 +150,8 @@ describe("session output pump", () => {
       events: [
         {
           type: "message_end",
-          message: { role: "assistant", stopReason: "aborted" },
-        } as SessionEvent,
+          message: assistantMessage("aborted"),
+        } satisfies SessionEvent,
       ],
       expected: ["🛑 **Run aborted**"],
     },
@@ -165,7 +183,7 @@ describe("session output pump", () => {
           success: true,
           attempt: 2,
         },
-      ] as ReadonlyArray<SessionEvent>,
+      ] satisfies ReadonlyArray<SessionEvent>,
       expected: [
         "🔄 **Retrying** (attempt 1)",
         "❌ **Retry failed** — Still rate limited",

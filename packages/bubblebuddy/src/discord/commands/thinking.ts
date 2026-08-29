@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
 import { Effect } from "effect";
 
-import { ChannelSessions } from "../../channels/channel-sessions.ts";
+import { ChannelSessions } from "../../session/registry.ts";
 import type { CommandHandler } from "./types.ts";
 
 export const thinkingCommand: CommandHandler = {

@@ -8,7 +8,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Path } from "effect";
 
 import { makeMountedWorkspace } from "../src/shared/workspace.ts";
-import { createChannelWorkspaceResourceLoader } from "../src/pi-session/workspace-resource-loader.ts";
+import { createChannelWorkspaceResourceLoader } from "../src/pi/workspace-resource-loader.ts";
 
 describe("channel workspace resource loader", () => {
   let tempDir = "";
