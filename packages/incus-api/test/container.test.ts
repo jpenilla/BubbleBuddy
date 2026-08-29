@@ -22,7 +22,7 @@ const operation = { id: "op" };
 const notImplemented = (method: string) =>
   Effect.die(new Error(`Unexpected Incus API call: ${method}`));
 
-const makeFakeApi = (overrides: {
+const createFakeApi = (overrides: {
   readonly create?: IncusApiService["instances"]["create"];
   readonly exists?: IncusApiService["instances"]["exists"];
   readonly delete?: IncusApiService["instances"]["delete"];
@@ -52,7 +52,7 @@ const makeFakeApi = (overrides: {
   },
 });
 
-const makeFakeOperations = (
+const createFakeOperations = (
   overrides: Partial<IncusOperationsService> = {},
 ): IncusOperationsService => ({
   wait: () => Effect.succeed({ status: "success", metadata: { return: 0 } }),
@@ -60,9 +60,9 @@ const makeFakeOperations = (
   ...overrides,
 });
 
-const makeLayer = (
+const createLayer = (
   api: IncusApiService,
-  operations: IncusOperationsService = makeFakeOperations(),
+  operations: IncusOperationsService = createFakeOperations(),
 ) =>
   Incus.layer.pipe(
     Layer.provide(Layer.succeed(IncusApi, api)),
@@ -84,7 +84,7 @@ const extractError = <E>(exit: Exit.Exit<unknown, E>): E | undefined => {
 describe("Incus project container API", () => {
   it.effect("creates a scoped ephemeral container bound to a project", () => {
     const calls: Array<unknown> = [];
-    const api = makeFakeApi({
+    const api = createFakeApi({
       create: (payload, options) => {
         calls.push({ payload, options });
         return Effect.succeed(operation);
@@ -101,11 +101,11 @@ describe("Incus project container API", () => {
         assert.match(container.name, /^incus-api-/);
         assert.strictEqual(calls.length, 1);
       }),
-    ).pipe(Effect.provide(makeLayer(api)));
+    ).pipe(Effect.provide(createLayer(api)));
   });
 
   it.effect("exec fails with options error for invalid timeout", () => {
-    const api = makeFakeApi({
+    const api = createFakeApi({
       create: () => Effect.succeed(operation),
       setState: () => Effect.succeed(operation),
     });
@@ -127,13 +127,13 @@ describe("Incus project container API", () => {
         assert.strictEqual(fractionalExit._tag, "Failure");
         assert.instanceOf(extractError(fractionalExit), IncusContainerExecInvalidOptionsError);
       }),
-    ).pipe(Effect.provide(makeLayer(api)));
+    ).pipe(Effect.provide(createLayer(api)));
   });
 
   it.effect("stops an ephemeral container when the scope closes", () => {
     let stopped = false;
     let deleted = false;
-    const api = makeFakeApi({
+    const api = createFakeApi({
       create: () => Effect.succeed(operation),
       setState: () =>
         Effect.sync(() => {
@@ -157,12 +157,12 @@ describe("Incus project container API", () => {
 
       assert.strictEqual(stopped, true);
       assert.strictEqual(deleted, false);
-    }).pipe(Effect.provide(makeLayer(api)));
+    }).pipe(Effect.provide(createLayer(api)));
   });
 
   it.effect("attempts delete when stopping during cleanup fails", () => {
     let deleted = false;
-    const api = makeFakeApi({
+    const api = createFakeApi({
       create: () => Effect.succeed(operation),
       setState: () => Effect.fail(new Error("stop failed") as never),
       delete: () =>
@@ -181,12 +181,12 @@ describe("Incus project container API", () => {
       );
 
       assert.strictEqual(deleted, true);
-    }).pipe(Effect.provide(makeLayer(api)));
+    }).pipe(Effect.provide(createLayer(api)));
   });
 
   it.effect("cleans up when creation succeeds but waiting for start fails", () => {
     let stopped = false;
-    const api = makeFakeApi({
+    const api = createFakeApi({
       create: () => Effect.succeed(operation),
       setState: () =>
         Effect.sync(() => {
@@ -194,7 +194,7 @@ describe("Incus project container API", () => {
           return operation;
         }),
     });
-    const operations = makeFakeOperations({
+    const operations = createFakeOperations({
       wait: () => Effect.fail(new Error("wait failed") as never),
     });
 
@@ -206,12 +206,12 @@ describe("Incus project container API", () => {
 
       assert.strictEqual(exit._tag, "Failure");
       assert.strictEqual(stopped, true);
-    }).pipe(Effect.provide(makeLayer(api, operations)));
+    }).pipe(Effect.provide(createLayer(api, operations)));
   });
 
   it.effect("creates parent directories before writing files when requested", () => {
     const calls: Array<unknown> = [];
-    const api = makeFakeApi({
+    const api = createFakeApi({
       create: () => Effect.succeed(operation),
       setState: () => Effect.succeed(operation),
       stat: (_name, path) => {
@@ -266,11 +266,11 @@ describe("Incus project container API", () => {
           },
         ]);
       }),
-    ).pipe(Effect.provide(makeLayer(api)));
+    ).pipe(Effect.provide(createLayer(api)));
   });
 
   it.effect("mkdir recursive fails when an existing path is not a directory", () => {
-    const api = makeFakeApi({
+    const api = createFakeApi({
       create: () => Effect.succeed(operation),
       setState: () => Effect.succeed(operation),
       stat: (_name, path) =>
@@ -289,6 +289,6 @@ describe("Incus project container API", () => {
         assert.strictEqual(exit._tag, "Failure");
         assert.instanceOf(extractError(exit), IncusContainerPathError);
       }),
-    ).pipe(Effect.provide(makeLayer(api)));
+    ).pipe(Effect.provide(createLayer(api)));
   });
 });

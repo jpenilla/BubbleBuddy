@@ -1,14 +1,20 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Deferred, Effect } from "effect";
 
-import { makePriorityDrainableWorker } from "../src/shared/priority-drainable-worker.ts";
+import { createPriorityDrainableWorker } from "../src/shared/priority-drainable-worker.ts";
 
-describe("makePriorityDrainableWorker", () => {
+const createGate = Effect.gen(function* () {
+  const started = yield* Deferred.make<void>();
+  const release = yield* Deferred.make<void>();
+  return { started, release };
+});
+
+describe("createPriorityDrainableWorker", () => {
   it.effect("processes high priority work before low priority work", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const processed: string[] = [];
-        const worker = yield* makePriorityDrainableWorker((item: string) =>
+        const worker = yield* createPriorityDrainableWorker((item: string) =>
           Effect.sync(() => {
             processed.push(item);
           }),
@@ -23,101 +29,52 @@ describe("makePriorityDrainableWorker", () => {
     ),
   );
 
-  it.effect("waits for low priority work enqueued during active high priority processing", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const processed: string[] = [];
-        const highStarted = yield* Deferred.make<void>();
-        const releaseHigh = yield* Deferred.make<void>();
-        const lowStarted = yield* Deferred.make<void>();
-        const releaseLow = yield* Deferred.make<void>();
-
-        const worker = yield* makePriorityDrainableWorker((item: string) =>
+  for (const testCase of [
+    { active: "high", queued: "low" },
+    { active: "low", queued: "high" },
+  ] as const) {
+    it.effect(
+      `waits for ${testCase.queued} priority work enqueued during active ${testCase.active} priority processing`,
+      () =>
+        Effect.scoped(
           Effect.gen(function* () {
-            if (item === "high") {
-              yield* Deferred.succeed(highStarted, undefined).pipe(Effect.orDie);
-              yield* Deferred.await(releaseHigh);
-            }
+            const processed: string[] = [];
+            const active = yield* createGate;
+            const queued = yield* createGate;
+            const gates = { [testCase.active]: active, [testCase.queued]: queued };
+            const worker = yield* createPriorityDrainableWorker((item: "high" | "low") =>
+              Effect.gen(function* () {
+                const gate = gates[item];
+                yield* Deferred.succeed(gate.started, undefined).pipe(Effect.orDie);
+                yield* Deferred.await(gate.release);
+                processed.push(item);
+              }),
+            );
+            const enqueue = {
+              high: worker.enqueueHigh,
+              low: worker.enqueueLow,
+            };
 
-            if (item === "low") {
-              yield* Deferred.succeed(lowStarted, undefined).pipe(Effect.orDie);
-              yield* Deferred.await(releaseLow);
-            }
+            yield* enqueue[testCase.active](testCase.active);
+            yield* Deferred.await(active.started);
 
-            processed.push(item);
+            const drained = yield* Deferred.make<void>();
+            yield* Effect.forkChild(
+              worker.drain.pipe(
+                Effect.tap(() => Deferred.succeed(drained, undefined).pipe(Effect.orDie)),
+              ),
+            );
+
+            yield* enqueue[testCase.queued](testCase.queued);
+            yield* Deferred.succeed(active.release, undefined).pipe(Effect.orDie);
+            yield* Deferred.await(queued.started);
+            expect(yield* Deferred.isDone(drained)).toBe(false);
+
+            yield* Deferred.succeed(queued.release, undefined).pipe(Effect.orDie);
+            yield* Deferred.await(drained);
+            expect(processed).toEqual([testCase.active, testCase.queued]);
           }),
-        );
-
-        yield* worker.enqueueHigh("high");
-        yield* Deferred.await(highStarted);
-
-        const drained = yield* Deferred.make<void>();
-        yield* Effect.forkChild(
-          worker.drain.pipe(
-            Effect.tap(() => Deferred.succeed(drained, undefined).pipe(Effect.orDie)),
-          ),
-        );
-
-        yield* worker.enqueueLow("low");
-        yield* Deferred.succeed(releaseHigh, undefined).pipe(Effect.orDie);
-        yield* Deferred.await(lowStarted);
-
-        expect(yield* Deferred.isDone(drained)).toBe(false);
-
-        yield* Deferred.succeed(releaseLow, undefined).pipe(Effect.orDie);
-        yield* Deferred.await(drained);
-
-        expect(processed).toEqual(["high", "low"]);
-      }),
-    ),
-  );
-
-  it.effect("waits for high priority work enqueued during active low priority processing", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const processed: string[] = [];
-        const lowStarted = yield* Deferred.make<void>();
-        const releaseLow = yield* Deferred.make<void>();
-        const highStarted = yield* Deferred.make<void>();
-        const releaseHigh = yield* Deferred.make<void>();
-
-        const worker = yield* makePriorityDrainableWorker((item: string) =>
-          Effect.gen(function* () {
-            if (item === "low") {
-              yield* Deferred.succeed(lowStarted, undefined).pipe(Effect.orDie);
-              yield* Deferred.await(releaseLow);
-            }
-
-            if (item === "high") {
-              yield* Deferred.succeed(highStarted, undefined).pipe(Effect.orDie);
-              yield* Deferred.await(releaseHigh);
-            }
-
-            processed.push(item);
-          }),
-        );
-
-        yield* worker.enqueueLow("low");
-        yield* Deferred.await(lowStarted);
-
-        const drained = yield* Deferred.make<void>();
-        yield* Effect.forkChild(
-          worker.drain.pipe(
-            Effect.tap(() => Deferred.succeed(drained, undefined).pipe(Effect.orDie)),
-          ),
-        );
-
-        yield* worker.enqueueHigh("high");
-        yield* Deferred.succeed(releaseLow, undefined).pipe(Effect.orDie);
-        yield* Deferred.await(highStarted);
-
-        expect(yield* Deferred.isDone(drained)).toBe(false);
-
-        yield* Deferred.succeed(releaseHigh, undefined).pipe(Effect.orDie);
-        yield* Deferred.await(drained);
-
-        expect(processed).toEqual(["low", "high"]);
-      }),
-    ),
-  );
+        ),
+    );
+  }
 });

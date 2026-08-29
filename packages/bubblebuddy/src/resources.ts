@@ -4,7 +4,7 @@ import { AppHome } from "./config/env.ts";
 import { FileConfig } from "./config/file.ts";
 import { normalizeLineEndings } from "./shared/text.ts";
 
-const makeLoadedResources = Effect.gen(function* () {
+const createLoadedResources = Effect.gen(function* () {
   const config = yield* FileConfig;
   const appHome = yield* AppHome;
   const fs = yield* FileSystem.FileSystem;
@@ -39,7 +39,7 @@ export class LoadedResources extends Context.Service<
     readonly discordContextTemplate: string;
   }
 >()("bubblebuddy/LoadedResources") {
-  static readonly layerNoDeps = Layer.effect(LoadedResources, makeLoadedResources);
+  static readonly layerNoDeps = Layer.effect(LoadedResources, createLoadedResources);
   static readonly layer = LoadedResources.layerNoDeps.pipe(
     Layer.provide(FileConfig.layer),
     Layer.provide(AppHome.layer),

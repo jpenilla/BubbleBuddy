@@ -1,55 +1,51 @@
-import { SlashCommandBuilder } from "discord.js";
-import { Effect } from "effect";
+import { InteractionContextType, SlashCommandBuilder } from "discord.js";
 
-import { ChannelRuntimes } from "../../channels/channel-runtimes.ts";
-import { isGuildTextChannel } from "../utils.ts";
+import { ChannelSessions } from "../../session/registry.ts";
+import { tryDiscordJsPromise } from "../utils.ts";
 import { createPromptContext } from "../prompt-formatting.ts";
-import type { CommandHandler } from "./types.ts";
+import { createCommand, inGuildTextChannel } from "./command.ts";
 
-export const compactCommand: CommandHandler = {
+export const compactCommand = createCommand({
   data: new SlashCommandBuilder()
     .setName("compact")
     .setDescription("Manually compact this channel's session context.")
+    .setContexts(InteractionContextType.Guild)
     .addStringOption((option) =>
       option
         .setName("instructions")
         .setDescription("Custom instructions for the compaction summary")
         .setRequired(false),
     ),
-  execute: (interaction, { client, guild }) =>
-    Effect.gen(function* () {
-      if (!isGuildTextChannel(interaction.channel)) {
-        yield* Effect.tryPromise(() =>
-          interaction.reply("This command only works in guild text channels."),
-        );
-        return;
-      }
+  execute: inGuildTextChannel(function* (interaction) {
+    const customInstructions = interaction.options.getString("instructions")?.trim() || undefined;
+    yield* tryDiscordJsPromise(() => interaction.deferReply());
+    const sessions = yield* ChannelSessions;
+    const session = yield* sessions.get(interaction.channelId);
+    yield* tryDiscordJsPromise(() => interaction.editReply("Compaction requested."));
+    const result = yield* session.compact({
+      channel: interaction.channel,
+      promptContext: createPromptContext(
+        interaction.client,
+        interaction.channel,
+        interaction.guild.name,
+      ),
+      customInstructions,
+    });
 
-      const customInstructions = interaction.options.getString("instructions")?.trim() || undefined;
-      yield* Effect.tryPromise(() => interaction.deferReply());
-      const sessions = yield* ChannelRuntimes;
-      const runtime = yield* sessions.get(interaction.channelId);
-      yield* Effect.tryPromise(() => interaction.editReply("Compaction requested."));
-      const result = yield* runtime.compact({
-        channel: interaction.channel,
-        promptContext: createPromptContext(client, interaction.channel, guild.name),
-        customInstructions,
-      });
-
-      if (result !== "done") {
-        let reply: string;
-        switch (result) {
-          case "no-session":
-            reply = "No active session for this channel.";
-            break;
-          case "rejected-busy":
-            reply = "A response is already in progress for this channel.";
-            break;
-          case "rejected-compacting":
-            reply = "Compaction is already in progress for this channel.";
-            break;
-        }
-        yield* Effect.tryPromise(() => interaction.editReply(reply));
+    if (result !== "done") {
+      let reply: string;
+      switch (result) {
+        case "no-session":
+          reply = "No active session for this channel.";
+          break;
+        case "rejected-busy":
+          reply = "A response is already in progress for this channel.";
+          break;
+        case "rejected-compacting":
+          reply = "Compaction is already in progress for this channel.";
+          break;
       }
-    }),
-};
+      yield* tryDiscordJsPromise(() => interaction.editReply(reply));
+    }
+  }),
+});

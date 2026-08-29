@@ -31,7 +31,7 @@ export interface IncusConfigService {
   readonly transformClient?: ((client: HttpClient.HttpClient) => HttpClient.HttpClient) | undefined;
 }
 
-const make = (options: IncusConfigOptions = {}): IncusConfigService => ({
+const create = (options: IncusConfigOptions = {}): IncusConfigService => ({
   endpoint:
     options.endpoint?.type === "https"
       ? options.endpoint
@@ -43,5 +43,5 @@ export class IncusConfig extends Context.Service<IncusConfig, IncusConfigService
   "incus-api/IncusConfig",
 ) {
   static layer = (options: IncusConfigOptions = {}) =>
-    Layer.succeed(IncusConfig, IncusConfig.of(make(options)));
+    Layer.succeed(IncusConfig, IncusConfig.of(create(options)));
 }

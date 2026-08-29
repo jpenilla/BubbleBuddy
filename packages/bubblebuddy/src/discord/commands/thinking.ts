@@ -1,23 +1,23 @@
-import { SlashCommandBuilder } from "discord.js";
-import { Effect } from "effect";
+import { InteractionContextType, SlashCommandBuilder } from "discord.js";
 
-import { ChannelRuntimes } from "../../channels/channel-runtimes.ts";
-import type { CommandHandler } from "./types.ts";
+import { ChannelSessions } from "../../session/registry.ts";
+import { tryDiscordJsPromise } from "../utils.ts";
+import { createCommand, inGuildTextChannel } from "./command.ts";
 
-export const thinkingCommand: CommandHandler = {
+export const thinkingCommand = createCommand({
   data: new SlashCommandBuilder()
     .setName("thinking")
-    .setDescription("Toggle thinking messages in this channel."),
-  execute: (interaction) =>
-    Effect.gen(function* () {
-      yield* Effect.tryPromise(() => interaction.deferReply());
-      const sessions = yield* ChannelRuntimes;
-      const runtime = yield* sessions.get(interaction.channelId);
-      const newValue = yield* runtime.toggleShowThinking();
-      yield* Effect.tryPromise(() =>
-        interaction.editReply(
-          `Thinking messages are now ${newValue ? "enabled" : "disabled"} in this channel.`,
-        ),
-      );
-    }),
-};
+    .setDescription("Toggle thinking messages in this channel.")
+    .setContexts(InteractionContextType.Guild),
+  execute: inGuildTextChannel(function* (interaction) {
+    yield* tryDiscordJsPromise(() => interaction.deferReply());
+    const sessions = yield* ChannelSessions;
+    const session = yield* sessions.get(interaction.channelId);
+    const newValue = yield* session.toggleShowThinking;
+    yield* tryDiscordJsPromise(() =>
+      interaction.editReply(
+        `Thinking messages are now ${newValue ? "enabled" : "disabled"} in this channel.`,
+      ),
+    );
+  }),
+});

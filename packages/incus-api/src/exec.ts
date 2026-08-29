@@ -53,7 +53,7 @@ export interface IncusExecResult {
 
 const ControlSignal = Schema.Struct({
   command: Schema.Literal("signal"),
-  signal: Schema.Number,
+  signal: Schema.Int,
 });
 
 const ControlSignalJson = Schema.fromJsonString(ControlSignal);
@@ -62,7 +62,7 @@ const WebSocketSetupTimeoutMs = 5_000;
 const OutputDrainTimeoutSeconds = 5;
 
 const ExecResultMetadata = Schema.Struct({
-  return: Schema.Number,
+  return: Schema.Int,
 });
 
 const createWebSocket = (
@@ -96,7 +96,7 @@ const createWebSocket = (
   });
 };
 
-const makeSocket = (
+const createSocket = (
   config: IncusConfigService,
   operationId: string,
   secret: string,
@@ -197,7 +197,7 @@ const execPayload = (command: readonly string[], options: IncusExecOptions | und
   environment: options?.environment,
 });
 
-const makeExecSockets = (
+const createExecSockets = (
   config: IncusConfigService,
   operation: {
     readonly id: string;
@@ -211,10 +211,10 @@ const makeExecSockets = (
 ) =>
   Effect.all(
     {
-      stdout: makeSocket(config, operation.id, operation.fds.stdout),
-      stderr: makeSocket(config, operation.id, operation.fds.stderr),
-      stdin: makeSocket(config, operation.id, operation.fds.stdin),
-      control: makeSocket(config, operation.id, operation.fds.control),
+      stdout: createSocket(config, operation.id, operation.fds.stdout),
+      stderr: createSocket(config, operation.id, operation.fds.stderr),
+      stdin: createSocket(config, operation.id, operation.fds.stdin),
+      control: createSocket(config, operation.id, operation.fds.control),
     },
     { concurrency: "unbounded" },
   );
@@ -237,7 +237,7 @@ const startOutput = (
   scope: Scope.Scope,
 ) => socket.run((chunk) => runCallback(callback, chunk)).pipe(Effect.forkIn(scope));
 
-const makeControlWriter = (
+const createControlWriter = (
   controlSocket: Socket.Socket,
   controlFiber: Fiber.Fiber<void, Socket.SocketError>,
   scope: Scope.Scope,
@@ -325,14 +325,14 @@ export const execStream = Effect.fn("IncusContainer.execStream")(function* (
 
   return yield* Effect.gen(function* () {
     const scope = yield* Scope.Scope;
-    const sockets = yield* makeExecSockets(config, operation);
+    const sockets = yield* createExecSockets(config, operation);
     const commandTimeoutSeconds = options?.timeoutSeconds;
 
     const stdinFiber = yield* startStdin(sockets.stdin, scope);
     const stdoutFiber = yield* startOutput(sockets.stdout, options?.onStdout, scope);
     const stderrFiber = yield* startOutput(sockets.stderr, options?.onStderr, scope);
     const controlFiber = yield* sockets.control.runRaw(() => {}).pipe(Effect.forkIn(scope));
-    const writeControl = yield* makeControlWriter(sockets.control, controlFiber, scope);
+    const writeControl = yield* createControlWriter(sockets.control, controlFiber, scope);
 
     const awaitOutput = Effect.all([drainOutputFiber(stdoutFiber), drainOutputFiber(stderrFiber)], {
       concurrency: "unbounded",

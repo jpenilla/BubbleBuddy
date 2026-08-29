@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import { listUsableStickers } from "../assets.ts";
 import { DiscordToolContext } from "../tool-context.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
-import { AgentToolError, defineEffectTool } from "../../tools/effect-tool.ts";
+import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
 
 export const sendStickerTool = defineEffectTool({
   name: "discord_send_sticker",

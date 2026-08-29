@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { Type } from "typebox";
 
 import { DiscordJsError } from "../src/discord/utils.ts";
-import { AgentToolError, defineEffectTool } from "../src/tools/effect-tool.ts";
+import { AgentToolError, defineEffectTool } from "../src/pi/effect-tool.ts";
 
 const mockCtx = {} as ExtensionContext;
 

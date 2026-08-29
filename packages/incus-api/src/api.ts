@@ -288,7 +288,7 @@ export class IncusApi extends Context.Service<IncusApi, IncusApiService>()("incu
 
 const IncusOperation = Schema.Struct({
   id: Schema.optionalKey(Schema.String),
-  status_code: Schema.optionalKey(Schema.Number),
+  status_code: Schema.optionalKey(Schema.Int),
   err: Schema.optionalKey(Schema.String),
   metadata: Schema.optionalKey(Schema.Unknown),
 });
@@ -305,7 +305,7 @@ const ExecOperationMetadata = Schema.Struct({
 
 const ExecOperation = Schema.Struct({
   id: Schema.optionalKey(Schema.String),
-  status_code: Schema.optionalKey(Schema.Number),
+  status_code: Schema.optionalKey(Schema.Int),
   err: Schema.optionalKey(Schema.String),
   metadata: ExecOperationMetadata,
 });

@@ -2,10 +2,11 @@ import { expect, it } from "@effect/vitest";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, FileSystem, Layer } from "effect";
-import { ChannelStateRepository } from "../src/channels/state-repository.ts";
+import { SqlClient } from "effect/unstable/sql";
+import { ChannelStateRepository } from "../src/session/state.ts";
 import { AppHome } from "../src/config/env.ts";
 import { DatabaseLive } from "../src/database.ts";
-import { makeTestEnvLayer } from "./helpers.ts";
+import { createTestEnvLayer } from "./helpers.ts";
 
 const withRepo = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
@@ -13,10 +14,10 @@ const withRepo = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     const dir = yield* fs.makeTempDirectoryScoped({ prefix: "bb-channel-state-" });
     return yield* effect.pipe(
       Effect.provide(
-        ChannelStateRepository.layer.pipe(
+        ChannelStateRepository.layerNoDeps.pipe(
           Layer.provideMerge(DatabaseLive),
           Layer.provideMerge(AppHome.layerNoDeps),
-          Layer.provideMerge(makeTestEnvLayer({ appHome: dir })),
+          Layer.provideMerge(createTestEnvLayer({ appHome: dir })),
         ),
       ),
     );
@@ -45,6 +46,7 @@ it.layer(NodeServices.layer)("channel state", (it) => {
   it.effect("clears default-valued fields from storage", () =>
     Effect.gen(function* () {
       const repo = yield* ChannelStateRepository;
+      const sql = yield* SqlClient.SqlClient;
       yield* repo.setActiveSession("789", "session.json");
       yield* repo.setShowThinking("789", true);
       yield* repo.clearActiveSession("789");
@@ -52,6 +54,12 @@ it.layer(NodeServices.layer)("channel state", (it) => {
 
       expect(yield* repo.getActiveSession("789")).toBeUndefined();
       expect(yield* repo.getShowThinking("789")).toBe(false);
+      expect(yield* sql`SELECT channel_id FROM channel_sessions WHERE channel_id = '789'`).toEqual(
+        [],
+      );
+      expect(yield* sql`SELECT channel_id FROM channel_settings WHERE channel_id = '789'`).toEqual(
+        [],
+      );
     }).pipe(withRepo),
   );
 });

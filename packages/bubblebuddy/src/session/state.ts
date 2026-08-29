@@ -1,6 +1,9 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
+import { AppHome } from "../config/env.ts";
+import { DatabaseLive } from "../database.ts";
+
 export const SHOW_THINKING_DEFAULT = false;
 
 export class ChannelStateRepositoryError extends Schema.TaggedError<ChannelStateRepositoryError>()(
@@ -12,14 +15,14 @@ export class ChannelStateRepositoryError extends Schema.TaggedError<ChannelState
   },
 ) {}
 
-const makeChannelStateRepository = Effect.gen(function* () {
+const createChannelStateRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
-  const mapLoadError = (channelId: string) =>
+  const mapToLoadError = (channelId: string) =>
     Effect.mapError(
       (cause) => new ChannelStateRepositoryError({ channelId, operation: "load", cause }),
     );
-  const mapSaveError = (channelId: string) =>
+  const mapToSaveError = (channelId: string) =>
     Effect.mapError(
       (cause) => new ChannelStateRepositoryError({ channelId, operation: "save", cause }),
     );
@@ -37,14 +40,14 @@ const makeChannelStateRepository = Effect.gen(function* () {
           SELECT active_session FROM channel_sessions WHERE channel_id = ${channelId}
         `;
         return rows[0]?.active_session ?? undefined;
-      }).pipe(mapLoadError(channelId)),
+      }).pipe(mapToLoadError(channelId)),
 
     setActiveSession: (channelId, value) =>
       sql`
         INSERT INTO channel_sessions (channel_id, active_session)
         VALUES (${channelId}, ${value})
         ON CONFLICT(channel_id) DO UPDATE SET active_session = excluded.active_session
-      `.pipe(mapSaveError(channelId)),
+      `.pipe(mapToSaveError(channelId)),
 
     clearActiveSession: (channelId) =>
       Effect.gen(function* () {
@@ -52,7 +55,7 @@ const makeChannelStateRepository = Effect.gen(function* () {
           UPDATE channel_sessions SET active_session = NULL WHERE channel_id = ${channelId}
         `;
         yield* deleteDefaultSession(channelId);
-      }).pipe(mapSaveError(channelId)),
+      }).pipe(mapToSaveError(channelId)),
 
     getShowThinking: (channelId) =>
       Effect.gen(function* () {
@@ -60,7 +63,7 @@ const makeChannelStateRepository = Effect.gen(function* () {
           SELECT show_thinking FROM channel_settings WHERE channel_id = ${channelId}
         `;
         return rows[0]?.show_thinking === 1 ? true : SHOW_THINKING_DEFAULT;
-      }).pipe(mapLoadError(channelId)),
+      }).pipe(mapToLoadError(channelId)),
 
     setShowThinking: (channelId, value) =>
       Effect.gen(function* () {
@@ -71,7 +74,7 @@ const makeChannelStateRepository = Effect.gen(function* () {
           ON CONFLICT(channel_id) DO UPDATE SET show_thinking = excluded.show_thinking
         `;
         yield* deleteDefaultSettings(channelId);
-      }).pipe(mapSaveError(channelId)),
+      }).pipe(mapToSaveError(channelId)),
   });
 });
 
@@ -93,5 +96,8 @@ export class ChannelStateRepository extends Context.Service<
     ): Effect.Effect<void, ChannelStateRepositoryError>;
   }
 >()("bubblebuddy/ChannelStateRepository") {
-  static readonly layer = Layer.effect(ChannelStateRepository, makeChannelStateRepository);
+  static readonly layerNoDeps = Layer.effect(ChannelStateRepository, createChannelStateRepository);
+  static readonly layer = ChannelStateRepository.layerNoDeps.pipe(
+    Layer.provide(DatabaseLive.pipe(Layer.provide(AppHome.layer))),
+  );
 }

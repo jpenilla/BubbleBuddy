@@ -43,6 +43,7 @@ export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
       execute: async (toolCallId, input, signal, onUpdate, ctx) => {
         const exit = await Effect.runPromiseExitWith(context)(
           tool.execute(toolCallId, input, onUpdate, ctx).pipe(
+            Effect.scoped,
             Effect.tapError((error) =>
               Effect.logDebug("Tool failed", { toolName: tool.name, toolCallId, error }),
             ),

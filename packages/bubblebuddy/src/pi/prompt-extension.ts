@@ -4,9 +4,9 @@ import {
   composeSystemPrompt,
   renderPromptTemplate,
   type PromptTemplateContext,
-} from "../pi-session/system-prompt.ts";
+} from "./system-prompt.ts";
 
-export interface PromptComposerExtensionOptions {
+export interface CreatePromptComposerExtensionInput {
   readonly botProfile: string;
   readonly discordContextTemplate: string;
   readonly enableAgenticWorkspace: boolean;
@@ -14,20 +14,17 @@ export interface PromptComposerExtensionOptions {
 }
 
 export const createPromptComposerExtension = (
-  options: PromptComposerExtensionOptions,
+  input: CreatePromptComposerExtensionInput,
 ): ExtensionFactory => {
-  const botProfile = renderPromptTemplate(options.botProfile, options.promptContext);
-  const discordContext = renderPromptTemplate(
-    options.discordContextTemplate,
-    options.promptContext,
-  );
+  const botProfile = renderPromptTemplate(input.botProfile, input.promptContext);
+  const discordContext = renderPromptTemplate(input.discordContextTemplate, input.promptContext);
 
   return (pi: ExtensionAPI) => {
     pi.on("before_agent_start", async (event) => ({
       systemPrompt: composeSystemPrompt({
         botProfile,
         discordContext,
-        includeWorkingDirectory: options.enableAgenticWorkspace,
+        includeWorkingDirectory: input.enableAgenticWorkspace,
         systemPromptOptions: event.systemPromptOptions,
       }),
     }));

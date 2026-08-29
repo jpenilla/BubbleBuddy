@@ -1,19 +1,34 @@
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "@effect/vitest";
+import type { GuildTextBasedChannel } from "discord.js";
 import { Deferred, Effect, Exit, Fiber } from "effect";
 
 import {
-  makeDiscordOutputPump,
+  createDiscordOutputPump,
   type DiscordOutputPump,
 } from "../src/discord/session-output-pump.ts";
 
 type SessionEvent = Parameters<DiscordOutputPump["handleSessionEvent"]>[0];
 
 const embedDescription = (payload: unknown): string => {
-  const embed = (payload as { embeds?: Array<{ data?: { description?: string } }> }).embeds?.[0];
-  return embed?.data?.description ?? "";
+  const embed = (payload as { embeds?: readonly unknown[] }).embeds?.[0];
+  if (
+    typeof embed !== "object" ||
+    embed === null ||
+    !("toJSON" in embed) ||
+    typeof embed.toJSON !== "function"
+  ) {
+    return "";
+  }
+  return (embed.toJSON() as { description?: string }).description ?? "";
 };
 
-const makeOutput = (onDiscordOutput: (description: string) => void) => {
+const assistantMessage = (
+  stopReason: AssistantMessage["stopReason"],
+  errorMessage?: string,
+): AssistantMessage => ({ role: "assistant", stopReason, errorMessage }) as AssistantMessage;
+
+const createOutput = (onDiscordOutput: (description: string) => void) => {
   const channel = {
     sendTyping: async () => undefined,
     send: async (payload: unknown) => {
@@ -25,18 +40,18 @@ const makeOutput = (onDiscordOutput: (description: string) => void) => {
       };
     },
   };
-  return makeDiscordOutputPump({
-    channel: channel as never,
-    getShowThinking: () => false,
+  return createDiscordOutputPump({
+    channel: channel as unknown as GuildTextBasedChannel,
+    showThinking: Effect.succeed(false),
   });
 };
 
-describe("channel session Discord output ordering", () => {
+describe("session output pump", () => {
   it.effect("interrupts a running tool Discord action", () =>
     Effect.gen(function* () {
       const exit = yield* Effect.scoped(
         Effect.gen(function* () {
-          const output = yield* makeOutput(() => undefined);
+          const output = yield* createOutput(() => undefined);
           const started = yield* Deferred.make<void>();
           const fiber = yield* output
             .awaitToolDiscordAction(
@@ -62,7 +77,7 @@ describe("channel session Discord output ordering", () => {
       const observed = yield* Effect.scoped(
         Effect.gen(function* () {
           const outputObserved: string[] = [];
-          const output = yield* makeOutput((description) => {
+          const output = yield* createOutput((description) => {
             if (description.includes("**bash**")) {
               outputObserved.push(description.includes("⏳") ? "start" : "success");
             }
@@ -77,7 +92,8 @@ describe("channel session Discord output ordering", () => {
               type: "tool_execution_start",
               toolCallId,
               toolName: "bash",
-            } as SessionEvent);
+              args: {},
+            } satisfies SessionEvent);
           }
 
           yield* Effect.forEach(
@@ -93,7 +109,9 @@ describe("channel session Discord output ordering", () => {
                   type: "tool_execution_end",
                   toolCallId,
                   toolName: "bash",
-                } as SessionEvent);
+                  result: undefined,
+                  isError: false,
+                } satisfies SessionEvent);
               }),
             { concurrency: "unbounded" },
           );
@@ -122,8 +140,8 @@ describe("channel session Discord output ordering", () => {
       events: [
         {
           type: "message_end",
-          message: { role: "assistant", stopReason: "error", errorMessage: "API timeout" },
-        } as SessionEvent,
+          message: assistantMessage("error", "API timeout"),
+        } satisfies SessionEvent,
       ],
       expected: ["❌ **Run failed**\nAPI timeout"],
     },
@@ -132,8 +150,8 @@ describe("channel session Discord output ordering", () => {
       events: [
         {
           type: "message_end",
-          message: { role: "assistant", stopReason: "aborted" },
-        } as SessionEvent,
+          message: assistantMessage("aborted"),
+        } satisfies SessionEvent,
       ],
       expected: ["🛑 **Run aborted**"],
     },
@@ -165,7 +183,7 @@ describe("channel session Discord output ordering", () => {
           success: true,
           attempt: 2,
         },
-      ] as ReadonlyArray<SessionEvent>,
+      ] satisfies ReadonlyArray<SessionEvent>,
       expected: [
         "🔄 **Retrying** (attempt 1)",
         "❌ **Retry failed** — Still rate limited",
@@ -178,7 +196,7 @@ describe("channel session Discord output ordering", () => {
       const observed = yield* Effect.scoped(
         Effect.gen(function* () {
           const outputObserved: string[] = [];
-          const output = yield* makeOutput((description) => outputObserved.push(description));
+          const output = yield* createOutput((description) => outputObserved.push(description));
 
           for (const event of events) {
             output.handleSessionEvent(event);

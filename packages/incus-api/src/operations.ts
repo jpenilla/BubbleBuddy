@@ -22,7 +22,7 @@ export interface IncusOperationsService {
 
 export type IncusOperationsError = IncusApiError;
 
-const make = Effect.gen(function* () {
+const create = Effect.gen(function* () {
   const api = yield* IncusApi;
 
   const withClientTimeout = <A>(
@@ -69,7 +69,7 @@ const make = Effect.gen(function* () {
 export class IncusOperations extends Context.Service<IncusOperations, IncusOperationsService>()(
   "incus-api/IncusOperations",
 ) {
-  static readonly layer = Layer.effect(IncusOperations, make);
+  static readonly layer = Layer.effect(IncusOperations, create);
 }
 
 const OperationWaitGraceSeconds = 5;

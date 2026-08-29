@@ -47,15 +47,15 @@ const channelHostWorkspaceDir = (path: Path.Path, appHome: string, channelId: st
 export const channelHostSessionsDir = (path: Path.Path, appHome: string, channelId: string) =>
   path.join(appHome, "channel", channelId, "sessions");
 
-export const makeChannelMountedWorkspace = (
+export const createChannelMountedWorkspace = (
   path: Path.Path,
   appHome: string,
   channelId: string,
   containerRoot: string,
 ): MountedWorkspace =>
-  makeMountedWorkspace(path, channelHostWorkspaceDir(path, appHome, channelId), containerRoot);
+  createMountedWorkspace(path, channelHostWorkspaceDir(path, appHome, channelId), containerRoot);
 
-export const makeMountedWorkspace = (
+export const createMountedWorkspace = (
   path: Path.Path,
   hostDir: string,
   containerRoot: string,

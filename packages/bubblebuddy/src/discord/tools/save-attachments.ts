@@ -7,7 +7,7 @@ import { sanitizeAttachmentFilename } from "../../shared/workspace.ts";
 import { ATTACHMENTS_SEGMENT } from "../../shared/constants.ts";
 import { ChannelWorkspace, DiscordToolContext } from "../tool-context.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
-import { defineEffectTool } from "../../tools/effect-tool.ts";
+import { defineEffectTool } from "../../pi/effect-tool.ts";
 
 type SaveAttachmentResult =
   | { readonly kind: "saved"; readonly index: number; readonly path: string }

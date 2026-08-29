@@ -4,7 +4,7 @@ import { Context, Effect, Layer, Path } from "effect";
 
 import { FileConfig } from "../config/file.ts";
 
-const makePiContext = Effect.gen(function* () {
+const createPiContext = Effect.gen(function* () {
   const config = yield* FileConfig;
   const path = yield* Path.Path;
   const agentDir = getAgentDir();
@@ -40,6 +40,6 @@ export class PiContext extends Context.Service<
     readonly modelRuntime: ModelRuntime;
   }
 >()("bubblebuddy/pi/PiContext") {
-  static readonly layerNoDeps = Layer.effect(PiContext, makePiContext);
+  static readonly layerNoDeps = Layer.effect(PiContext, createPiContext);
   static readonly layer = PiContext.layerNoDeps.pipe(Layer.provide(FileConfig.layer));
 }
