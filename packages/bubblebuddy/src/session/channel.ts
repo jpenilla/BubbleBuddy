@@ -1,5 +1,5 @@
 import type { GuildTextBasedChannel, Message } from "discord.js";
-import { Effect, Option, Ref, Schema, Scope, ScopedRef, Semaphore } from "effect";
+import { Effect, Option, Ref, Schema, Scope, ScopedRef, Semaphore, SynchronizedRef } from "effect";
 
 import { formatMessageForPrompt } from "../discord/prompt-formatting.ts";
 import { createDiscordOutputPump } from "../discord/session-output-pump.ts";
@@ -76,16 +76,10 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
     const activeSessionRef = yield* Ref.make(
       yield* mapError(repository.getActiveSession(input.channelId)),
     );
-    const showThinkingRef = yield* Ref.make(
+    const showThinkingRef = yield* SynchronizedRef.make(
       yield* mapError(repository.getShowThinking(input.channelId)),
     );
     const piRef = yield* ScopedRef.make<PiSessionHandle | undefined>(() => undefined);
-
-    const setShowThinking = (value: boolean) =>
-      Effect.gen(function* () {
-        yield* mapError(repository.setShowThinking(input.channelId, value));
-        yield* Ref.set(showThinkingRef, value);
-      });
 
     const setActiveSession = (value: string) =>
       Effect.gen(function* () {
@@ -111,7 +105,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
             Effect.gen(function* () {
               const output = yield* createDiscordOutputPump({
                 channel: context.channel,
-                showThinking: Ref.get(showThinkingRef),
+                showThinking: SynchronizedRef.get(showThinkingRef),
               });
               return yield* createPiSession({ ...context, activeSession, output }).pipe(
                 Effect.provide(piServices),
@@ -205,17 +199,17 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
           const pi = yield* getOrCreatePiSession(context);
           return {
             model: pi.getModelInfo(),
-            showThinking: yield* Ref.get(showThinkingRef),
+            showThinking: yield* SynchronizedRef.get(showThinkingRef),
             stats: pi.getSessionStats(),
           };
         }),
       );
 
-    const toggleShowThinking = lock.withPermit(
+    const toggleShowThinking = SynchronizedRef.updateAndGetEffect(showThinkingRef, (current) =>
       Effect.gen(function* () {
-        const value = !(yield* Ref.get(showThinkingRef));
-        yield* setShowThinking(value);
-        return value;
+        const next = !current;
+        yield* mapError(repository.setShowThinking(input.channelId, next));
+        return next;
       }),
     );
 
