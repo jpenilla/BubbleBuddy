@@ -37,7 +37,7 @@ export const makeIncusExtension = (options: IncusExtensionOptions) =>
     const incus = yield* Incus;
     const containerRef = yield* ScopedRef.make<IncusContainer | undefined>(() => undefined);
     const containerLock = yield* Semaphore.make(1);
-    const runPromise = yield* FiberSet.makeRuntimePromise<never>();
+    const runPromise = yield* FiberSet.makeRuntimePromise();
 
     const getContainer = containerLock.withPermit(
       Effect.gen(function* () {

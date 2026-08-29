@@ -184,7 +184,7 @@ export const makeChannelSession = (options: ChannelSessionOptions) =>
             return "rejected-busy" as const;
           }
 
-          yield* ScopedRef.set(piRef, Effect.succeed<PiSessionHandle | undefined>(undefined));
+          yield* ScopedRef.set(piRef, Effect.succeed(undefined));
           yield* clearActiveSession();
           return "discarded" as const;
         }),

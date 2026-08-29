@@ -356,5 +356,5 @@ export const makePiSession = (
           : { id: model.id, name: model.name, provider: model.provider };
       },
       getSessionStats: () => session.getSessionStats(),
-    } satisfies PiSessionHandle;
+    };
   });
