@@ -7,9 +7,9 @@ import type {
 import { Cause, Effect } from "effect";
 
 import type { DiscordEventListener } from "../client.ts";
-import { tryDiscordJsPromise } from "../utils.ts";
+import { isGuildTextChannel, tryDiscordJsPromise } from "../utils.ts";
 
-type GuildChannelInteraction = ChatInputCommandInteraction<"raw" | "cached"> & {
+type GuildTextChannelInteraction = ChatInputCommandInteraction<"raw" | "cached"> & {
   readonly channel: GuildTextBasedChannel;
   readonly guild: Guild;
 };
@@ -81,19 +81,19 @@ export const createCommandDispatcher = (commands: readonly Command[]): CommandDi
     });
 };
 
-const isGuildChannelInteraction = (
+const isGuildTextChannelInteraction = (
   interaction: ChatInputCommandInteraction,
-): interaction is GuildChannelInteraction =>
-  interaction.inGuild() && interaction.channel !== null && interaction.guild !== null;
+): interaction is GuildTextChannelInteraction =>
+  interaction.inGuild() && interaction.guild !== null && isGuildTextChannel(interaction.channel);
 
-export const inGuildChannel = <Eff extends Effect.Effect<unknown, unknown, unknown>, A>(
-  execute: (interaction: GuildChannelInteraction) => Generator<Eff, A, never>,
+export const inGuildTextChannel = <Eff extends Effect.Effect<unknown, unknown, unknown>, A>(
+  execute: (interaction: GuildTextChannelInteraction) => Generator<Eff, A, never>,
 ) =>
   Effect.fnUntraced(function* (interaction: ChatInputCommandInteraction) {
-    if (!isGuildChannelInteraction(interaction)) {
+    if (!isGuildTextChannelInteraction(interaction)) {
       yield* tryDiscordJsPromise(() =>
         interaction.reply({
-          content: "This command only works in guild channels.",
+          content: "This command only works in guild text channels.",
           ephemeral: true,
         }),
       );

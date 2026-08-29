@@ -2,9 +2,9 @@ import { EmbedBuilder, InteractionContextType, SlashCommandBuilder } from "disco
 
 import type { ChannelStatus } from "../../session/channel.ts";
 import { ChannelSessions } from "../../session/registry.ts";
-import { isGuildTextChannel, tryDiscordJsPromise } from "../utils.ts";
+import { tryDiscordJsPromise } from "../utils.ts";
 import { createPromptContext } from "../prompt-formatting.ts";
-import { createCommand, inGuildChannel } from "./command.ts";
+import { createCommand, inGuildTextChannel } from "./command.ts";
 
 const formatNumber = (value: number): string => value.toLocaleString();
 
@@ -70,14 +70,7 @@ export const statusCommand = createCommand({
     .setName("status")
     .setDescription("Show this channel's pi session token, cost, and runtime stats.")
     .setContexts(InteractionContextType.Guild),
-  execute: inGuildChannel(function* (interaction) {
-    if (!isGuildTextChannel(interaction.channel)) {
-      yield* tryDiscordJsPromise(() =>
-        interaction.reply("This command only works in guild text channels."),
-      );
-      return;
-    }
-
+  execute: inGuildTextChannel(function* (interaction) {
     yield* tryDiscordJsPromise(() => interaction.deferReply());
     const sessions = yield* ChannelSessions;
     const session = yield* sessions.get(interaction.channelId);

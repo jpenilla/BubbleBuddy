@@ -1,9 +1,9 @@
 import { InteractionContextType, SlashCommandBuilder } from "discord.js";
 
 import { ChannelSessions } from "../../session/registry.ts";
-import { isGuildTextChannel, tryDiscordJsPromise } from "../utils.ts";
+import { tryDiscordJsPromise } from "../utils.ts";
 import { createPromptContext } from "../prompt-formatting.ts";
-import { createCommand, inGuildChannel } from "./command.ts";
+import { createCommand, inGuildTextChannel } from "./command.ts";
 
 export const compactCommand = createCommand({
   data: new SlashCommandBuilder()
@@ -16,14 +16,7 @@ export const compactCommand = createCommand({
         .setDescription("Custom instructions for the compaction summary")
         .setRequired(false),
     ),
-  execute: inGuildChannel(function* (interaction) {
-    if (!isGuildTextChannel(interaction.channel)) {
-      yield* tryDiscordJsPromise(() =>
-        interaction.reply("This command only works in guild text channels."),
-      );
-      return;
-    }
-
+  execute: inGuildTextChannel(function* (interaction) {
     const customInstructions = interaction.options.getString("instructions")?.trim() || undefined;
     yield* tryDiscordJsPromise(() => interaction.deferReply());
     const sessions = yield* ChannelSessions;
