@@ -105,11 +105,9 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
               channel: context.channel,
               showThinking: SynchronizedRef.get(showThinkingRef),
             });
-            return yield* createPiSession({ ...context, activeSession, output }).pipe(
-              Effect.provide(piServices),
-            );
+            return yield* createPiSession({ ...context, activeSession, output });
           }),
-        ).pipe(mapToChannelSessionError);
+        ).pipe(Effect.provide(piServices), mapToChannelSessionError);
         const pi = yield* ScopedRef.get(piRef);
         if (pi === undefined) {
           return yield* Effect.die("Pi session acquisition produced no session");
