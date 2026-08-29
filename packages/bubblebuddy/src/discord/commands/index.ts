@@ -56,7 +56,7 @@ export const handleCommand = (
           }).pipe(Effect.timeout("3 seconds"), Effect.ignore());
         });
       }),
-      Effect.ignore(),
+      Effect.ignoreCause(),
       Effect.withSpan("CommandHandler.execute", {
         attributes: { commandName: interaction.commandName },
       }),

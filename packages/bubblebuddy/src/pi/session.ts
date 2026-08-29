@@ -248,7 +248,10 @@ export const createPiSession = (
 
     const abort = Effect.gen(function* () {
       pendingQueue = [];
-      session.abortCompaction();
+      yield* Effect.try({
+        try: () => session.abortCompaction(),
+        catch: (cause) => new PiSessionOperationError({ operation: "abort", cause }),
+      });
       yield* Effect.tryPromise({
         try: () => session.abort(),
         catch: (cause) => new PiSessionOperationError({ operation: "abort", cause }),
@@ -320,7 +323,7 @@ export const createPiSession = (
                     catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
                   }),
                 ),
-                Effect.ignore({ log: "Warn", message: "Session activation failed" }),
+                Effect.ignoreCause({ log: "Warn", message: "Session activation failed" }),
               ),
             ),
           );

@@ -156,7 +156,7 @@ const registerForkedEvent = <Event extends keyof ClientEvents, A, E, R>(
     const wrapper = (...args: ClientEvents[Event]): void => {
       runFork(
         Effect.suspend(() => listener(...args)).pipe(
-          Effect.ignore({ log: "Warn", message: "Unhandled error in event handler" }),
+          Effect.ignoreCause({ log: "Warn", message: "Unhandled error in event handler" }),
         ),
       );
     };

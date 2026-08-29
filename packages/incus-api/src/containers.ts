@@ -151,7 +151,13 @@ const acquire = (
     );
     yield* operations
       .wait(operation.id, { project })
-      .pipe(Effect.onError(() => cleanup(api, operations, container).pipe(Effect.ignore)));
+      .pipe(
+        Effect.onError(() =>
+          cleanup(api, operations, container).pipe(
+            Effect.ignore({ log: "Warn", message: "Incus container cleanup failed" }),
+          ),
+        ),
+      );
     return container;
   });
 

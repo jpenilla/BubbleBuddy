@@ -116,8 +116,12 @@ interface McpConnectedServer {
 
 const closeConnection = ({ client, transport }: McpConnection): Effect.Effect<void> =>
   Effect.gen(function* () {
-    yield* Effect.tryPromise(() => client.close()).pipe(Effect.ignore);
-    yield* Effect.tryPromise(() => transport.close()).pipe(Effect.ignore);
+    yield* Effect.tryPromise(() => client.close()).pipe(
+      Effect.ignore({ log: "Warn", message: "Failed to close MCP client" }),
+    );
+    yield* Effect.tryPromise(() => transport.close()).pipe(
+      Effect.ignore({ log: "Warn", message: "Failed to close MCP transport" }),
+    );
   });
 
 const formatToolError = (
