@@ -17,27 +17,31 @@ const INTENTS = [
   GatewayIntentBits.MessageContent,
 ] as const;
 
+export interface DiscordEventListener<Event extends keyof ClientEvents, Return = void> {
+  (...args: ClientEvents[Event]): Return;
+}
+
 export interface DiscordEvents {
   /**
    * Register a plain event listener within the current scope.
    */
   on: <Event extends keyof ClientEvents>(
     event: Event,
-    listener: (...args: ClientEvents[Event]) => void,
+    listener: DiscordEventListener<Event>,
   ) => Effect.Effect<void, never, Scope.Scope>;
   /**
    * Register a plain single-shot event listener within the current scope.
    */
   once: <Event extends keyof ClientEvents>(
     event: Event,
-    listener: (...args: ClientEvents[Event]) => void,
+    listener: DiscordEventListener<Event>,
   ) => Effect.Effect<void, never, Scope.Scope>;
   /**
    * Register an Effectful event listener within the current scope, capturing registration context.
    */
   forkOn: <Event extends keyof ClientEvents, A, E, R>(
     event: Event,
-    listener: (...args: ClientEvents[Event]) => Effect.Effect<A, E, R>,
+    listener: DiscordEventListener<Event, Effect.Effect<A, E, R>>,
   ) => Effect.Effect<void, never, Scope.Scope | R>;
 }
 
@@ -145,9 +149,9 @@ const loginClient = (
   );
 
 const registerForkedEvent = <Event extends keyof ClientEvents, A, E, R>(
-  register: (wrapper: (...args: ClientEvents[Event]) => void) => void,
-  unregister: (wrapper: (...args: ClientEvents[Event]) => void) => void,
-  listener: (...args: ClientEvents[Event]) => Effect.Effect<A, E, R>,
+  register: (wrapper: DiscordEventListener<Event>) => void,
+  unregister: (wrapper: DiscordEventListener<Event>) => void,
+  listener: DiscordEventListener<Event, Effect.Effect<A, E, R>>,
 ): Effect.Effect<void, never, Scope.Scope | R> =>
   Effect.gen(function* () {
     const fibers = yield* FiberSet.make<unknown, never>();

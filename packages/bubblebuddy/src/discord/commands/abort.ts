@@ -1,27 +1,26 @@
 import { SlashCommandBuilder } from "discord.js";
-import { Effect } from "effect";
 
 import { ChannelSessions } from "../../session/registry.ts";
-import type { CommandHandler } from "./types.ts";
+import { tryDiscordJsPromise } from "../utils.ts";
+import { createCommand, inGuildChannel } from "./command.ts";
 
-export const abortCommand: CommandHandler = {
+export const abortCommand = createCommand({
   data: new SlashCommandBuilder()
     .setName("abort")
     .setDescription("Abort the current run, compaction, or retry."),
-  execute: (interaction) =>
-    Effect.gen(function* () {
-      yield* Effect.tryPromise(() => interaction.deferReply());
-      const sessions = yield* ChannelSessions;
-      const session = yield* sessions.get(interaction.channelId);
-      const result = yield* session.abort;
+  execute: inGuildChannel(function* (interaction) {
+    yield* tryDiscordJsPromise(() => interaction.deferReply());
+    const sessions = yield* ChannelSessions;
+    const session = yield* sessions.get(interaction.channelId);
+    const result = yield* session.abort;
 
-      switch (result) {
-        case "aborted":
-          yield* Effect.tryPromise(() => interaction.editReply("Aborted active operation."));
-          return;
-        case "idle":
-          yield* Effect.tryPromise(() => interaction.editReply("Nothing is currently running."));
-          return;
-      }
-    }),
-};
+    switch (result) {
+      case "aborted":
+        yield* tryDiscordJsPromise(() => interaction.editReply("Aborted active operation."));
+        return;
+      case "idle":
+        yield* tryDiscordJsPromise(() => interaction.editReply("Nothing is currently running."));
+        return;
+    }
+  }),
+});

@@ -1,11 +1,10 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { Effect } from "effect";
 
 import type { ChannelStatus } from "../../session/channel.ts";
 import { ChannelSessions } from "../../session/registry.ts";
-import { isGuildTextChannel } from "../utils.ts";
+import { isGuildTextChannel, tryDiscordJsPromise } from "../utils.ts";
 import { createPromptContext } from "../prompt-formatting.ts";
-import type { CommandHandler } from "./types.ts";
+import { createCommand, inGuildChannel } from "./command.ts";
 
 const formatNumber = (value: number): string => value.toLocaleString();
 
@@ -66,28 +65,31 @@ const createStatusEmbed = (status: ChannelStatus): EmbedBuilder => {
     );
 };
 
-export const statusCommand: CommandHandler = {
+export const statusCommand = createCommand({
   data: new SlashCommandBuilder()
     .setName("status")
     .setDescription("Show this channel's pi session token, cost, and runtime stats."),
-  execute: (interaction, { client, guild }) =>
-    Effect.gen(function* () {
-      if (!isGuildTextChannel(interaction.channel)) {
-        yield* Effect.tryPromise(() =>
-          interaction.reply("This command only works in guild text channels."),
-        );
-        return;
-      }
-
-      yield* Effect.tryPromise(() => interaction.deferReply());
-      const sessions = yield* ChannelSessions;
-      const session = yield* sessions.get(interaction.channelId);
-      const status = yield* session.status({
-        channel: interaction.channel,
-        promptContext: createPromptContext(client, interaction.channel, guild.name),
-      });
-      yield* Effect.tryPromise(() =>
-        interaction.editReply({ embeds: [createStatusEmbed(status)] }),
+  execute: inGuildChannel(function* (interaction) {
+    if (!isGuildTextChannel(interaction.channel)) {
+      yield* tryDiscordJsPromise(() =>
+        interaction.reply("This command only works in guild text channels."),
       );
-    }),
-};
+      return;
+    }
+
+    yield* tryDiscordJsPromise(() => interaction.deferReply());
+    const sessions = yield* ChannelSessions;
+    const session = yield* sessions.get(interaction.channelId);
+    const status = yield* session.status({
+      channel: interaction.channel,
+      promptContext: createPromptContext(
+        interaction.client,
+        interaction.channel,
+        interaction.guild.name,
+      ),
+    });
+    yield* tryDiscordJsPromise(() =>
+      interaction.editReply({ embeds: [createStatusEmbed(status)] }),
+    );
+  }),
+});
