@@ -1,7 +1,7 @@
 import { type ChatInputCommandInteraction, Events, type Interaction } from "discord.js";
 import { Cause, Effect, Layer } from "effect";
 
-import { ChannelRuntimes } from "../../channels/channel-runtimes.ts";
+import { ChannelSessions } from "../../channels/channel-sessions.ts";
 import { Discord } from "../client.ts";
 import { abortCommand } from "./abort.ts";
 import { compactCommand } from "./compact.ts";
@@ -25,7 +25,7 @@ const commandRegistry = new Map<string, CommandHandler>(
 export const handleCommand = (
   interaction: ChatInputCommandInteraction,
   context: CommandContext,
-): Effect.Effect<void, never, ChannelRuntimes> =>
+): Effect.Effect<void, never, ChannelSessions> =>
   Effect.gen(function* () {
     const handler = commandRegistry.get(interaction.commandName);
     if (handler === undefined) return;
@@ -75,7 +75,7 @@ export const SlashCommandsLive = Layer.effectDiscard(
     );
     yield* Effect.logInfo("Discord slash commands registered.");
   }),
-).pipe(Layer.provide(Discord.layer), Layer.provide(ChannelRuntimes.layer));
+).pipe(Layer.provide(Discord.layer), Layer.provide(ChannelSessions.layer));
 
 const handleInteraction = (interaction: Interaction) =>
   Effect.gen(function* () {

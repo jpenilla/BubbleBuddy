@@ -1,7 +1,7 @@
 import { Events, type Client, type Message } from "discord.js";
 import { Effect, Layer } from "effect";
 
-import { ChannelRuntimes } from "../channels/channel-runtimes.ts";
+import { ChannelSessions } from "../channels/channel-sessions.ts";
 import { Discord } from "./client.ts";
 import { isGuildTextChannel } from "./utils.ts";
 import { createPromptContext } from "./prompt-formatting.ts";
@@ -32,7 +32,7 @@ export const ActivationLive = Layer.effectDiscard(
       }),
     );
   }),
-).pipe(Layer.provide(Discord.layer), Layer.provide(ChannelRuntimes.layer));
+).pipe(Layer.provide(Discord.layer), Layer.provide(ChannelSessions.layer));
 
 const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
   Effect.gen(function* () {
@@ -52,9 +52,9 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
       return;
     }
 
-    const sessions = yield* ChannelRuntimes;
-    const runtime = yield* sessions.get(message.channel.id);
-    yield* runtime.activate({
+    const sessions = yield* ChannelSessions;
+    const session = yield* sessions.get(message.channel.id);
+    yield* session.activate({
       channel: message.channel,
       originMessage: message,
       promptContext: createPromptContext(client, message.channel, message.guild.name),

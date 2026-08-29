@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
 import { Effect } from "effect";
 
-import { ChannelRuntimes } from "../../channels/channel-runtimes.ts";
+import { ChannelSessions } from "../../channels/channel-sessions.ts";
 import type { CommandHandler } from "./types.ts";
 
 export const abortCommand: CommandHandler = {
@@ -11,9 +11,9 @@ export const abortCommand: CommandHandler = {
   execute: (interaction) =>
     Effect.gen(function* () {
       yield* Effect.tryPromise(() => interaction.deferReply());
-      const sessions = yield* ChannelRuntimes;
-      const runtime = yield* sessions.get(interaction.channelId);
-      const result = yield* runtime.abort();
+      const sessions = yield* ChannelSessions;
+      const session = yield* sessions.get(interaction.channelId);
+      const result = yield* session.abort;
 
       switch (result) {
         case "aborted":

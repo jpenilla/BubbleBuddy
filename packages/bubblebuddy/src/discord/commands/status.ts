@@ -1,8 +1,8 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { Effect } from "effect";
 
-import type { ChannelStatus } from "../../channels/channel-runtime.ts";
-import { ChannelRuntimes } from "../../channels/channel-runtimes.ts";
+import type { ChannelStatus } from "../../channels/channel-session.ts";
+import { ChannelSessions } from "../../channels/channel-sessions.ts";
 import { isGuildTextChannel } from "../utils.ts";
 import { createPromptContext } from "../prompt-formatting.ts";
 import type { CommandHandler } from "./types.ts";
@@ -80,9 +80,9 @@ export const statusCommand: CommandHandler = {
       }
 
       yield* Effect.tryPromise(() => interaction.deferReply());
-      const sessions = yield* ChannelRuntimes;
-      const runtime = yield* sessions.get(interaction.channelId);
-      const status = yield* runtime.status({
+      const sessions = yield* ChannelSessions;
+      const session = yield* sessions.get(interaction.channelId);
+      const status = yield* session.status({
         channel: interaction.channel,
         promptContext: createPromptContext(client, interaction.channel, guild.name),
       });

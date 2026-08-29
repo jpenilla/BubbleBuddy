@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
 import { Effect } from "effect";
 
-import { ChannelRuntimes } from "../../channels/channel-runtimes.ts";
+import { ChannelSessions } from "../../channels/channel-sessions.ts";
 import { isGuildTextChannel } from "../utils.ts";
 import { createPromptContext } from "../prompt-formatting.ts";
 import type { CommandHandler } from "./types.ts";
@@ -27,10 +27,10 @@ export const compactCommand: CommandHandler = {
 
       const customInstructions = interaction.options.getString("instructions")?.trim() || undefined;
       yield* Effect.tryPromise(() => interaction.deferReply());
-      const sessions = yield* ChannelRuntimes;
-      const runtime = yield* sessions.get(interaction.channelId);
+      const sessions = yield* ChannelSessions;
+      const session = yield* sessions.get(interaction.channelId);
       yield* Effect.tryPromise(() => interaction.editReply("Compaction requested."));
-      const result = yield* runtime.compact({
+      const result = yield* session.compact({
         channel: interaction.channel,
         promptContext: createPromptContext(client, interaction.channel, guild.name),
         customInstructions,

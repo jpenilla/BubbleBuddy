@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
 import { Effect } from "effect";
 
-import { ChannelRuntimes } from "../../channels/channel-runtimes.ts";
+import { ChannelSessions } from "../../channels/channel-sessions.ts";
 import type { CommandHandler } from "./types.ts";
 
 export const thinkingCommand: CommandHandler = {
@@ -11,9 +11,9 @@ export const thinkingCommand: CommandHandler = {
   execute: (interaction) =>
     Effect.gen(function* () {
       yield* Effect.tryPromise(() => interaction.deferReply());
-      const sessions = yield* ChannelRuntimes;
-      const runtime = yield* sessions.get(interaction.channelId);
-      const newValue = yield* runtime.toggleShowThinking();
+      const sessions = yield* ChannelSessions;
+      const session = yield* sessions.get(interaction.channelId);
+      const newValue = yield* session.toggleShowThinking;
       yield* Effect.tryPromise(() =>
         interaction.editReply(
           `Thinking messages are now ${newValue ? "enabled" : "disabled"} in this channel.`,

@@ -31,7 +31,7 @@ const makeOutput = (onDiscordOutput: (description: string) => void) => {
   });
 };
 
-describe("channel session Discord output ordering", () => {
+describe("session output pump", () => {
   it.effect("interrupts a running tool Discord action", () =>
     Effect.gen(function* () {
       const exit = yield* Effect.scoped(
