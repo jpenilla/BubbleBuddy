@@ -34,8 +34,7 @@ export const reactTool = defineEffectTool({
           .awaitAction(tryDiscordJsPromise(() => targetMessage.react(emoji)))
           .pipe(Effect.result);
         if (Result.isFailure(result)) {
-          const raw = result.failure.cause;
-          failures.push(`${emoji}: ${raw instanceof Error ? raw.message : String(raw)}`);
+          failures.push(`${emoji}: ${result.failure.message}`);
         }
       }
 
