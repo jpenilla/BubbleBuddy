@@ -67,7 +67,7 @@ export const createIncusExtension = (input: CreateIncusExtensionInput) =>
         );
         const container = yield* ScopedRef.get(containerRef);
         if (container === undefined) {
-          return yield* Effect.die("Incus container acquisition produced no container");
+          return yield* Effect.die(new Error("Incus container acquisition produced no container"));
         }
         return container;
       }),

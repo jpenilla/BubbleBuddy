@@ -110,7 +110,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
         ).pipe(Effect.provide(piServices), mapToChannelSessionError);
         const pi = yield* ScopedRef.get(piRef);
         if (pi === undefined) {
-          return yield* Effect.die("Pi session acquisition produced no session");
+          return yield* Effect.die(new Error("Pi session acquisition produced no session"));
         }
 
         const activeSessionName = pi.getActiveSessionName();
