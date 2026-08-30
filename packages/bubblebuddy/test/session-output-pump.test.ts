@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "@effect/vitest";
 import type { GuildTextBasedChannel } from "discord.js";
 import { Deferred, Effect, Exit, Fiber } from "effect";
@@ -26,7 +26,7 @@ const embedDescription = (payload: unknown): string => {
 const assistantMessage = (
   stopReason: AssistantMessage["stopReason"],
   errorMessage?: string,
-): AssistantMessage => ({ role: "assistant", stopReason, errorMessage }) as AssistantMessage;
+): AssistantMessage => fauxAssistantMessage("", { stopReason, errorMessage });
 
 const createOutput = (onDiscordOutput: (description: string) => void) => {
   const channel = {
@@ -54,7 +54,7 @@ describe("session output pump", () => {
           const output = yield* createOutput(() => undefined);
           const started = yield* Deferred.make<void>();
           const fiber = yield* output
-            .awaitToolDiscordAction(
+            .executeOrdered(
               Effect.gen(function* () {
                 yield* Deferred.succeed(started, undefined);
                 return yield* Effect.never;
@@ -100,7 +100,7 @@ describe("session output pump", () => {
             toolIds,
             (toolCallId) =>
               Effect.gen(function* () {
-                yield* output.awaitToolDiscordAction(
+                yield* output.executeOrdered(
                   Effect.sync(() => {
                     outputObserved.push(`mutate:${toolCallId}`);
                   }),
@@ -136,14 +136,14 @@ describe("session output pump", () => {
 
   it.effect.each([
     {
-      name: "dispatches run error output for message_end with error stopReason",
+      name: "dispatches model request error output for message_end with error stopReason",
       events: [
         {
           type: "message_end",
           message: assistantMessage("error", "API timeout"),
         } satisfies SessionEvent,
       ],
-      expected: ["❌ **Run failed**\nAPI timeout"],
+      expected: ["❌ **Model request failed**\nAPI timeout"],
     },
     {
       name: "dispatches run aborted output for message_end with aborted stopReason",
@@ -185,10 +185,10 @@ describe("session output pump", () => {
         },
       ] satisfies ReadonlyArray<SessionEvent>,
       expected: [
-        "🔄 **Retrying** (attempt 1)",
-        "❌ **Retry failed** — Still rate limited",
-        "🔄 **Retrying** (attempt 2)",
-        "✅ **Retry succeeded**",
+        "🔄 **Retrying** (1/3)...",
+        "❌ **Retry failed after 1 attempt**\nStill rate limited",
+        "🔄 **Retrying** (2/3)...",
+        "✅ **Retry succeeded after 2 attempts**",
       ],
     },
   ])("$name", ({ events, expected }) =>

@@ -22,7 +22,10 @@ const createTool = (channel: GuildTextBasedChannel) =>
   reactTool.pipe(
     Effect.provideService(
       DiscordToolContext,
-      DiscordToolContext.of({ channel, awaitAction: (operation) => operation }),
+      DiscordToolContext.of({
+        channel,
+        executeOrdered: (operation) => operation,
+      }),
     ),
     Effect.runPromise,
   );
