@@ -1,36 +1,56 @@
 import { EmbedBuilder } from "discord.js";
 
-export interface CompactionStatusEmbed {
-  readonly phase: "start" | "success" | "error" | "aborted";
-  readonly reason: "manual" | "threshold" | "overflow";
-  readonly tokensBefore?: number;
-}
+import { truncateDiscordEmbedDescription } from "./response-formatting.ts";
+import { EMBED_COLOR } from "./utils.ts";
 
-const COMPACTION_STATUS_COLOR = {
-  start: 0xf1c40f,
-  success: 0x2ecc71,
-  error: 0xe74c3c,
-  aborted: 0xe74c3c,
-} as const;
+type CompactionReason = "manual" | "threshold" | "overflow";
 
-const formatDescription = (status: CompactionStatusEmbed): string => {
+export type CompactionStatus =
+  | { readonly phase: "start"; readonly reason: CompactionReason }
+  | { readonly phase: "success"; readonly reason: CompactionReason; readonly tokensBefore?: number }
+  | { readonly phase: "error"; readonly reason: CompactionReason; readonly errorMessage?: string }
+  | { readonly phase: "aborted"; readonly reason: CompactionReason };
+
+const phaseColor = (phase: CompactionStatus["phase"]): number => {
+  switch (phase) {
+    case "start":
+      return EMBED_COLOR.pending;
+    case "success":
+      return EMBED_COLOR.success;
+    case "error":
+    case "aborted":
+      return EMBED_COLOR.danger;
+  }
+};
+
+const formatErrorDetail = (errorMessage: string | undefined): string | undefined => {
+  const detail = errorMessage?.replace(/^Compaction failed:\s*/i, "").trim();
+  return detail && detail.length > 0 ? detail : undefined;
+};
+
+const formatDescription = (status: CompactionStatus): string => {
   switch (status.phase) {
     case "start":
-      return status.reason === "manual"
-        ? "🗜️ **Compacting context** ⏳"
+      if (status.reason === "manual") {
+        return "🗜️ **Compacting context** ⏳";
+      }
+      return status.reason === "overflow"
+        ? "🗜️ **Context overflow detected; auto-compacting** ⏳"
         : "🗜️ **Auto-compacting context** ⏳";
     case "success":
       return status.tokensBefore === undefined
         ? "🗜️ **Compaction completed** ✅"
         : `🗜️ **Compaction completed** ✅\nCompacted from ${status.tokensBefore.toLocaleString()} tokens.`;
-    case "error":
-      return "🗜️ **Compaction failed** ❌";
+    case "error": {
+      const detail = formatErrorDetail(status.errorMessage);
+      return `🗜️ **Compaction failed** ❌${detail === undefined ? "" : `\n${detail}`}`;
+    }
     case "aborted":
       return "🗜️ **Compaction cancelled** ❌";
   }
 };
 
-export const createCompactionStatusEmbed = (status: CompactionStatusEmbed): EmbedBuilder =>
+export const createCompactionStatusEmbed = (status: CompactionStatus): EmbedBuilder =>
   new EmbedBuilder()
-    .setColor(COMPACTION_STATUS_COLOR[status.phase])
-    .setDescription(formatDescription(status));
+    .setColor(phaseColor(status.phase))
+    .setDescription(truncateDiscordEmbedDescription(formatDescription(status)));

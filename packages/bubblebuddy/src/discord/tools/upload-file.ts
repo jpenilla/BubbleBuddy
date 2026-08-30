@@ -65,7 +65,7 @@ export const uploadFileTool = defineEffectTool({
       }
 
       const fileName = params.fileName?.trim() || path.basename(resolved.host);
-      yield* context.awaitAction(
+      yield* context.executeOrdered(
         tryDiscordJsPromise((signal) =>
           sendMessageWithAbort(context.channel, signal, {
             content: params.caption,

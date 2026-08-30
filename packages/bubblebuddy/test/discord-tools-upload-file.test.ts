@@ -8,12 +8,12 @@ import { Effect, FileSystem, Path } from "effect";
 
 import { ChannelWorkspace, DiscordToolContext } from "../src/discord/tool-context.ts";
 import { uploadFileTool } from "../src/discord/tools/upload-file.ts";
-import type { AwaitToolDiscordAction } from "../src/discord/session-output-pump.ts";
+import type { ExecuteOrderedDiscordAction } from "../src/discord/session-output-pump.ts";
 import { WORKSPACE_CWD } from "../src/shared/constants.ts";
 import { createMountedWorkspace } from "../src/shared/workspace.ts";
 
 const extensionContext = {} as ExtensionContext;
-const passthrough: AwaitToolDiscordAction = (operation) => operation;
+const passthrough: ExecuteOrderedDiscordAction = (operation) => operation;
 
 const createChannel = (
   premiumTier: GuildPremiumTier,
@@ -35,7 +35,7 @@ const createChannel = (
 const createTool = (
   channel: GuildTextBasedChannel,
   workspaceDir: string,
-  awaitAction: AwaitToolDiscordAction = passthrough,
+  executeOrdered: ExecuteOrderedDiscordAction = passthrough,
 ) =>
   Effect.gen(function* () {
     const path = yield* Path.Path;
@@ -44,7 +44,7 @@ const createTool = (
         ChannelWorkspace,
         ChannelWorkspace.of(createMountedWorkspace(path, workspaceDir, WORKSPACE_CWD)),
       ),
-      Effect.provideService(DiscordToolContext, DiscordToolContext.of({ channel, awaitAction })),
+      Effect.provideService(DiscordToolContext, DiscordToolContext.of({ channel, executeOrdered })),
     );
   });
 

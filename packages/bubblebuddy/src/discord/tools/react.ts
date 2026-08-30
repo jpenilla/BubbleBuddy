@@ -31,7 +31,7 @@ export const reactTool = defineEffectTool({
         }
 
         const result = yield* context
-          .awaitAction(tryDiscordJsPromise(() => targetMessage.react(emoji)))
+          .executeOrdered(tryDiscordJsPromise(() => targetMessage.react(emoji)))
           .pipe(Effect.result);
         if (Result.isFailure(result)) {
           const raw = result.failure.cause;

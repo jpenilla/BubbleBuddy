@@ -12,6 +12,13 @@ import { Effect, Schema } from "effect";
 
 import { splitDiscordMessage } from "./response-formatting.ts";
 
+export const EMBED_COLOR = {
+  danger: 0xe74c3c,
+  pending: 0xf1c40f,
+  success: 0x2ecc71,
+  neutral: 0x5865f2,
+} as const;
+
 export class DiscordJsError extends Schema.TaggedError<DiscordJsError>()("DiscordJsError", {
   message: Schema.String,
   cause: Schema.Defect(),

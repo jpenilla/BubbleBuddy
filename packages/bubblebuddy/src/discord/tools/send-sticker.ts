@@ -27,7 +27,7 @@ export const sendStickerTool = defineEffectTool({
           message: `Sticker ${params.stickerId} is not available here.`,
         });
 
-      yield* context.awaitAction(
+      yield* context.executeOrdered(
         tryDiscordJsPromise(() =>
           context.channel.send({ content: params.caption, stickers: [sticker.sticker.id] }),
         ),

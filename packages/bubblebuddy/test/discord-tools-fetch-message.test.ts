@@ -29,7 +29,10 @@ const createTool = (channel: GuildTextBasedChannel) =>
   fetchMessageTool.pipe(
     Effect.provideService(
       DiscordToolContext,
-      DiscordToolContext.of({ channel, awaitAction: (operation) => operation }),
+      DiscordToolContext.of({
+        channel,
+        executeOrdered: (operation) => operation,
+      }),
     ),
     Effect.runPromise,
   );

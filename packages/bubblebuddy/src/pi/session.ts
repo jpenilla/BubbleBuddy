@@ -187,7 +187,7 @@ export const createPiSession = (
         DiscordToolContext,
         DiscordToolContext.of({
           channel: input.channel,
-          awaitAction: output.awaitToolDiscordAction,
+          executeOrdered: output.executeOrdered,
         }),
       ),
       Layer.succeed(ChannelWorkspace, ChannelWorkspace.of(workspace)),

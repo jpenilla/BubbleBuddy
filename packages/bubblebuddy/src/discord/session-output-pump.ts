@@ -1,30 +1,34 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel, Message } from "discord.js";
-import { Deferred, Effect, Fiber, HashMap, MutableRef, Option, Ref, Scope } from "effect";
+import { Deferred, Effect, MutableRef, Scope } from "effect";
 
 import { createTypingIndicator } from "../discord/typing-indicator.ts";
 
 import {
   createCompactionStatusEmbed,
-  type CompactionStatusEmbed,
+  type CompactionStatus,
 } from "../discord/compaction-status-embed.ts";
 import {
+  createModelRequestErrorEmbed,
   createRetryStatusEmbed,
+  createResponseTruncatedEmbed,
   createRunAbortedEmbed,
   createRunErrorEmbed,
-  type RetryStatusEmbed,
+  type RetryStatus,
 } from "../discord/run-status-embed.ts";
 import { createToolStatusEmbed, type ToolStatusEmbed } from "../discord/tool-status-embed.ts";
 import { sendChunkedMessage, sendOrEditStatusCard, tryDiscordJsPromise } from "../discord/utils.ts";
 import { createPriorityDrainableWorker } from "../shared/priority-drainable-worker.ts";
 import { extractAssistantText, splitThinkingStatus } from "../discord/response-formatting.ts";
 
-export type AwaitToolDiscordAction = <A, E>(operation: Effect.Effect<A, E>) => Effect.Effect<A, E>;
+export type ExecuteOrderedDiscordAction = <A, E>(
+  operation: Effect.Effect<A, E>,
+) => Effect.Effect<A, E>;
 
 export interface DiscordOutputPump {
   readonly handleSessionEvent: (event: AgentSessionEvent) => void;
   readonly reportUnexpectedError: (error: unknown) => void;
-  readonly awaitToolDiscordAction: AwaitToolDiscordAction;
+  readonly executeOrdered: ExecuteOrderedDiscordAction;
   readonly pushActivationMessageId: (messageId: string) => void;
 }
 
@@ -53,83 +57,65 @@ type SessionEvent<Type extends AgentSessionEvent["type"]> = Extract<
   { type: Type }
 >;
 
+interface RetryStatusState {
+  readonly message: Message<true>;
+  readonly attempt: number;
+}
+
 export const createDiscordOutputPump = (
   input: CreateDiscordOutputPumpInput,
 ): Effect.Effect<DiscordOutputPump, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const worker = yield* createPriorityDrainableWorker((job: Effect.Effect<void, unknown>) =>
-      job.pipe(
-        Effect.ignore({
-          log: "Warn",
-          message: `Discord output action failed for channel ${input.channel.id}`,
-        }),
-      ),
+    const outputWorker = yield* createPriorityDrainableWorker(
+      (operation: Effect.Effect<void, unknown>) =>
+        operation.pipe(
+          Effect.ignore({
+            log: "Warn",
+            message: `Discord output action failed for channel ${input.channel.id}`,
+          }),
+        ),
     );
     const channel = input.channel;
-    const ctx = yield* Effect.context();
+    const runtimeContext = yield* Effect.context();
     const typingIndicator = yield* createTypingIndicator({ channel });
 
     const latestTriggerMessageId = MutableRef.make("");
-    const currentTurnReplyTo = yield* Ref.make("");
-    const compactionStatusMessage = yield* Ref.make<Message<true> | undefined>(undefined);
-    const runRetryMessage = yield* Ref.make<Message<true> | undefined>(undefined);
-    const toolStatusMessages = yield* Ref.make(HashMap.empty<string, Message<true>>());
+    let currentTurnReplyTo = "";
+    let compactionStatusMessage: Message<true> | undefined;
+    let retryStatusState: RetryStatusState | undefined;
+    const toolStatusMessages = new Map<string, Message<true>>();
 
-    const resetRunState = Effect.gen(function* () {
-      yield* Ref.set(currentTurnReplyTo, "");
-      yield* Ref.set(runRetryMessage, undefined);
-      yield* Ref.set(toolStatusMessages, HashMap.empty<string, Message<true>>());
-    });
-
-    const enqueueRunDiscordAction = (job: Effect.Effect<void, unknown>): void => {
-      void Effect.runForkWith(ctx)(worker.enqueueHigh(job).pipe(Effect.ignore));
+    const enqueueOutput = (operation: Effect.Effect<void, unknown>): void => {
+      void Effect.runForkWith(runtimeContext)(
+        outputWorker.enqueueHigh(operation).pipe(Effect.ignore),
+      );
     };
 
-    const awaitToolDiscordAction: AwaitToolDiscordAction = <A, E>(operation: Effect.Effect<A, E>) =>
-      Effect.gen(function* () {
-        const deferred = yield* Deferred.make<A, E>();
-        const canceled = yield* Ref.make(false);
-        const runningFiber = yield* Ref.make<Option.Option<Fiber.Fiber<A, E>>>(Option.none());
+    const executeOrdered: ExecuteOrderedDiscordAction = Effect.fn(
+      "DiscordOutputPump.executeOrdered",
+    )(function* <A, E>(operation: Effect.Effect<A, E>) {
+      const result = yield* Deferred.make<A, E>();
+      const canceled = yield* Deferred.make<void>();
+      const queuedOperation = operation.pipe(
+        Effect.exit,
+        Effect.flatMap((exit) => Deferred.done(result, exit)),
+        Effect.asVoid,
+        Effect.raceFirst(Deferred.await(canceled)),
+      );
 
-        const interruptRunningFiber = Effect.gen(function* () {
-          const maybeFiber = yield* Ref.get(runningFiber);
-          if (Option.isSome(maybeFiber)) {
-            yield* Fiber.interrupt(maybeFiber.value);
-          }
-        });
+      return yield* outputWorker.enqueueLow(queuedOperation).pipe(
+        Effect.andThen(Deferred.await(result)),
+        Effect.onInterrupt(() => Deferred.succeed(canceled, undefined)),
+      );
+    });
 
-        yield* worker.enqueueLow(
-          Effect.gen(function* () {
-            if (yield* Ref.get(canceled)) {
-              return;
-            }
-
-            const fiber = yield* Effect.forkChild(operation);
-            yield* Ref.set(runningFiber, Option.some(fiber));
-            const exit = yield* Fiber.await(fiber);
-            yield* Deferred.done(deferred, exit);
-          }).pipe(Effect.onInterrupt(() => interruptRunningFiber)),
-        );
-
-        return yield* Deferred.await(deferred).pipe(
-          Effect.onInterrupt(() =>
-            Effect.gen(function* () {
-              yield* Ref.set(canceled, true);
-              yield* interruptRunningFiber;
-              yield* Deferred.interrupt(deferred);
-            }),
-          ),
-        );
-      });
-
-    const sendCompactionStatus = (status: CompactionStatusEmbed) =>
+    const sendCompactionStatus = (status: CompactionStatus) =>
       Effect.gen(function* () {
         const embed = createCompactionStatusEmbed(status);
-        const existing = yield* Ref.get(compactionStatusMessage);
         const sent = yield* tryDiscordJsPromise(() =>
-          sendOrEditStatusCard(channel, existing, embed),
+          sendOrEditStatusCard(channel, compactionStatusMessage, embed),
         );
-        yield* Ref.set(compactionStatusMessage, status.phase === "start" ? sent : undefined);
+        compactionStatusMessage = status.phase === "start" ? sent : undefined;
       });
 
     const sendFinal = (text: string, replyToMessageId: string) =>
@@ -157,49 +143,67 @@ export const createDiscordOutputPump = (
         }),
       );
 
-    const sendRetryStatus = (status: RetryStatusEmbed) =>
+    const startRetryStatus = (status: Extract<RetryStatus, { phase: "retrying" }>) =>
       Effect.gen(function* () {
         const embed = createRetryStatusEmbed(status);
-        const existing = yield* Ref.get(runRetryMessage);
         const sent = yield* tryDiscordJsPromise(() =>
-          sendOrEditStatusCard(channel, existing, embed),
+          sendOrEditStatusCard(channel, retryStatusState?.message, embed),
         );
-        yield* Ref.set(
-          runRetryMessage,
-          status.phase === "success" || status.phase === "failure" || status.phase === "aborted"
-            ? undefined
-            : sent,
+        retryStatusState = { message: sent, attempt: status.attempt };
+      });
+
+    const finishRetryStatus = (status: Extract<RetryStatus, { phase: "success" | "failure" }>) =>
+      Effect.gen(function* () {
+        const current = retryStatusState;
+        if (status.phase === "success" && current === undefined) {
+          return;
+        }
+        yield* tryDiscordJsPromise(() =>
+          sendOrEditStatusCard(channel, current?.message, createRetryStatusEmbed(status)),
         );
+        retryStatusState = undefined;
       });
 
     const sendRunAborted = () =>
       Effect.gen(function* () {
-        const existing = yield* Ref.get(runRetryMessage);
-        if (existing !== undefined) {
-          const embed = createRetryStatusEmbed({ phase: "aborted" });
-          yield* tryDiscordJsPromise(() => sendOrEditStatusCard(channel, existing, embed));
-          yield* Ref.set(runRetryMessage, undefined);
+        const current = retryStatusState;
+        if (current !== undefined) {
+          const embed = createRetryStatusEmbed({
+            phase: "aborted",
+            attempt: current.attempt,
+          });
+          yield* tryDiscordJsPromise(() => sendOrEditStatusCard(channel, current.message, embed));
+          retryStatusState = undefined;
           return;
         }
         yield* tryDiscordJsPromise(() => channel.send({ embeds: [createRunAbortedEmbed()] }));
       });
 
+    const sendModelRequestError = (errorMessage: string) =>
+      tryDiscordJsPromise(() =>
+        channel.send({ embeds: [createModelRequestErrorEmbed(errorMessage)] }),
+      ).pipe(Effect.asVoid);
+
+    const sendResponseTruncated = tryDiscordJsPromise(() =>
+      channel.send({ embeds: [createResponseTruncatedEmbed()] }),
+    ).pipe(Effect.asVoid);
+
     const sendRunError = (errorMessage: string) =>
-      tryDiscordJsPromise(() => channel.send({ embeds: [createRunErrorEmbed({ errorMessage })] }));
+      tryDiscordJsPromise(() => channel.send({ embeds: [createRunErrorEmbed(errorMessage)] })).pipe(
+        Effect.asVoid,
+      );
 
     const sendToolStatus = (status: ToolStatusEmbed) =>
       Effect.gen(function* () {
         const embed = createToolStatusEmbed(status);
-        const messages = yield* Ref.get(toolStatusMessages);
-        const existing = HashMap.get(messages, status.toolCallId).pipe(Option.getOrUndefined);
         const sent = yield* tryDiscordJsPromise(() =>
-          sendOrEditStatusCard(channel, existing, embed),
+          sendOrEditStatusCard(channel, toolStatusMessages.get(status.toolCallId), embed),
         );
-        yield* Ref.update(toolStatusMessages, (current) =>
-          status.phase === "start"
-            ? HashMap.set(current, status.toolCallId, sent)
-            : HashMap.remove(current, status.toolCallId),
-        );
+        if (status.phase === "start") {
+          toolStatusMessages.set(status.toolCallId, sent);
+        } else {
+          toolStatusMessages.delete(status.toolCallId);
+        }
       });
 
     const sendThinking = (text: string) =>
@@ -207,29 +211,45 @@ export const createDiscordOutputPump = (
         tryDiscordJsPromise(() => channel.send(chunk)),
       ).pipe(Effect.asVoid);
 
-    const onAgentStart = (_event: SessionEvent<"agent_start">) =>
-      resetRunState.pipe(Effect.andThen(typingIndicator.start));
-
-    const onAgentEnd = (_event: SessionEvent<"agent_end">) =>
-      resetRunState.pipe(Effect.andThen(typingIndicator.awaitStop));
+    const onAgentSettled = Effect.gen(function* () {
+      currentTurnReplyTo = "";
+      retryStatusState = undefined;
+      toolStatusMessages.clear();
+      yield* typingIndicator.deactivate;
+    });
 
     const onCompactionStart = (event: SessionEvent<"compaction_start">) =>
       sendCompactionStatus({
         phase: "start",
         reason: event.reason,
-      }).pipe(Effect.tap(() => typingIndicator.refresh));
+      });
 
     const onCompactionEnd = (event: SessionEvent<"compaction_end">) =>
       Effect.gen(function* () {
         if (event.errorMessage !== undefined) {
           yield* Effect.logWarning(event.errorMessage);
         }
-        yield* sendCompactionStatus({
-          phase: event.aborted ? "aborted" : event.result === undefined ? "error" : "success",
-          reason: event.reason,
-          tokensBefore: event.result?.tokensBefore,
-        }).pipe(Effect.tap(() => typingIndicator.refresh));
+        if (event.aborted) {
+          yield* sendCompactionStatus({ phase: "aborted", reason: event.reason });
+        } else if (event.result === undefined) {
+          yield* sendCompactionStatus({
+            phase: "error",
+            reason: event.reason,
+            errorMessage: event.errorMessage,
+          });
+        } else {
+          yield* sendCompactionStatus({
+            phase: "success",
+            reason: event.reason,
+            tokensBefore: event.result.tokensBefore,
+          });
+        }
       });
+
+    const onMessageStart = (event: SessionEvent<"message_start">) =>
+      event.message.role === "assistant" && event.message.stopReason === "pending"
+        ? typingIndicator.activate
+        : Effect.void;
 
     const onMessageEnd = (event: SessionEvent<"message_end">) =>
       Effect.gen(function* () {
@@ -237,31 +257,29 @@ export const createDiscordOutputPump = (
           return;
         }
 
+        yield* typingIndicator.deactivate;
         const msg = event.message;
-        if (msg.stopReason === "error") {
-          yield* typingIndicator.awaitStop;
-          yield* sendRunError(msg.errorMessage ?? "The model request failed.");
-          return;
-        }
-        if (msg.stopReason === "aborted") {
-          yield* typingIndicator.awaitStop;
-          yield* sendRunAborted();
-          return;
-        }
-
         const text = extractAssistantText(msg);
-        if (text.trim().length === 0) {
-          return;
+        if (text.trim().length > 0) {
+          if (msg.stopReason === "stop" || msg.stopReason === "deferred") {
+            yield* sendFinal(text, currentTurnReplyTo);
+          } else {
+            yield* sendIntermediate(text, currentTurnReplyTo);
+          }
         }
 
-        const replyToMessageId = yield* Ref.get(currentTurnReplyTo);
-        if (msg.stopReason === "toolUse") {
-          yield* sendIntermediate(text, replyToMessageId).pipe(
-            Effect.tap(() => typingIndicator.refresh),
-          );
-        } else {
-          yield* typingIndicator.awaitStop;
-          yield* sendFinal(text, replyToMessageId);
+        switch (msg.stopReason) {
+          case "error":
+            yield* sendModelRequestError(
+              msg.errorMessage ?? "The model request failed without an error message.",
+            );
+            break;
+          case "aborted":
+            yield* sendRunAborted();
+            break;
+          case "length":
+            yield* sendResponseTruncated;
+            break;
         }
       });
 
@@ -276,7 +294,7 @@ export const createDiscordOutputPump = (
         }
         const thinking = event.assistantMessageEvent.content.trim();
         if (thinking.length > 0) {
-          yield* sendThinking(thinking).pipe(Effect.tap(() => typingIndicator.refresh));
+          yield* sendThinking(thinking).pipe(Effect.tap(() => typingIndicator.messageSent));
         }
       });
 
@@ -291,19 +309,26 @@ export const createDiscordOutputPump = (
           event.type === "tool_execution_start" ? "start" : event.isError ? "error" : "success",
         toolCallId: event.toolCallId,
         toolName: event.toolName,
-      }).pipe(Effect.tap(() => typingIndicator.refresh));
+      });
     };
 
     const onAutoRetryStart = (event: SessionEvent<"auto_retry_start">) =>
-      sendRetryStatus({
+      startRetryStatus({
         phase: "retrying",
         attempt: event.attempt,
-      }).pipe(Effect.tap(() => typingIndicator.refresh));
+        maxAttempts: event.maxAttempts,
+      });
 
     const onAutoRetryEnd = (event: SessionEvent<"auto_retry_end">) =>
-      sendRetryStatus(
-        event.success ? { phase: "success" } : { phase: "failure", finalError: event.finalError },
-      ).pipe(Effect.tap(() => typingIndicator.refresh));
+      finishRetryStatus(
+        event.success
+          ? { phase: "success", attempt: event.attempt }
+          : {
+              phase: "failure",
+              attempt: event.attempt,
+              finalError: event.finalError,
+            },
+      );
 
     const pushActivationMessageId = (messageId: string): void => {
       MutableRef.set(latestTriggerMessageId, messageId);
@@ -311,50 +336,54 @@ export const createDiscordOutputPump = (
 
     const handleSessionEvent = (event: AgentSessionEvent): void => {
       switch (event.type) {
-        case "agent_start":
-          enqueueRunDiscordAction(onAgentStart(event));
-          break;
-        case "agent_end":
-          enqueueRunDiscordAction(onAgentEnd(event));
+        case "agent_settled":
+          enqueueOutput(onAgentSettled);
           break;
         case "turn_start": {
           const replyToMessageId = MutableRef.get(latestTriggerMessageId);
-          enqueueRunDiscordAction(Ref.set(currentTurnReplyTo, replyToMessageId));
+          enqueueOutput(
+            Effect.sync(() => {
+              currentTurnReplyTo = replyToMessageId;
+            }),
+          );
           break;
         }
         case "compaction_start":
-          enqueueRunDiscordAction(onCompactionStart(event));
+          enqueueOutput(onCompactionStart(event));
           break;
         case "compaction_end":
-          enqueueRunDiscordAction(onCompactionEnd(event));
+          enqueueOutput(onCompactionEnd(event));
+          break;
+        case "message_start":
+          enqueueOutput(onMessageStart(event));
           break;
         case "message_end":
-          enqueueRunDiscordAction(onMessageEnd(event));
+          enqueueOutput(onMessageEnd(event));
           break;
         case "message_update":
-          enqueueRunDiscordAction(onMessageUpdate(event));
+          enqueueOutput(onMessageUpdate(event));
           break;
         case "tool_execution_start":
         case "tool_execution_end":
-          enqueueRunDiscordAction(onToolExecution(event));
+          enqueueOutput(onToolExecution(event));
           break;
         case "auto_retry_start":
-          enqueueRunDiscordAction(onAutoRetryStart(event));
+          enqueueOutput(onAutoRetryStart(event));
           break;
         case "auto_retry_end":
-          enqueueRunDiscordAction(onAutoRetryEnd(event));
+          enqueueOutput(onAutoRetryEnd(event));
           break;
       }
     };
 
     const reportUnexpectedError = (error: unknown): void => {
-      enqueueRunDiscordAction(
-        sendRunError(formatUnexpectedError(error)).pipe(Effect.tap(() => typingIndicator.refresh)),
+      enqueueOutput(
+        typingIndicator.deactivate.pipe(Effect.andThen(sendRunError(formatUnexpectedError(error)))),
       );
     };
 
     yield* Effect.addFinalizer(() =>
-      worker.drain.pipe(
+      outputWorker.drain.pipe(
         Effect.timeout("3 seconds"),
         Effect.ignore({
           log: "Warn",
@@ -366,7 +395,7 @@ export const createDiscordOutputPump = (
     return {
       handleSessionEvent,
       reportUnexpectedError,
-      awaitToolDiscordAction,
+      executeOrdered,
       pushActivationMessageId,
     };
   });
