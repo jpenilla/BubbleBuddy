@@ -1,5 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 
+import { truncateDiscordEmbedDescription } from "./response-formatting.ts";
+
 type CompactionReason = "manual" | "threshold" | "overflow";
 
 export type CompactionStatus =
@@ -43,4 +45,6 @@ const formatDescription = (status: CompactionStatus): string => {
 };
 
 export const createCompactionStatusEmbed = (status: CompactionStatus): EmbedBuilder =>
-  new EmbedBuilder().setColor(COLOR[status.phase]).setDescription(formatDescription(status));
+  new EmbedBuilder()
+    .setColor(COLOR[status.phase])
+    .setDescription(truncateDiscordEmbedDescription(formatDescription(status)));

@@ -1,5 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 
+import { truncateDiscordEmbedDescription } from "./response-formatting.ts";
+
 export type RetryStatus =
   | { readonly phase: "retrying"; readonly attempt: number; readonly maxAttempts: number }
   | { readonly phase: "success"; readonly attempt: number }
@@ -21,12 +23,16 @@ export const createRunAbortedEmbed = (): EmbedBuilder =>
   new EmbedBuilder().setColor(COLOR.abort).setDescription("🛑 **Run aborted**");
 
 export const createRunErrorEmbed = (errorMessage: string): EmbedBuilder =>
-  new EmbedBuilder().setColor(COLOR.error).setDescription(`❌ **Run failed**\n${errorMessage}`);
+  new EmbedBuilder()
+    .setColor(COLOR.error)
+    .setDescription(truncateDiscordEmbedDescription(`❌ **Run failed**\n${errorMessage}`));
 
 export const createModelRequestErrorEmbed = (errorMessage: string): EmbedBuilder =>
   new EmbedBuilder()
     .setColor(COLOR.error)
-    .setDescription(`❌ **Model request failed**\n${errorMessage}`);
+    .setDescription(
+      truncateDiscordEmbedDescription(`❌ **Model request failed**\n${errorMessage}`),
+    );
 
 export const createResponseTruncatedEmbed = (): EmbedBuilder =>
   new EmbedBuilder()
@@ -47,9 +53,11 @@ export const createRetryStatusEmbed = (status: RetryStatus): EmbedBuilder => {
       return new EmbedBuilder()
         .setColor(COLOR.failure)
         .setDescription(
-          `❌ **Retry failed after ${formatAttempts(status.attempt)}**${
-            status.finalError ? `\n${status.finalError}` : ""
-          }`,
+          truncateDiscordEmbedDescription(
+            `❌ **Retry failed after ${formatAttempts(status.attempt)}**${
+              status.finalError ? `\n${status.finalError}` : ""
+            }`,
+          ),
         );
     case "aborted":
       return new EmbedBuilder()

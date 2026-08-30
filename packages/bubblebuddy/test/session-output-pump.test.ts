@@ -156,7 +156,7 @@ describe("session output pump", () => {
       expected: ["🛑 **Run aborted**"],
     },
     {
-      name: "dispatches retry status output for auto_retry_start and auto_retry_end",
+      name: "edits one retry status card across attempts",
       events: [
         {
           type: "auto_retry_start",
@@ -164,12 +164,6 @@ describe("session output pump", () => {
           maxAttempts: 3,
           delayMs: 1000,
           errorMessage: "Rate limited",
-        },
-        {
-          type: "auto_retry_end",
-          success: false,
-          attempt: 1,
-          finalError: "Still rate limited",
         },
         {
           type: "auto_retry_start",
@@ -186,7 +180,6 @@ describe("session output pump", () => {
       ] satisfies ReadonlyArray<SessionEvent>,
       expected: [
         "🔄 **Retrying** (1/3)...",
-        "❌ **Retry failed after 1 attempt**\nStill rate limited",
         "🔄 **Retrying** (2/3)...",
         "✅ **Retry succeeded after 2 attempts**",
       ],
