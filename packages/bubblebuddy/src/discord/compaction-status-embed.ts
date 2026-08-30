@@ -1,6 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 
 import { truncateDiscordEmbedDescription } from "./response-formatting.ts";
+import { EMBED_COLOR } from "./utils.ts";
 
 type CompactionReason = "manual" | "threshold" | "overflow";
 
@@ -10,12 +11,17 @@ export type CompactionStatus =
   | { readonly phase: "error"; readonly reason: CompactionReason; readonly errorMessage?: string }
   | { readonly phase: "aborted"; readonly reason: CompactionReason };
 
-const COLOR = {
-  start: 0xf1c40f,
-  success: 0x2ecc71,
-  error: 0xe74c3c,
-  aborted: 0xe74c3c,
-} as const;
+const phaseColor = (phase: CompactionStatus["phase"]): number => {
+  switch (phase) {
+    case "start":
+      return EMBED_COLOR.pending;
+    case "success":
+      return EMBED_COLOR.success;
+    case "error":
+    case "aborted":
+      return EMBED_COLOR.danger;
+  }
+};
 
 const formatErrorDetail = (errorMessage: string | undefined): string | undefined => {
   const detail = errorMessage?.replace(/^Compaction failed:\s*/i, "").trim();
@@ -46,5 +52,5 @@ const formatDescription = (status: CompactionStatus): string => {
 
 export const createCompactionStatusEmbed = (status: CompactionStatus): EmbedBuilder =>
   new EmbedBuilder()
-    .setColor(COLOR[status.phase])
+    .setColor(phaseColor(status.phase))
     .setDescription(truncateDiscordEmbedDescription(formatDescription(status)));

@@ -2,7 +2,7 @@ import { EmbedBuilder, InteractionContextType, SlashCommandBuilder } from "disco
 
 import type { ChannelStatus } from "../../session/channel.ts";
 import { ChannelSessions } from "../../session/registry.ts";
-import { tryDiscordJsPromise } from "../utils.ts";
+import { EMBED_COLOR, tryDiscordJsPromise } from "../utils.ts";
 import { createPromptContext } from "../prompt-formatting.ts";
 import { createCommand, inGuildTextChannel } from "./command.ts";
 
@@ -20,7 +20,7 @@ const createStatusEmbed = (status: ChannelStatus): EmbedBuilder => {
 
   return new EmbedBuilder()
     .setTitle("Channel status")
-    .setColor(0x5865f2)
+    .setColor(EMBED_COLOR.neutral)
     .addFields(
       {
         name: "Settings",

@@ -1,5 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 
+import { EMBED_COLOR } from "./utils.ts";
+
 export interface ToolStatusEmbed {
   readonly phase: "start" | "success" | "error";
   readonly toolCallId: string;
@@ -14,13 +16,18 @@ const TOOL_STATUS_EMOJI = {
   error: "❌",
 } as const;
 
-const TOOL_STATUS_COLOR = {
-  start: 0xf1c40f,
-  success: 0x2ecc71,
-  error: 0xe74c3c,
-} as const;
+const phaseColor = (phase: ToolStatusEmbed["phase"]): number => {
+  switch (phase) {
+    case "start":
+      return EMBED_COLOR.pending;
+    case "success":
+      return EMBED_COLOR.success;
+    case "error":
+      return EMBED_COLOR.danger;
+  }
+};
 
 export const createToolStatusEmbed = (status: ToolStatusEmbed): EmbedBuilder =>
   new EmbedBuilder()
-    .setColor(TOOL_STATUS_COLOR[status.phase])
+    .setColor(phaseColor(status.phase))
     .setDescription(`${TOOL_EMOJI} **${status.toolName}** ${TOOL_STATUS_EMOJI[status.phase]}`);
