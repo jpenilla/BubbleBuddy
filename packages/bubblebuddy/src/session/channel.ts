@@ -164,12 +164,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
               return "no-session" as const;
 
             const session = yield* getOrCreatePiSession(compaction);
-            yield* session
-              .requestCompaction(compaction.customInstructions)
-              .pipe(
-                mapToChannelSessionError,
-                Effect.ignore({ log: "Warn", message: "Session compaction failed" }),
-              );
+            yield* session.requestCompaction(compaction.customInstructions).pipe(Effect.ignore);
             return "done" as const;
           }),
         )

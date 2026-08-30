@@ -227,7 +227,12 @@ export const createDiscordOutputPump = (
     const onCompactionEnd = (event: SessionEvent<"compaction_end">) =>
       Effect.gen(function* () {
         if (event.errorMessage !== undefined) {
-          yield* Effect.logWarning(event.errorMessage);
+          yield* Effect.logWarning("Compaction failed", {
+            channelId: input.channel.id,
+            reason: event.reason,
+            willRetry: event.willRetry,
+            errorMessage: event.errorMessage,
+          });
         }
         if (event.aborted) {
           yield* sendCompactionStatus({ phase: "aborted", reason: event.reason });
