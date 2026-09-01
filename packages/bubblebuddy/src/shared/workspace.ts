@@ -28,6 +28,9 @@ export type DualPath = {
 export type MountedWorkspace = {
   readonly root: DualPath;
   resolve(...segments: string[]): DualPath;
+  ensureDirectory(
+    ...segments: string[]
+  ): Effect.Effect<DualPath, WorkspacePathError, FileSystem.FileSystem | Path.Path>;
   inside(
     agentPath: string,
   ): Effect.Effect<DualPath, WorkspacePathError, FileSystem.FileSystem | Path.Path>;
@@ -43,6 +46,11 @@ export class WorkspacePathError extends Schema.TaggedError<WorkspacePathError>()
 
 const channelHostWorkspaceDir = (path: Path.Path, appHome: string, channelId: string) =>
   path.join(appHome, "channel", channelId, "workspace");
+
+const isOutside = (path: Path.Path, root: string, candidate: string): boolean => {
+  const relative = path.relative(root, candidate);
+  return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+};
 
 export const channelHostSessionsDir = (path: Path.Path, appHome: string, channelId: string) =>
   path.join(appHome, "channel", channelId, "sessions");
@@ -65,6 +73,45 @@ export const createMountedWorkspace = (
     host: path.resolve(hostDir, ...segments),
     container: posixPath.resolve(containerRoot, ...segments),
   }),
+  ensureDirectory: Effect.fn("MountedWorkspace.ensureDirectory")(
+    function* (...segments: string[]) {
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = path.resolve(hostDir);
+      const candidatePath = path.resolve(workspaceRoot, ...segments);
+      if (isOutside(path, workspaceRoot, candidatePath)) {
+        return yield* new WorkspacePathError({ message: "Directory resolves outside workspace." });
+      }
+
+      const realWorkspaceRoot = yield* fs.realPath(workspaceRoot);
+      let existingPath = candidatePath;
+      while (!(yield* fs.exists(existingPath))) {
+        existingPath = path.dirname(existingPath);
+      }
+      const realExistingPath = yield* fs.realPath(existingPath);
+      if (isOutside(path, realWorkspaceRoot, realExistingPath)) {
+        return yield* new WorkspacePathError({ message: "Directory resolves outside workspace." });
+      }
+
+      yield* fs.makeDirectory(candidatePath, { recursive: true });
+      const realCandidatePath = yield* fs.realPath(candidatePath);
+      if (isOutside(path, realWorkspaceRoot, realCandidatePath)) {
+        return yield* new WorkspacePathError({ message: "Directory resolves outside workspace." });
+      }
+      const relativePath = path.relative(realWorkspaceRoot, realCandidatePath);
+      return {
+        host: realCandidatePath,
+        container: posixPath.resolve(containerRoot, relativePath.replaceAll(path.sep, "/")),
+      };
+    },
+    (effect) =>
+      effect.pipe(
+        Effect.mapError((cause) =>
+          cause instanceof WorkspacePathError
+            ? cause
+            : new WorkspacePathError({ message: "Could not create workspace directory.", cause }),
+        ),
+      ),
+  ),
   inside: Effect.fn("MountedWorkspace.inside")(function* (agentPath: string) {
     const fs = yield* FileSystem.FileSystem;
     const rawPath = agentPath.trim();
@@ -101,11 +148,7 @@ export const createMountedWorkspace = (
       ),
     );
     const relativePath = path.relative(realWorkspaceRoot, realCandidatePath);
-    if (
-      relativePath === ".." ||
-      relativePath.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relativePath)
-    ) {
+    if (isOutside(path, realWorkspaceRoot, realCandidatePath)) {
       return yield* new WorkspacePathError({
         message: `File resolves outside ${containerRoot}: ${agentPath}`,
       });

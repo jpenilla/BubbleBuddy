@@ -20,7 +20,7 @@ export const sendStickerTool = defineEffectTool({
   execute: (_toolCallId, params) =>
     Effect.gen(function* () {
       const context = yield* DiscordToolContext;
-      const stickers = yield* tryDiscordJsPromise(() => listUsableStickers(context));
+      const stickers = yield* listUsableStickers(context);
       const sticker = stickers.find((candidate) => candidate.sticker.id === params.stickerId);
       if (sticker === undefined)
         return yield* new AgentToolError({

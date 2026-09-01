@@ -12,7 +12,11 @@ export const reactTool = defineEffectTool({
   description: "React to a message in the current channel.",
   promptSnippet: "React to a message in the current channel",
   parameters: Type.Object({
-    emojis: Type.Array(Type.String({ description: "Emoji reaction to add" })),
+    emojis: Type.Array(
+      Type.String({
+        description: "Unicode emoji or custom emoji in exact <:name:id> or <a:name:id> syntax",
+      }),
+    ),
     messageId: Type.String({ description: "Message ID" }),
   }),
   execute: (_toolCallId, params) =>
@@ -24,7 +28,7 @@ export const reactTool = defineEffectTool({
       const failures: string[] = [];
 
       for (const input of params.emojis) {
-        const emoji = normalizeReactionEmoji(context, input);
+        const emoji = yield* normalizeReactionEmoji(context, input);
         if (emoji === null) {
           failures.push(`${input}: invalid or not available`);
           continue;

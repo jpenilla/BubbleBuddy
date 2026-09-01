@@ -1,9 +1,16 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
-import { Collection, type GuildTextBasedChannel, type Message } from "discord.js";
+import {
+  Collection,
+  MessageFlagsBitField,
+  StickerFormatType,
+  type GuildTextBasedChannel,
+  type Message,
+} from "discord.js";
 import { Effect } from "effect";
 
 import { DiscordToolContext } from "../src/discord/tool-context.ts";
+import { formatMessageForPrompt } from "../src/discord/prompt-formatting.ts";
 import { fetchMessageTool } from "../src/discord/tools/fetch-message.ts";
 
 const extensionContext = {} as ExtensionContext;
@@ -23,6 +30,9 @@ const createMessage = (options: {
     reference: options.reference ?? null,
     channelId: "channel-1",
     attachments: new Collection(),
+    embeds: [],
+    flags: new MessageFlagsBitField(),
+    stickers: new Collection(),
   }) as unknown as Message<true>;
 
 const createTool = (channel: GuildTextBasedChannel) =>
@@ -74,5 +84,55 @@ describe("fetch message tool", () => {
     );
 
     expect(result.content).toEqual([{ type: "text", text: expected }]);
+  });
+
+  test("includes embed and sticker metadata", () => {
+    const message = {
+      ...createMessage({ content: "Look at this" }),
+      embeds: [
+        {
+          toJSON: () => ({
+            provider: { name: "provider" },
+            author: { name: "author" },
+            title: "title",
+            url: "url",
+            description: "description",
+            fields: [{ name: "field", value: "value" }],
+            footer: {
+              text: "footer",
+              icon_url: "footer-icon",
+              proxy_icon_url: "footer-icon-proxy",
+            },
+            timestamp: "timestamp",
+            image: { url: "image", proxy_url: "image-proxy" },
+            thumbnail: { url: "thumbnail", proxy_url: "thumbnail-proxy" },
+            video: { url: "video", proxy_url: "video-proxy" },
+          }),
+        },
+      ],
+      stickers: new Collection([
+        [
+          "sticker-1",
+          {
+            id: "sticker-1",
+            name: "wave",
+            format: StickerFormatType.APNG,
+            description: "sticker-description",
+            tags: "sticker-tags",
+          },
+        ],
+      ]),
+    } as unknown as Message<true>;
+    const formatted = formatMessageForPrompt(message);
+    expect(formatted).toContain('[embed 0]\n{\n  "provider"');
+    expect(formatted).toContain('"description": "description"');
+    expect(formatted).toContain('"footer": {\n    "text": "footer",\n    "icon": true');
+    expect(formatted).toContain('"video": {}');
+    expect(formatted).not.toContain("proxy");
+    expect(formatted).not.toContain('"url": "image"');
+    expect(formatted).toContain("[/embed 0]");
+    expect(formatted).toContain(
+      "[sticker 0] id=sticker-1 name=wave format=APNG description=sticker-description tags=sticker-tags",
+    );
   });
 });

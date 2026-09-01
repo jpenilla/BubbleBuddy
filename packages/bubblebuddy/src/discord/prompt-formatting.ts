@@ -1,4 +1,12 @@
-import { type Client, type GuildTextBasedChannel, Message } from "discord.js";
+import {
+  type Client,
+  type Embed,
+  type GuildTextBasedChannel,
+  Message,
+  MessageFlags,
+  StickerFormatType,
+  type Sticker,
+} from "discord.js";
 
 import type { PromptTemplateContext } from "../pi/system-prompt.ts";
 import { sanitizeAttachmentFilename } from "../shared/workspace.ts";
@@ -53,12 +61,48 @@ const formatAttachmentsSuffix = (attachments: readonly PromptAttachment[]): stri
   return ` [attachments: ${entries.join(", ")}]`;
 };
 
+const formatEmbedAsset = (
+  asset: { readonly width?: number; readonly height?: number } | undefined,
+) =>
+  asset === undefined
+    ? undefined
+    : {
+        width: asset.width,
+        height: asset.height,
+      };
+
+const formatEmbed = (embed: Embed, index: number): string => {
+  const { author, footer, image, thumbnail, video, ...content } = embed.toJSON();
+  const formatted = {
+    ...content,
+    author:
+      author === undefined
+        ? undefined
+        : {
+            name: author.name,
+            url: author.url,
+            icon: author.icon_url === undefined ? undefined : true,
+          },
+    footer:
+      footer === undefined
+        ? undefined
+        : { text: footer.text, icon: footer.icon_url === undefined ? undefined : true },
+    image: formatEmbedAsset(image),
+    thumbnail: formatEmbedAsset(thumbnail),
+    video: formatEmbedAsset(video),
+  };
+  return `[embed ${index}]\n${JSON.stringify(formatted, undefined, 2)}\n[/embed ${index}]`;
+};
+
+const formatSticker = (sticker: Sticker, index: number): string =>
+  `[sticker ${index}] id=${sticker.id} name=${sticker.name} format=${StickerFormatType[sticker.format]} description=${sticker.description ?? ""} tags=${sticker.tags ?? ""}`;
+
 export const formatMessageForPrompt = (message: Message<true>): string => {
   const attachments = [...message.attachments.values()].map((att) => ({
     name: att.name,
     size: att.size,
   }));
-  return formatIncomingDiscordMessage(
+  const formattedMessage = formatIncomingDiscordMessage(
     message.id,
     message.author.username,
     message.author.id,
@@ -67,6 +111,17 @@ export const formatMessageForPrompt = (message: Message<true>): string => {
     message.reference?.messageId ?? undefined,
     attachments,
   );
+  if (message.flags.has(MessageFlags.IsComponentsV2)) {
+    return `${formattedMessage}\n[Discord Components V2 content display not yet implemented]`;
+  }
+
+  const extraBlocks = [
+    ...message.embeds.map(formatEmbed),
+    ...[...message.stickers.values()].map(formatSticker),
+  ];
+  return extraBlocks.length === 0
+    ? formattedMessage
+    : `${formattedMessage}\n${extraBlocks.join("\n")}`;
 };
 
 export const formatIncomingDiscordMessage = (

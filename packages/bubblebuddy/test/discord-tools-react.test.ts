@@ -10,13 +10,26 @@ const extensionContext = {} as ExtensionContext;
 
 const createChannel = (
   fetch: (id: string) => Promise<{ readonly react: (emoji: string) => Promise<void> }>,
-): GuildTextBasedChannel =>
-  ({
+): GuildTextBasedChannel => {
+  const emojiId = "12345678901234567";
+  const emojiCache = new Map<string, unknown>();
+  const guild = { id: "guild", emojis: { cache: emojiCache } };
+  emojiCache.set(emojiId, {
+    id: emojiId,
+    name: "wave",
+    animated: false,
+    available: true,
+    guild,
+    identifier: `wave:${emojiId}`,
+    roles: { cache: new Map() },
+  });
+  return {
     messages: { fetch },
     permissionsFor: () => null,
     client: { user: { id: "bot" }, emojis: { cache: new Map() } },
-    guild: { id: "guild", emojis: { cache: new Map() } },
-  }) as unknown as GuildTextBasedChannel;
+    guild,
+  } as unknown as GuildTextBasedChannel;
+};
 
 const createTool = (channel: GuildTextBasedChannel) =>
   reactTool.pipe(
@@ -67,12 +80,15 @@ describe("react tool", () => {
     await expect(
       tool.execute(
         "tool-call",
-        { messageId: "message", emojis: ["👍", ":bad:", "🎉"] },
+        {
+          messageId: "message",
+          emojis: ["👍", "<:wave:12345678901234567>", "wave:12345678901234567", ":bad:", "🎉"],
+        },
         undefined,
         undefined,
         extensionContext,
       ),
-    ).rejects.toThrow(/Failed to add reactions:.*:bad:.*blocked/);
-    expect(reacted).toEqual(["👍"]);
+    ).rejects.toThrow(/Failed to add reactions:.*wave:12345678901234567.*:bad:.*blocked/);
+    expect(reacted).toEqual(["👍", "wave:12345678901234567"]);
   });
 });
