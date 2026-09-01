@@ -28,12 +28,8 @@ export type DualPath = {
 export type MountedWorkspace = {
   readonly root: DualPath;
   resolve(...segments: string[]): DualPath;
-  ensureDirectory(
-    ...segments: string[]
-  ): Effect.Effect<DualPath, WorkspacePathError, FileSystem.FileSystem | Path.Path>;
-  inside(
-    agentPath: string,
-  ): Effect.Effect<DualPath, WorkspacePathError, FileSystem.FileSystem | Path.Path>;
+  ensureDirectory(...segments: string[]): Effect.Effect<DualPath, WorkspacePathError>;
+  inside(agentPath: string): Effect.Effect<DualPath, WorkspacePathError>;
 };
 
 export class WorkspacePathError extends Schema.TaggedError<WorkspacePathError>()(
@@ -56,14 +52,21 @@ export const channelHostSessionsDir = (path: Path.Path, appHome: string, channel
   path.join(appHome, "channel", channelId, "sessions");
 
 export const createChannelMountedWorkspace = (
+  fs: FileSystem.FileSystem,
   path: Path.Path,
   appHome: string,
   channelId: string,
   containerRoot: string,
 ): MountedWorkspace =>
-  createMountedWorkspace(path, channelHostWorkspaceDir(path, appHome, channelId), containerRoot);
+  createMountedWorkspace(
+    fs,
+    path,
+    channelHostWorkspaceDir(path, appHome, channelId),
+    containerRoot,
+  );
 
 export const createMountedWorkspace = (
+  fs: FileSystem.FileSystem,
   path: Path.Path,
   hostDir: string,
   containerRoot: string,
@@ -75,7 +78,6 @@ export const createMountedWorkspace = (
   }),
   ensureDirectory: Effect.fn("MountedWorkspace.ensureDirectory")(
     function* (...segments: string[]) {
-      const fs = yield* FileSystem.FileSystem;
       const workspaceRoot = path.resolve(hostDir);
       const candidatePath = path.resolve(workspaceRoot, ...segments);
       if (isOutside(path, workspaceRoot, candidatePath)) {
@@ -113,7 +115,6 @@ export const createMountedWorkspace = (
       ),
   ),
   inside: Effect.fn("MountedWorkspace.inside")(function* (agentPath: string) {
-    const fs = yield* FileSystem.FileSystem;
     const rawPath = agentPath.trim();
     if (rawPath.length === 0)
       return yield* new WorkspacePathError({ message: "Path must not be empty." });

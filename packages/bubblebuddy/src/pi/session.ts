@@ -101,7 +101,13 @@ export const createPiSession = (
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const sessionsDir = channelHostSessionsDir(path, appHome, input.channel.id);
-    const workspace = createChannelMountedWorkspace(path, appHome, input.channel.id, WORKSPACE_CWD);
+    const workspace = createChannelMountedWorkspace(
+      fs,
+      path,
+      appHome,
+      input.channel.id,
+      WORKSPACE_CWD,
+    );
 
     yield* fs
       .makeDirectory(sessionsDir, { recursive: true })

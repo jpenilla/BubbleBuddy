@@ -36,11 +36,12 @@ const createTool = <R>(
   httpClient: HttpClient.HttpClient,
 ) =>
   Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     return yield* tool.pipe(
       Effect.provideService(
         ChannelWorkspace,
-        ChannelWorkspace.of(createMountedWorkspace(path, workspaceDir, WORKSPACE_CWD)),
+        ChannelWorkspace.of(createMountedWorkspace(fs, path, workspaceDir, WORKSPACE_CWD)),
       ),
       Effect.provideService(
         DiscordToolContext,
