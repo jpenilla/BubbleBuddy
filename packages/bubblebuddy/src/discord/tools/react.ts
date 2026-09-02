@@ -28,7 +28,7 @@ export const reactTool = defineEffectTool({
       const failures: string[] = [];
 
       for (const input of params.emojis) {
-        const emoji = yield* normalizeReactionEmoji(context, input);
+        const emoji = normalizeReactionEmoji(context, input);
         if (emoji === null) {
           failures.push(`${input}: invalid or not available`);
           continue;

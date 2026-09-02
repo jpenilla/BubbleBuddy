@@ -61,34 +61,31 @@ const canUseEmojiRoles = (emoji: GuildEmoji): boolean => {
   return emoji.roles.cache.some((role) => member.roles.cache.has(role.id));
 };
 
-export const listUsableCustomEmojis = Effect.fn("listUsableCustomEmojis")(
-  (context: DiscordAssetContext) =>
-    Effect.sync(() => {
-      const allowExternal =
-        currentContextPermissions(context)?.has(PermissionFlagsBits.UseExternalEmojis) ?? false;
-      const currentGuildId = context.channel.guild.id;
-      const candidates = [
-        ...context.channel.guild.emojis.cache.values(),
-        ...(allowExternal
-          ? [...context.channel.client.emojis.cache.values()].filter(
-              (emoji) => emoji.guild.id !== currentGuildId,
-            )
-          : []),
-      ];
+export const listUsableCustomEmojis = (context: DiscordAssetContext) => {
+  const allowExternal =
+    currentContextPermissions(context)?.has(PermissionFlagsBits.UseExternalEmojis) ?? false;
+  const currentGuildId = context.channel.guild.id;
+  const candidates = [
+    ...context.channel.guild.emojis.cache.values(),
+    ...(allowExternal
+      ? [...context.channel.client.emojis.cache.values()].filter(
+          (emoji) => emoji.guild.id !== currentGuildId,
+        )
+      : []),
+  ];
 
-      const usable = uniqueBy(
-        candidates.filter(
-          (emoji) =>
-            emoji.available !== false &&
-            canUseEmojiRoles(emoji) &&
-            (emoji.guild.id === currentGuildId || allowExternal),
-        ),
-        (emoji) => emoji.id,
-      );
+  const usable = uniqueBy(
+    candidates.filter(
+      (emoji) =>
+        emoji.available !== false &&
+        canUseEmojiRoles(emoji) &&
+        (emoji.guild.id === currentGuildId || allowExternal),
+    ),
+    (emoji) => emoji.id,
+  );
 
-      return sortByContextAndName(usable, currentGuildId, (emoji) => emoji.guild.id);
-    }),
-);
+  return sortByContextAndName(usable, currentGuildId, (emoji) => emoji.guild.id);
+};
 
 const sortUsableStickers = (items: ReadonlyArray<UsableSticker>, currentGuildId: string) =>
   [...items].sort((left, right) => {
@@ -101,17 +98,14 @@ const sortUsableStickers = (items: ReadonlyArray<UsableSticker>, currentGuildId:
     );
   });
 
-export const normalizeReactionEmoji = Effect.fn("normalizeReactionEmoji")(function* (
-  context: DiscordAssetContext,
-  input: string,
-) {
+export const normalizeReactionEmoji = (context: DiscordAssetContext, input: string) => {
   const trimmed = input.trim();
   if (!trimmed) {
     return null;
   }
 
   const customEmojiById = new Map(
-    (yield* listUsableCustomEmojis(context)).map((emoji) => [emoji.id, emoji]),
+    listUsableCustomEmojis(context).map((emoji) => [emoji.id, emoji]),
   );
   const parsed = parseEmoji(trimmed);
   if (parsed?.id) {
@@ -123,7 +117,7 @@ export const normalizeReactionEmoji = Effect.fn("normalizeReactionEmoji")(functi
   }
 
   return parsed?.name === trimmed ? parsed.name : null;
-});
+};
 
 export const listUsableStickers = Effect.fn("listUsableStickers")(function* (
   context: DiscordAssetContext,

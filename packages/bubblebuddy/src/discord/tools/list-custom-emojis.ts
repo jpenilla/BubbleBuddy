@@ -15,7 +15,7 @@ export const listCustomEmojisTool = defineEffectTool({
   execute: () =>
     Effect.gen(function* () {
       const context = yield* DiscordToolContext;
-      const emojis = yield* listUsableCustomEmojis(context);
+      const emojis = listUsableCustomEmojis(context);
       if (emojis.length === 0)
         return {
           content: [{ type: "text", text: "No custom emojis are available here." }],

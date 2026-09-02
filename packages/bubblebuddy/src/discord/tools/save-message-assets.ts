@@ -111,10 +111,8 @@ const Indices = Type.Array(Type.Integer({ minimum: 0 }), {
 export const saveMessageAssetsTool = defineEffectTool({
   name: "discord_save_message_assets",
   label: "Save Message Assets",
-  description:
-    "Save explicitly selected message attachments and embed media slots into /workspace.",
-  promptSnippet:
-    "Save explicitly selected Discord message attachments and embed media into /workspace",
+  description: "Save message attachments and embed media into /workspace.",
+  promptSnippet: "Save message attachments and embed media into /workspace",
   parameters: Type.Object({
     messageId: Type.String({ description: "Message ID" }),
     attachments: Type.Optional(Indices),

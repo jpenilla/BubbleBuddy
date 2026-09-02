@@ -78,8 +78,7 @@ const saveStickerAsset = Effect.fn("saveStickerAsset")(function* (
 export const saveAssetsTool = defineEffectTool({
   name: "discord_save_assets",
   label: "Save Discord Assets",
-  description:
-    "Save explicitly selected custom emojis and channel-usable stickers into /workspace.",
+  description: "Save custom emojis and stickers into /workspace.",
   promptSnippet: "Save custom emojis and stickers into /workspace",
   parameters: Type.Object({
     customEmojis: Type.Optional(
