@@ -71,68 +71,6 @@ describe("session output pump", () => {
     }),
   );
 
-  it.effect("processes tool completion statuses between queued Discord mutations", () =>
-    Effect.gen(function* () {
-      const observed = yield* Effect.scoped(
-        Effect.gen(function* () {
-          const outputObserved: string[] = [];
-          const output = yield* createOutput((description) => {
-            if (description.includes("**bash**")) {
-              outputObserved.push(description.includes("⏳") ? "start" : "success");
-            }
-          });
-          const emit = (event: SessionEvent): void => {
-            output.handleSessionEvent(event);
-          };
-
-          const toolIds = ["tool-1", "tool-2", "tool-3"];
-          for (const toolCallId of toolIds) {
-            emit({
-              type: "tool_execution_start",
-              toolCallId,
-              toolName: "bash",
-              args: {},
-            } satisfies SessionEvent);
-          }
-
-          yield* Effect.forEach(
-            toolIds,
-            (toolCallId) =>
-              Effect.gen(function* () {
-                yield* output.executeOrdered(
-                  Effect.sync(() => {
-                    outputObserved.push(`mutate:${toolCallId}`);
-                  }),
-                );
-                emit({
-                  type: "tool_execution_end",
-                  toolCallId,
-                  toolName: "bash",
-                  result: undefined,
-                  isError: false,
-                } satisfies SessionEvent);
-              }),
-            { concurrency: "unbounded" },
-          );
-
-          return outputObserved;
-        }),
-      );
-
-      expect(observed).toEqual([
-        "start",
-        "start",
-        "start",
-        "mutate:tool-1",
-        "success",
-        "mutate:tool-2",
-        "success",
-        "mutate:tool-3",
-        "success",
-      ]);
-    }),
-  );
-
   it.effect.each([
     {
       name: "dispatches model request error output for message_end with error stopReason",

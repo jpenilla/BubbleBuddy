@@ -1,5 +1,5 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import type { GuildTextBasedChannel, Message } from "discord.js";
+import { MessageFlags, type GuildTextBasedChannel, type Message } from "discord.js";
 import { Deferred, Effect, MutableRef, Scope } from "effect";
 
 import { createTypingIndicator } from "../discord/typing-indicator.ts";
@@ -16,7 +16,11 @@ import {
   createRunErrorEmbed,
   type RetryStatus,
 } from "../discord/run-status-embed.ts";
-import { createToolStatusEmbed, type ToolStatusEmbed } from "../discord/tool-status-embed.ts";
+import {
+  createToolStatusComponents,
+  type ToolStatusEntry,
+} from "../discord/tool-status-components.ts";
+import { formatToolDescription } from "../discord/tool-status-formatting.ts";
 import { sendChunkedMessage, sendOrEditStatusCard, tryDiscordJsPromise } from "../discord/utils.ts";
 import { createPriorityDrainableWorker } from "../shared/priority-drainable-worker.ts";
 import { extractAssistantText, splitThinkingStatus } from "../discord/response-formatting.ts";
@@ -63,6 +67,13 @@ interface RetryStatusState {
   readonly attempt: number;
 }
 
+interface ToolStatusGroup {
+  readonly message: Message<true>;
+  readonly entries: ToolStatusEntry[];
+}
+
+const MAX_TOOLS_PER_GROUP = 8;
+
 export const createDiscordOutputPump = (
   input: CreateDiscordOutputPumpInput,
 ): Effect.Effect<DiscordOutputPump, never, Scope.Scope> =>
@@ -84,7 +95,8 @@ export const createDiscordOutputPump = (
     let currentTurnReplyTo = "";
     let compactionStatusMessage: Message<true> | undefined;
     let retryStatusState: RetryStatusState | undefined;
-    const toolStatusMessages = new Map<string, Message<true>>();
+    let appendableToolGroup: ToolStatusGroup | undefined;
+    const toolGroupsByCallId = new Map<string, ToolStatusGroup>();
 
     const enqueueOutput = (operation: Effect.Effect<void, unknown>): void => {
       void Effect.runForkWith(runtimeContext)(
@@ -110,9 +122,19 @@ export const createDiscordOutputPump = (
       );
     });
 
+    const markToolGroupBoundary = (): void => {
+      appendableToolGroup = undefined;
+    };
+
+    const withToolGroupBoundary = <A, E, R>(
+      operation: Effect.Effect<A, E, R>,
+    ): Effect.Effect<A, E, R> => Effect.sync(markToolGroupBoundary).pipe(Effect.andThen(operation));
+
     const sendCompactionStatus = (status: CompactionStatus) =>
       Effect.gen(function* () {
         const embed = createCompactionStatusEmbed(status);
+        const existing = compactionStatusMessage;
+        if (existing === undefined) markToolGroupBoundary();
         const sent = yield* tryDiscordJsPromise(() =>
           sendOrEditStatusCard(channel, compactionStatusMessage, embed),
         );
@@ -129,7 +151,7 @@ export const createDiscordOutputPump = (
             failIfNotExists: false,
           },
         }),
-      );
+      ).pipe(withToolGroupBoundary);
 
     const sendIntermediate = (text: string, replyToMessageId: string) =>
       tryDiscordJsPromise(() =>
@@ -142,13 +164,15 @@ export const createDiscordOutputPump = (
           },
           allowedMentions: { repliedUser: false },
         }),
-      );
+      ).pipe(withToolGroupBoundary);
 
     const startRetryStatus = (status: Extract<RetryStatus, { phase: "retrying" }>) =>
       Effect.gen(function* () {
         const embed = createRetryStatusEmbed(status);
+        const existing = retryStatusState?.message;
+        if (existing === undefined) markToolGroupBoundary();
         const sent = yield* tryDiscordJsPromise(() =>
-          sendOrEditStatusCard(channel, retryStatusState?.message, embed),
+          sendOrEditStatusCard(channel, existing, embed),
         );
         retryStatusState = { message: sent, attempt: status.attempt };
       });
@@ -161,7 +185,7 @@ export const createDiscordOutputPump = (
         }
         yield* tryDiscordJsPromise(() =>
           sendOrEditStatusCard(channel, current?.message, createRetryStatusEmbed(status)),
-        );
+        ).pipe(withToolGroupBoundary);
         retryStatusState = undefined;
       });
 
@@ -177,45 +201,86 @@ export const createDiscordOutputPump = (
           retryStatusState = undefined;
           return;
         }
-        yield* tryDiscordJsPromise(() => channel.send({ embeds: [createRunAbortedEmbed()] }));
+        yield* tryDiscordJsPromise(() => channel.send({ embeds: [createRunAbortedEmbed()] })).pipe(
+          withToolGroupBoundary,
+        );
       });
 
     const sendModelRequestError = (errorMessage: string) =>
       tryDiscordJsPromise(() =>
         channel.send({ embeds: [createModelRequestErrorEmbed(errorMessage)] }),
-      ).pipe(Effect.asVoid);
+      ).pipe(withToolGroupBoundary, Effect.asVoid);
 
     const sendResponseTruncated = tryDiscordJsPromise(() =>
       channel.send({ embeds: [createResponseTruncatedEmbed()] }),
-    ).pipe(Effect.asVoid);
+    ).pipe(withToolGroupBoundary, Effect.asVoid);
 
     const sendRunError = (errorMessage: string) =>
       tryDiscordJsPromise(() => channel.send({ embeds: [createRunErrorEmbed(errorMessage)] })).pipe(
+        withToolGroupBoundary,
         Effect.asVoid,
       );
 
-    const sendToolStatus = (status: ToolStatusEmbed) =>
+    const renderToolGroup = (group: ToolStatusGroup) =>
+      tryDiscordJsPromise(() =>
+        group.message.edit({ components: [createToolStatusComponents(group.entries)] }),
+      ).pipe(Effect.asVoid);
+
+    const startToolStatus = (event: SessionEvent<"tool_execution_start">, observedAt: number) =>
       Effect.gen(function* () {
-        const embed = createToolStatusEmbed(status);
-        const sent = yield* tryDiscordJsPromise(() =>
-          sendOrEditStatusCard(channel, toolStatusMessages.get(status.toolCallId), embed),
-        );
-        if (status.phase === "start") {
-          toolStatusMessages.set(status.toolCallId, sent);
+        const entry: ToolStatusEntry = {
+          phase: "running",
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          description: formatToolDescription(event.toolName, event.args),
+          startedAt: observedAt,
+        };
+
+        let group = appendableToolGroup;
+        if (group === undefined || group.entries.length >= MAX_TOOLS_PER_GROUP) {
+          const entries = [entry];
+          const message = yield* tryDiscordJsPromise(() =>
+            channel.send({
+              flags: MessageFlags.IsComponentsV2,
+              components: [createToolStatusComponents(entries)],
+            }),
+          );
+          group = { message, entries };
+          appendableToolGroup = group;
+          toolGroupsByCallId.set(event.toolCallId, group);
         } else {
-          toolStatusMessages.delete(status.toolCallId);
+          group.entries.push(entry);
+          toolGroupsByCallId.set(event.toolCallId, group);
+          yield* renderToolGroup(group);
         }
+      });
+
+    const finishToolStatus = (event: SessionEvent<"tool_execution_end">, observedAt: number) =>
+      Effect.gen(function* () {
+        const group = toolGroupsByCallId.get(event.toolCallId);
+        if (group === undefined) return;
+        const index = group.entries.findIndex((entry) => entry.toolCallId === event.toolCallId);
+        if (index === -1) return;
+        const current = group.entries[index];
+        group.entries[index] = {
+          ...current,
+          phase: event.isError ? "error" : "success",
+          elapsedMs: Math.max(0, observedAt - current.startedAt),
+        };
+        yield* renderToolGroup(group);
+        toolGroupsByCallId.delete(event.toolCallId);
       });
 
     const sendThinking = (text: string) =>
       Effect.forEach(splitThinkingStatus(text), (chunk) =>
         tryDiscordJsPromise(() => channel.send(chunk)),
-      ).pipe(Effect.asVoid);
+      ).pipe(Effect.asVoid, withToolGroupBoundary);
 
     const onAgentSettled = Effect.gen(function* () {
       currentTurnReplyTo = "";
       retryStatusState = undefined;
-      toolStatusMessages.clear();
+      appendableToolGroup = undefined;
+      toolGroupsByCallId.clear();
       yield* typingIndicator.deactivate;
     });
 
@@ -306,16 +371,14 @@ export const createDiscordOutputPump = (
 
     const onToolExecution = (
       event: SessionEvent<"tool_execution_start"> | SessionEvent<"tool_execution_end">,
+      observedAt: number,
     ) => {
       if (SUPPRESSED_TOOL_STATUS.has(event.toolName)) {
         return Effect.void;
       }
-      return sendToolStatus({
-        phase:
-          event.type === "tool_execution_start" ? "start" : event.isError ? "error" : "success",
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-      });
+      return event.type === "tool_execution_start"
+        ? startToolStatus(event, observedAt)
+        : finishToolStatus(event, observedAt);
     };
 
     const onAutoRetryStart = (event: SessionEvent<"auto_retry_start">) =>
@@ -371,7 +434,7 @@ export const createDiscordOutputPump = (
           break;
         case "tool_execution_start":
         case "tool_execution_end":
-          enqueueOutput(onToolExecution(event));
+          enqueueOutput(onToolExecution(event, Date.now()));
           break;
         case "auto_retry_start":
           enqueueOutput(onAutoRetryStart(event));
