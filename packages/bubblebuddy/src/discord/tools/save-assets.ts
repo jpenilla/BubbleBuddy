@@ -1,4 +1,4 @@
-import { Constants, StickerFormatType, formatEmoji, parseEmoji } from "discord.js";
+import { Constants, FormattingPatterns, StickerFormatType, parseEmoji } from "discord.js";
 import { Effect } from "effect";
 import { Type } from "typebox";
 
@@ -9,17 +9,13 @@ import { listUsableStickers, type UsableSticker } from "../assets.ts";
 import { ChannelWorkspace, DiscordToolContext } from "../tool-context.ts";
 import { AssetSaveError, downloadAsset, runAssetJobs } from "./asset-save.ts";
 
-const saveCustomEmojiAsset = Effect.fn("saveCustomEmojiAsset")(function* (syntax: string) {
+const saveCustomEmojiAsset = Effect.fn("saveCustomEmojiAsset")(function* (input: string) {
   const emoji = yield* Effect.try({
-    try: () => parseEmoji(syntax),
-    catch: () => new AssetSaveError({ message: `Invalid custom emoji syntax: ${syntax}` }),
+    try: () => parseEmoji(input),
+    catch: () => new AssetSaveError({ message: `Invalid custom emoji syntax: ${input}` }),
   });
-  if (
-    emoji === null ||
-    emoji.id === undefined ||
-    formatEmoji({ id: emoji.id, name: emoji.name, animated: emoji.animated }) !== syntax
-  )
-    return yield* new AssetSaveError({ message: `Invalid custom emoji syntax: ${syntax}` });
+  if (emoji?.id === undefined)
+    return yield* new AssetSaveError({ message: `Invalid custom emoji syntax: ${input}` });
 
   const context = yield* DiscordToolContext;
   const workspace = yield* ChannelWorkspace;
@@ -82,10 +78,16 @@ export const saveAssetsTool = defineEffectTool({
   promptSnippet: "Save custom emojis and stickers into /workspace",
   parameters: Type.Object({
     customEmojis: Type.Optional(
-      Type.Array(Type.String({ description: "Exact syntax such as <:wave:123> or <a:wave:123>" }), {
-        minItems: 1,
-        uniqueItems: true,
-      }),
+      Type.Array(
+        Type.String({
+          description: "Exact syntax such as <:wave:123> or <a:dance:456>",
+          pattern: FormattingPatterns.Emoji,
+        }),
+        {
+          minItems: 1,
+          uniqueItems: true,
+        },
+      ),
     ),
     stickers: Type.Optional(
       Type.Array(Type.String({ description: "Sticker ID" }), { minItems: 1, uniqueItems: true }),

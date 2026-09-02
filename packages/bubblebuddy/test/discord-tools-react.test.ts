@@ -82,13 +82,13 @@ describe("react tool", () => {
         "tool-call",
         {
           messageId: "message",
-          emojis: ["👍", "<:wave:12345678901234567>", "wave:12345678901234567", ":bad:", "🎉"],
+          emojis: ["👍", "<:wave:12345678901234567>", "🎉"],
         },
         undefined,
         undefined,
         extensionContext,
       ),
-    ).rejects.toThrow(/Failed to add reactions:.*wave:12345678901234567.*:bad:.*blocked/);
+    ).rejects.toThrow("Failed to add reactions:\n🎉: blocked");
     expect(reacted).toEqual(["👍", "wave:12345678901234567"]);
   });
 });

@@ -1,8 +1,6 @@
 import {
   PermissionFlagsBits,
   StickerType,
-  formatEmoji,
-  parseEmoji,
   type GuildEmoji,
   type GuildTextBasedChannel,
   type Sticker,
@@ -97,27 +95,6 @@ const sortUsableStickers = (items: ReadonlyArray<UsableSticker>, currentGuildId:
       left.sticker.id.localeCompare(right.sticker.id)
     );
   });
-
-export const normalizeReactionEmoji = (context: DiscordAssetContext, input: string) => {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const customEmojiById = new Map(
-    listUsableCustomEmojis(context).map((emoji) => [emoji.id, emoji]),
-  );
-  const parsed = parseEmoji(trimmed);
-  if (parsed?.id) {
-    const match = customEmojiById.get(parsed.id);
-    if (!match || formatEmoji(match) !== trimmed) {
-      return null;
-    }
-    return match.identifier;
-  }
-
-  return parsed?.name === trimmed ? parsed.name : null;
-};
 
 export const listUsableStickers = Effect.fn("listUsableStickers")(function* (
   context: DiscordAssetContext,

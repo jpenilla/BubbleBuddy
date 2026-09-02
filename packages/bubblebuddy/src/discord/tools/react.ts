@@ -1,7 +1,8 @@
+import { parseEmoji } from "discord.js";
 import { Effect, Result } from "effect";
 import { Type } from "typebox";
 
-import { normalizeReactionEmoji } from "../assets.ts";
+import { listUsableCustomEmojis } from "../assets.ts";
 import { DiscordToolContext } from "../tool-context.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
 import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
@@ -16,6 +17,10 @@ export const reactTool = defineEffectTool({
       Type.String({
         description: "Unicode emoji or custom emoji in exact <:name:id> or <a:name:id> syntax",
       }),
+      {
+        minItems: 1,
+        uniqueItems: true,
+      },
     ),
     messageId: Type.String({ description: "Message ID" }),
   }),
@@ -25,11 +30,17 @@ export const reactTool = defineEffectTool({
       const targetMessage = yield* tryDiscordJsPromise(() =>
         context.channel.messages.fetch(params.messageId),
       );
+      const customEmojiById = new Map(
+        listUsableCustomEmojis(context).map((emoji) => [emoji.id, emoji]),
+      );
       const failures: string[] = [];
 
       for (const input of params.emojis) {
-        const emoji = normalizeReactionEmoji(context, input);
-        if (emoji === null) {
+        const parsed = parseEmoji(input.trim());
+        const emoji = parsed?.id
+          ? customEmojiById.get(parsed.id)?.identifier
+          : parsed?.name || undefined;
+        if (emoji === undefined) {
           failures.push(`${input}: invalid or not available`);
           continue;
         }
@@ -45,7 +56,7 @@ export const reactTool = defineEffectTool({
 
       if (failures.length > 0) {
         return yield* new AgentToolError({
-          message: `Failed to add reactions: ${failures.join("; ")}`,
+          message: `Failed to add reactions:\n${failures.join("\n")}`,
         });
       }
       return {
