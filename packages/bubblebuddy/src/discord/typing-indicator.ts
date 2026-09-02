@@ -1,4 +1,4 @@
-import type { GuildTextBasedChannel } from "discord.js";
+import { Routes, type GuildTextBasedChannel } from "discord.js";
 import { Clock, Data, Deferred, Effect, Queue, Scope } from "effect";
 
 import { tryDiscordJsPromise } from "./utils.ts";
@@ -31,8 +31,11 @@ export const createTypingIndicator = (
   Effect.gen(function* () {
     const commands = yield* Effect.acquireRelease(Queue.unbounded<TypingCommand>(), Queue.shutdown);
 
-    const sendTyping = tryDiscordJsPromise(() => input.channel.sendTyping()).pipe(
+    const sendTyping = tryDiscordJsPromise((signal) =>
+      input.channel.client.rest.post(Routes.channelTyping(input.channel.id), { signal }),
+    ).pipe(
       Effect.timeout(SEND_TYPING_TIMEOUT_MS),
+      Effect.withSpan("TypingIndicator.sendTyping"),
       Effect.ignore({
         log: "Warn",
         message: `Failed to send typing indicator for channel ${input.channel.id}`,
@@ -84,15 +87,21 @@ export const createTypingIndicator = (
 
     yield* Effect.forkScoped(run);
 
-    const activate = Queue.offer(commands, TypingCommand.Activate()).pipe(Effect.asVoid);
+    const activate = Queue.offer(commands, TypingCommand.Activate()).pipe(
+      Effect.asVoid,
+      Effect.withSpan("TypingIndicator.activate"),
+    );
 
     const deactivate = Effect.gen(function* () {
       const completed = yield* Deferred.make<void>();
       yield* Queue.offer(commands, TypingCommand.Deactivate({ completed }));
       yield* Deferred.await(completed);
-    });
+    }).pipe(Effect.withSpan("TypingIndicator.deactivate"));
 
-    const messageSent = Queue.offer(commands, TypingCommand.MessageSent()).pipe(Effect.asVoid);
+    const messageSent = Queue.offer(commands, TypingCommand.MessageSent()).pipe(
+      Effect.asVoid,
+      Effect.withSpan("TypingIndicator.messageSent"),
+    );
 
     return {
       activate,

@@ -30,7 +30,6 @@ const assistantMessage = (
 
 const createOutput = (onDiscordOutput: (description: string) => void) => {
   const channel = {
-    sendTyping: async () => undefined,
     send: async (payload: unknown) => {
       onDiscordOutput(embedDescription(payload));
       return {
