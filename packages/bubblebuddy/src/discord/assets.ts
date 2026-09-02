@@ -1,11 +1,13 @@
 import {
   PermissionFlagsBits,
   StickerType,
-  parseEmoji,
   type GuildEmoji,
   type GuildTextBasedChannel,
   type Sticker,
 } from "discord.js";
+import { Effect } from "effect";
+
+import { tryDiscordJsPromise } from "./utils.ts";
 
 export type DiscordAssetContext = {
   readonly channel: GuildTextBasedChannel;
@@ -57,13 +59,7 @@ const canUseEmojiRoles = (emoji: GuildEmoji): boolean => {
   return emoji.roles.cache.some((role) => member.roles.cache.has(role.id));
 };
 
-export const formatCustomEmojiMessageSyntax = (emoji: GuildEmoji): string =>
-  `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>`;
-
-export const formatCustomEmojiReactionSyntax = (emoji: GuildEmoji): string =>
-  `${emoji.animated ? "a:" : ""}${emoji.name}:${emoji.id}`;
-
-export const listUsableCustomEmojis = (context: DiscordAssetContext): GuildEmoji[] => {
+export const listUsableCustomEmojis = (context: DiscordAssetContext) => {
   const allowExternal =
     currentContextPermissions(context)?.has(PermissionFlagsBits.UseExternalEmojis) ?? false;
   const currentGuildId = context.channel.guild.id;
@@ -100,45 +96,9 @@ const sortUsableStickers = (items: ReadonlyArray<UsableSticker>, currentGuildId:
     );
   });
 
-export const normalizeReactionEmoji = (
+export const listUsableStickers = Effect.fn("listUsableStickers")(function* (
   context: DiscordAssetContext,
-  input: string,
-): string | null => {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const customEmojiById = new Map(
-    listUsableCustomEmojis(context).map((emoji) => [emoji.id, emoji]),
-  );
-  const aliasMatch = trimmed.match(/^:([A-Za-z0-9_]{2,32}):$/);
-  if (aliasMatch) {
-    const alias = aliasMatch[1]!.toLowerCase();
-    const matches = [...customEmojiById.values()].filter(
-      (emoji) => emoji.name.toLowerCase() === alias,
-    );
-    if (matches.length !== 1) {
-      return null;
-    }
-    return formatCustomEmojiReactionSyntax(matches[0]!);
-  }
-
-  const parsed = parseEmoji(trimmed);
-  if (parsed?.id) {
-    const match = customEmojiById.get(parsed.id);
-    if (!match) {
-      return null;
-    }
-    return formatCustomEmojiReactionSyntax(match);
-  }
-
-  return trimmed;
-};
-
-export const listUsableStickers = async (
-  context: DiscordAssetContext,
-): Promise<UsableSticker[]> => {
+) {
   const allowExternal =
     currentContextPermissions(context)?.has(PermissionFlagsBits.UseExternalStickers) ?? false;
   const currentGuildId = context.channel.guild.id;
@@ -151,9 +111,8 @@ export const listUsableStickers = async (
       : []),
   ];
 
-  const standardCandidates = [
-    ...(await context.channel.client.fetchStickerPacks()).values(),
-  ].flatMap((pack) =>
+  const packs = yield* tryDiscordJsPromise(() => context.channel.client.fetchStickerPacks());
+  const standardCandidates = [...packs.values()].flatMap((pack) =>
     [...pack.stickers.values()].map((sticker) => ({
       guildId: null,
       guildName: null,
@@ -184,4 +143,4 @@ export const listUsableStickers = async (
   );
 
   return sortUsableStickers(usable, currentGuildId);
-};
+});

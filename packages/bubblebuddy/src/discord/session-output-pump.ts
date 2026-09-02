@@ -42,7 +42,8 @@ const SUPPRESSED_TOOL_STATUS = new Set([
   "discord_list_stickers",
   "discord_fetch_message",
   "discord_react",
-  "discord_save_attachments",
+  "discord_save_assets",
+  "discord_save_message_assets",
   "discord_send_sticker",
   "discord_upload_file",
 ]);

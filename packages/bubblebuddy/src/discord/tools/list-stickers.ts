@@ -3,7 +3,6 @@ import { Type } from "typebox";
 
 import { listUsableStickers } from "../assets.ts";
 import { DiscordToolContext } from "../tool-context.ts";
-import { tryDiscordJsPromise } from "../utils.ts";
 import { defineEffectTool } from "../../pi/effect-tool.ts";
 
 export const listStickersTool = defineEffectTool({
@@ -15,7 +14,7 @@ export const listStickersTool = defineEffectTool({
   execute: () =>
     Effect.gen(function* () {
       const context = yield* DiscordToolContext;
-      const stickers = yield* tryDiscordJsPromise(() => listUsableStickers(context));
+      const stickers = yield* listUsableStickers(context);
       if (stickers.length === 0)
         return {
           content: [{ type: "text", text: "No stickers are available here." }],

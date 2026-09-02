@@ -4,7 +4,8 @@ import { fetchMessageTool } from "./tools/fetch-message.ts";
 import { listCustomEmojisTool } from "./tools/list-custom-emojis.ts";
 import { listStickersTool } from "./tools/list-stickers.ts";
 import { reactTool } from "./tools/react.ts";
-import { saveAttachmentsTool } from "./tools/save-attachments.ts";
+import { saveAssetsTool } from "./tools/save-assets.ts";
+import { saveMessageAssetsTool } from "./tools/save-message-assets.ts";
 import { sendStickerTool } from "./tools/send-sticker.ts";
 import { uploadFileTool } from "./tools/upload-file.ts";
 
@@ -19,5 +20,5 @@ export const discordCoreTools = Effect.fn("discordCoreTools")(function* () {
 });
 
 export const discordWorkspaceTools = Effect.fn("discordWorkspaceTools")(function* () {
-  return [yield* saveAttachmentsTool, yield* uploadFileTool];
+  return [yield* saveMessageAssetsTool, yield* saveAssetsTool, yield* uploadFileTool];
 });

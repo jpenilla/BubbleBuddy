@@ -38,11 +38,12 @@ const createTool = (
   executeOrdered: ExecuteOrderedDiscordAction = passthrough,
 ) =>
   Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     return yield* uploadFileTool.pipe(
       Effect.provideService(
         ChannelWorkspace,
-        ChannelWorkspace.of(createMountedWorkspace(path, workspaceDir, WORKSPACE_CWD)),
+        ChannelWorkspace.of(createMountedWorkspace(fs, path, workspaceDir, WORKSPACE_CWD)),
       ),
       Effect.provideService(DiscordToolContext, DiscordToolContext.of({ channel, executeOrdered })),
     );
