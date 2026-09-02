@@ -226,14 +226,13 @@ export const createDiscordOutputPump = (
         group.message.edit({ components: [createToolStatusComponents(group.entries)] }),
       ).pipe(Effect.asVoid);
 
-    const startToolStatus = (event: SessionEvent<"tool_execution_start">, observedAt: number) =>
+    const startToolStatus = (event: SessionEvent<"tool_execution_start">) =>
       Effect.gen(function* () {
         const entry: ToolStatusEntry = {
           phase: "running",
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           description: formatToolDescription(event.toolName, event.args),
-          startedAt: observedAt,
         };
 
         let group = appendableToolGroup;
@@ -255,7 +254,7 @@ export const createDiscordOutputPump = (
         }
       });
 
-    const finishToolStatus = (event: SessionEvent<"tool_execution_end">, observedAt: number) =>
+    const finishToolStatus = (event: SessionEvent<"tool_execution_end">) =>
       Effect.gen(function* () {
         const group = toolGroupsByCallId.get(event.toolCallId);
         if (group === undefined) return;
@@ -265,7 +264,6 @@ export const createDiscordOutputPump = (
         group.entries[index] = {
           ...current,
           phase: event.isError ? "error" : "success",
-          elapsedMs: Math.max(0, observedAt - current.startedAt),
         };
         yield* renderToolGroup(group);
         toolGroupsByCallId.delete(event.toolCallId);
@@ -371,14 +369,13 @@ export const createDiscordOutputPump = (
 
     const onToolExecution = (
       event: SessionEvent<"tool_execution_start"> | SessionEvent<"tool_execution_end">,
-      observedAt: number,
     ) => {
       if (SUPPRESSED_TOOL_STATUS.has(event.toolName)) {
         return Effect.void;
       }
       return event.type === "tool_execution_start"
-        ? startToolStatus(event, observedAt)
-        : finishToolStatus(event, observedAt);
+        ? startToolStatus(event)
+        : finishToolStatus(event);
     };
 
     const onAutoRetryStart = (event: SessionEvent<"auto_retry_start">) =>
@@ -434,7 +431,7 @@ export const createDiscordOutputPump = (
           break;
         case "tool_execution_start":
         case "tool_execution_end":
-          enqueueOutput(onToolExecution(event, Date.now()));
+          enqueueOutput(onToolExecution(event));
           break;
         case "auto_retry_start":
           enqueueOutput(onAutoRetryStart(event));

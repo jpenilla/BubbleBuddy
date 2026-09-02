@@ -7,8 +7,6 @@ export interface ToolStatusEntry {
   readonly toolCallId: string;
   readonly toolName: string;
   readonly description?: string;
-  readonly startedAt: number;
-  readonly elapsedMs?: number;
 }
 
 const TOOL_STATUS_EMOJI = {
@@ -17,35 +15,20 @@ const TOOL_STATUS_EMOJI = {
   error: "❌",
 } as const;
 
-const formatElapsed = (elapsedMs: number): string => {
-  if (elapsedMs < 1_000) return `${elapsedMs}ms`;
-  if (elapsedMs < 60_000) return `${(elapsedMs / 1_000).toFixed(1)}s`;
-  const minutes = Math.floor(elapsedMs / 60_000);
-  const seconds = Math.floor((elapsedMs % 60_000) / 1_000);
-  return `${minutes}m ${seconds}s`;
-};
-
 const escapeInlineCode = (value: string): string =>
   value.replaceAll("\\", "\\\\").replaceAll("`", "\\`");
 
 const formatEntry = (entry: ToolStatusEntry): string => {
-  const elapsed = entry.elapsedMs === undefined ? "" : ` · ${formatElapsed(entry.elapsedMs)}`;
-  const heading = `${TOOL_STATUS_EMOJI[entry.phase]} **${entry.toolName}**${elapsed}`;
+  const heading = `${TOOL_STATUS_EMOJI[entry.phase]} **${entry.toolName}**`;
   return entry.description === undefined
     ? heading
-    : `${heading}\n-# \`${escapeInlineCode(entry.description)}\``;
-};
-
-const groupColor = (entries: readonly ToolStatusEntry[]): number => {
-  if (entries.some((entry) => entry.phase === "running")) return EMBED_COLOR.pending;
-  if (entries.some((entry) => entry.phase === "error")) return EMBED_COLOR.danger;
-  return EMBED_COLOR.success;
+    : `${heading}\n\`${escapeInlineCode(entry.description)}\``;
 };
 
 export const createToolStatusComponents = (entries: readonly ToolStatusEntry[]): ContainerBuilder =>
   new ContainerBuilder()
-    .setAccentColor(groupColor(entries))
+    .setAccentColor(EMBED_COLOR.neutral)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("**Tools**"),
+      new TextDisplayBuilder().setContent("🛠️ **Tools**"),
       ...entries.map((entry) => new TextDisplayBuilder().setContent(formatEntry(entry))),
     );
