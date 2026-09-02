@@ -81,7 +81,7 @@ export const saveAssetsTool = defineEffectTool({
       Type.Array(
         Type.String({
           description: "Exact syntax such as <:wave:123> or <a:dance:456>",
-          pattern: FormattingPatterns.Emoji,
+          pattern: FormattingPatterns.Emoji.source,
         }),
         {
           minItems: 1,
