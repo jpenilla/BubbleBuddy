@@ -1,6 +1,6 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { MessageFlags, type GuildTextBasedChannel, type Message } from "discord.js";
-import { Deferred, Effect, MutableRef, Scope } from "effect";
+import { Deferred, Effect, Scope } from "effect";
 
 import { createTypingIndicator } from "../discord/typing-indicator.ts";
 
@@ -21,9 +21,14 @@ import {
   type ToolStatusEntry,
 } from "../discord/tool-status-components.ts";
 import { formatToolDescription } from "../discord/tool-status-formatting.ts";
-import { sendChunkedMessage, sendOrEditStatusCard, tryDiscordJsPromise } from "../discord/utils.ts";
+import {
+  sendChunkedMessage,
+  sendMessage,
+  sendOrEditStatusCard,
+  tryDiscordJsPromise,
+} from "../discord/utils.ts";
 import { createPriorityDrainableWorker } from "../shared/priority-drainable-worker.ts";
-import { extractAssistantText, splitThinkingStatus } from "../discord/response-formatting.ts";
+import { splitThinkingStatus } from "../discord/response-formatting.ts";
 
 export type ExecuteOrderedDiscordAction = <A, E>(
   operation: Effect.Effect<A, E>,
@@ -33,7 +38,6 @@ export interface DiscordOutputPump {
   readonly handleSessionEvent: (event: AgentSessionEvent) => void;
   readonly reportUnexpectedError: (error: unknown) => void;
   readonly executeOrdered: ExecuteOrderedDiscordAction;
-  readonly pushActivationMessageId: (messageId: string) => void;
 }
 
 interface CreateDiscordOutputPumpInput {
@@ -46,6 +50,7 @@ const SUPPRESSED_TOOL_STATUS = new Set([
   "discord_list_stickers",
   "discord_fetch_message",
   "discord_react",
+  "discord_reply",
   "discord_save_assets",
   "discord_save_message_assets",
   "discord_send_sticker",
@@ -91,11 +96,10 @@ export const createDiscordOutputPump = (
     const runtimeContext = yield* Effect.context();
     const typingIndicator = yield* createTypingIndicator({ channel });
 
-    const latestTriggerMessageId = MutableRef.make("");
-    let currentTurnReplyTo = "";
     let compactionStatusMessage: Message<true> | undefined;
     let retryStatusState: RetryStatusState | undefined;
     let appendableToolGroup: ToolStatusGroup | undefined;
+    let pendingText = "";
     const toolGroupsByCallId = new Map<string, ToolStatusGroup>();
 
     const enqueueOutput = (operation: Effect.Effect<void, unknown>): void => {
@@ -141,30 +145,16 @@ export const createDiscordOutputPump = (
         compactionStatusMessage = status.phase === "start" ? sent : undefined;
       });
 
-    const sendFinal = (text: string, replyToMessageId: string) =>
-      tryDiscordJsPromise(() =>
-        sendChunkedMessage({
-          channel,
-          content: text,
-          reply: {
-            messageReference: replyToMessageId,
-            failIfNotExists: false,
-          },
-        }),
-      ).pipe(withToolGroupBoundary);
-
-    const sendIntermediate = (text: string, replyToMessageId: string) =>
-      tryDiscordJsPromise(() =>
-        sendChunkedMessage({
-          channel,
-          content: text,
-          reply: {
-            messageReference: replyToMessageId,
-            failIfNotExists: false,
-          },
-          allowedMentions: { repliedUser: false },
-        }),
-      ).pipe(withToolGroupBoundary);
+    const flushPendingText = Effect.gen(function* () {
+      const text = pendingText;
+      pendingText = "";
+      if (text.trim().length > 0) {
+        yield* sendChunkedMessage({ channel, content: text }).pipe(
+          withToolGroupBoundary,
+          Effect.tap(() => typingIndicator.messageSent),
+        );
+      }
+    });
 
     const startRetryStatus = (status: Extract<RetryStatus, { phase: "retrying" }>) =>
       Effect.gen(function* () {
@@ -271,11 +261,10 @@ export const createDiscordOutputPump = (
 
     const sendThinking = (text: string) =>
       Effect.forEach(splitThinkingStatus(text), (chunk) =>
-        tryDiscordJsPromise(() => channel.send(chunk)),
+        sendMessage(channel, { content: chunk }),
       ).pipe(Effect.asVoid, withToolGroupBoundary);
 
     const onAgentSettled = Effect.gen(function* () {
-      currentTurnReplyTo = "";
       retryStatusState = undefined;
       appendableToolGroup = undefined;
       toolGroupsByCallId.clear();
@@ -316,9 +305,16 @@ export const createDiscordOutputPump = (
       });
 
     const onMessageStart = (event: SessionEvent<"message_start">) =>
-      event.message.role === "assistant" && event.message.stopReason === "pending"
-        ? typingIndicator.activate
-        : Effect.void;
+      Effect.gen(function* () {
+        if (event.message.role !== "assistant") return;
+        pendingText = event.message.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("");
+        if (event.message.stopReason === "pending") {
+          yield* typingIndicator.activate;
+        }
+      });
 
     const onMessageEnd = (event: SessionEvent<"message_end">) =>
       Effect.gen(function* () {
@@ -326,17 +322,9 @@ export const createDiscordOutputPump = (
           return;
         }
 
+        yield* flushPendingText;
         yield* typingIndicator.deactivate;
         const msg = event.message;
-        const text = extractAssistantText(msg);
-        if (text.trim().length > 0) {
-          if (msg.stopReason === "stop" || msg.stopReason === "deferred") {
-            yield* sendFinal(text, currentTurnReplyTo);
-          } else {
-            yield* sendIntermediate(text, currentTurnReplyTo);
-          }
-        }
-
         switch (msg.stopReason) {
           case "error":
             yield* sendModelRequestError(
@@ -354,16 +342,20 @@ export const createDiscordOutputPump = (
 
     const onMessageUpdate = (event: SessionEvent<"message_update">) =>
       Effect.gen(function* () {
-        if (event.assistantMessageEvent.type !== "thinking_end") {
-          return;
-        }
-        const showThinking = yield* input.showThinking;
-        if (!showThinking) {
-          return;
-        }
-        const thinking = event.assistantMessageEvent.content.trim();
-        if (thinking.length > 0) {
-          yield* sendThinking(thinking).pipe(Effect.tap(() => typingIndicator.messageSent));
+        const assistantEvent = event.assistantMessageEvent;
+        if (assistantEvent.type === "text_start") {
+          pendingText = "";
+        } else if (assistantEvent.type === "text_delta") {
+          pendingText += assistantEvent.delta;
+        } else if (assistantEvent.type === "text_end") {
+          pendingText = assistantEvent.content;
+          yield* flushPendingText;
+        } else if (assistantEvent.type === "thinking_end") {
+          const showThinking = yield* input.showThinking;
+          const thinking = assistantEvent.content.trim();
+          if (showThinking && thinking.length > 0) {
+            yield* sendThinking(thinking).pipe(Effect.tap(() => typingIndicator.messageSent));
+          }
         }
       });
 
@@ -396,24 +388,11 @@ export const createDiscordOutputPump = (
             },
       );
 
-    const pushActivationMessageId = (messageId: string): void => {
-      MutableRef.set(latestTriggerMessageId, messageId);
-    };
-
     const handleSessionEvent = (event: AgentSessionEvent): void => {
       switch (event.type) {
         case "agent_settled":
           enqueueOutput(onAgentSettled);
           break;
-        case "turn_start": {
-          const replyToMessageId = MutableRef.get(latestTriggerMessageId);
-          enqueueOutput(
-            Effect.sync(() => {
-              currentTurnReplyTo = replyToMessageId;
-            }),
-          );
-          break;
-        }
         case "compaction_start":
           enqueueOutput(onCompactionStart(event));
           break;
@@ -462,6 +441,5 @@ export const createDiscordOutputPump = (
       handleSessionEvent,
       reportUnexpectedError,
       executeOrdered,
-      pushActivationMessageId,
     };
   });
