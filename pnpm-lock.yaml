@@ -37,8 +37,8 @@ catalogs:
       specifier: ^14.27.0
       version: 14.27.0
     effect:
-      specifier: 4.0.0-rc.111
-      version: 4.0.0-rc.111
+      specifier: 4.0.0-rc.112
+      version: 4.0.0-rc.112
     oxfmt:
       specifier: ^0.66.0
       version: 0.66.0
@@ -82,10 +82,10 @@ importers:
         version: 0.84.4(patch_hash=2d0a11736bb5a0cbd2ee166fbe887c5558ece5f899d379a081ac808ed303c6bc)(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1(@opentelemetry/api@1.9.0))
+        version: 4.0.0-rc.111(effect@4.0.0-rc.112)(redis@6.2.1(@opentelemetry/api@1.9.0))
       '@effect/sql-sqlite-node':
         specifier: 'catalog:'
-        version: 4.0.0-rc.111(effect@4.0.0-rc.111)
+        version: 4.0.0-rc.111(effect@4.0.0-rc.112)
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.30.0(zod@4.4.3)
@@ -94,7 +94,7 @@ importers:
         version: 14.27.0
       effect:
         specifier: 'catalog:'
-        version: 4.0.0-rc.111
+        version: 4.0.0-rc.112
       incus-api:
         specifier: workspace:*
         version: link:../incus-api
@@ -107,7 +107,7 @@ importers:
         version: 0.39.0
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.1)(vite@8.0.11(@types/node@26.4.1)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0-rc.111(effect@4.0.0-rc.112)(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.1)(vite@8.0.11(@types/node@26.4.1)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 26.4.1
@@ -128,17 +128,17 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1(@opentelemetry/api@1.9.0))
+        version: 4.0.0-rc.111(effect@4.0.0-rc.112)(redis@6.2.1(@opentelemetry/api@1.9.0))
       effect:
         specifier: 'catalog:'
-        version: 4.0.0-rc.111
+        version: 4.0.0-rc.112
     devDependencies:
       '@effect/tsgo':
         specifier: 'catalog:'
         version: 0.39.0
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.1)(vite@8.0.11(@types/node@26.4.1)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0-rc.111(effect@4.0.0-rc.112)(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.1)(vite@8.0.11(@types/node@26.4.1)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 26.4.1
@@ -1317,8 +1317,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@4.0.0-rc.111:
-    resolution: {integrity: sha512-ASd5L58EIR0CUNueZNKKjSsyOCd+2alxOAIaTcHaqkJkPsaYSsw5Cg/cfANk5K4Jr2YsX756xvX11shzqsreWA==}
+  effect@4.0.0-rc.112:
+    resolution: {integrity: sha512-wXxwuh1Ywnv4cPRM3Wfa0vDwuOHnZ1TsTgHJkG9XgzND6inhBH9n1vBxhg3iIXOia/OrpmvVmd3lrD4vq6bF3A==}
 
   encodeurl@2.0.0:
     resolution: {integrity: sha512-Q0n9HRi4m6JuGIV1eFlmvJB7ZEVxu93IrMyiMsGC0lrMJMWzRgx6WGquyfQgZVb31vhGgXnfmPNNXmxnOkRBrg==}
@@ -2463,19 +2463,19 @@ snapshots:
       get-east-asian-width: 1.6.0
       marked: 18.0.5
 
-  '@effect/platform-node-shared@4.0.0-rc.111(effect@4.0.0-rc.111)':
+  '@effect/platform-node-shared@4.0.0-rc.111(effect@4.0.0-rc.112)':
     dependencies:
       '@types/ws': 8.18.1
-      effect: 4.0.0-rc.111
+      effect: 4.0.0-rc.112
       ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1(@opentelemetry/api@1.9.0))':
+  '@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.112)(redis@6.2.1(@opentelemetry/api@1.9.0))':
     dependencies:
-      '@effect/platform-node-shared': 4.0.0-rc.111(effect@4.0.0-rc.111)
-      effect: 4.0.0-rc.111
+      '@effect/platform-node-shared': 4.0.0-rc.111(effect@4.0.0-rc.112)
+      effect: 4.0.0-rc.112
       mime: 4.1.0
       redis: 6.2.1(@opentelemetry/api@1.9.0)
       undici: 8.10.0
@@ -2483,9 +2483,9 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/sql-sqlite-node@4.0.0-rc.111(effect@4.0.0-rc.111)':
+  '@effect/sql-sqlite-node@4.0.0-rc.111(effect@4.0.0-rc.112)':
     dependencies:
-      effect: 4.0.0-rc.111
+      effect: 4.0.0-rc.112
 
   '@effect/tsgo-darwin-arm64@0.39.0':
     optional: true
@@ -2518,9 +2518,9 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.39.0
       '@effect/tsgo-win32-x64': 0.39.0
 
-  '@effect/vitest@4.0.0-rc.111(effect@4.0.0-rc.111)(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.1)(vite@8.0.11(@types/node@26.4.1)(jiti@2.7.0)(yaml@2.9.0)))':
+  '@effect/vitest@4.0.0-rc.111(effect@4.0.0-rc.112)(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.1)(vite@8.0.11(@types/node@26.4.1)(jiti@2.7.0)(yaml@2.9.0)))':
     dependencies:
-      effect: 4.0.0-rc.111
+      effect: 4.0.0-rc.112
       vitest: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.1)(vite@8.0.11(@types/node@26.4.1)(jiti@2.7.0)(yaml@2.9.0))
 
   '@emnapi/core@1.10.0':
@@ -3188,9 +3188,8 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@4.0.0-rc.111:
+  effect@4.0.0-rc.112:
     dependencies:
-      '@standard-schema/spec': 1.1.0
       fast-check: 4.9.0
       msgpackr: 2.0.5
 
