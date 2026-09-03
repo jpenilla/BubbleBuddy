@@ -1,4 +1,4 @@
-import { Constants, FormattingPatterns, StickerFormatType, parseEmoji } from "discord.js";
+import { Constants, StickerFormatType, parseEmoji } from "discord.js";
 import { Effect } from "effect";
 import { Type } from "typebox";
 
@@ -81,7 +81,7 @@ export const saveAssetsTool = defineEffectTool({
       Type.Array(
         Type.String({
           description: "Exact syntax such as <:wave:123> or <a:dance:456>",
-          pattern: FormattingPatterns.Emoji.source,
+          pattern: "<a?:\\w{2,32}:\\d{17,20}>",
         }),
         {
           minItems: 1,
