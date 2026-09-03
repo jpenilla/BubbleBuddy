@@ -52,17 +52,17 @@ export const sendOrEditStatusCard = async (
   return await channel.send({ embeds: [embed] });
 };
 
-export const sendChunkedMessage = async (opts: {
+export const sendChunkedMessage = Effect.fn("sendChunkedMessage")(function* (opts: {
   channel: GuildTextBasedChannel;
   content: string;
   reply?: ReplyOptions;
   allowedMentions?: MessageMentionOptions;
-}): Promise<void> => {
+}) {
   const chunks = splitDiscordMessage(opts.content);
 
   for (const [index, chunk] of chunks.entries()) {
     if (index === 0 && opts.reply !== undefined) {
-      await opts.channel.send({
+      yield* sendMessage(opts.channel, {
         content: chunk,
         reply: opts.reply,
         allowedMentions: opts.allowedMentions,
@@ -70,23 +70,24 @@ export const sendChunkedMessage = async (opts: {
       continue;
     }
 
-    await opts.channel.send({
+    yield* sendMessage(opts.channel, {
       content: chunk,
       allowedMentions: opts.allowedMentions,
     });
   }
-};
+});
 
-export const sendMessageWithAbort = async (
+export const sendMessage = Effect.fn("sendMessage")(function* (
   channel: GuildTextBasedChannel,
-  signal: AbortSignal,
   options: MessageCreateOptions,
-): Promise<void> => {
-  const payload = MessagePayload.create(channel, options).resolveBody();
-  const { body, files } = await payload.resolveFiles();
-  await channel.client.rest.post(Routes.channelMessages(channel.id), {
-    body,
-    files: files ?? undefined,
-    signal,
+) {
+  return yield* tryDiscordJsPromise(async (signal) => {
+    const payload = MessagePayload.create(channel, options).resolveBody();
+    const { body, files } = await payload.resolveFiles();
+    await channel.client.rest.post(Routes.channelMessages(channel.id), {
+      body,
+      files: files ?? undefined,
+      signal,
+    });
   });
-};
+});

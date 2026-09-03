@@ -3,7 +3,7 @@ import { Effect, FileSystem, Path } from "effect";
 import { Type } from "typebox";
 
 import { ChannelWorkspace, DiscordToolContext } from "../tool-context.ts";
-import { sendMessageWithAbort, tryDiscordJsPromise } from "../utils.ts";
+import { sendMessage } from "../utils.ts";
 import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
 
 const getGuildUploadLimit = (premiumTier: GuildPremiumTier): bigint => {
@@ -66,12 +66,10 @@ export const uploadFileTool = defineEffectTool({
 
       const fileName = params.fileName?.trim() || path.basename(resolved.host);
       yield* context.executeOrdered(
-        tryDiscordJsPromise((signal) =>
-          sendMessageWithAbort(context.channel, signal, {
-            content: params.caption,
-            files: [{ attachment: resolved.host, name: fileName }],
-          }),
-        ),
+        sendMessage(context.channel, {
+          content: params.caption,
+          files: [{ attachment: resolved.host, name: fileName }],
+        }),
       );
 
       return {

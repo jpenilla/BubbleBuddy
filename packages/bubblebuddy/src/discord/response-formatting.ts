@@ -1,4 +1,3 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { splitAiResponse } from "../shared/text-split.ts";
 
 export const DISCORD_SAFE_MESSAGE_LIMIT = 1_900;
@@ -8,12 +7,6 @@ export const truncateDiscordEmbedDescription = (description: string): string =>
   description.length <= DISCORD_EMBED_DESCRIPTION_LIMIT
     ? description
     : `${description.slice(0, DISCORD_EMBED_DESCRIPTION_LIMIT - 1)}…`;
-
-export const extractAssistantText = (message: AssistantMessage): string =>
-  message.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("");
 
 const THINKING_PREFIX = "🧠 _Thinking..._\n\n";
 const THINKING_SUFFIX = "\n\n-# ──";

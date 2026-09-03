@@ -135,7 +135,6 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
           yield* pi
             .activate({
               prompt: formatMessageForPrompt(activation.originMessage),
-              replyToMessageId: activation.originMessage.id,
               retainChannelSession: input.retain,
             })
             .pipe(mapToChannelSessionError);

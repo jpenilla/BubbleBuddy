@@ -52,7 +52,6 @@ export interface PiSessionHandle {
 
 export interface ActivatePiSessionInput {
   readonly prompt: string;
-  readonly replyToMessageId: string;
   readonly retainChannelSession: Effect.Effect<void, never, Scope.Scope>;
 }
 
@@ -248,7 +247,7 @@ export const createPiSession = (
 
     const operationLock = yield* Semaphore.make(1);
     const activationFiber = yield* FiberHandle.make<void, never>();
-    let pendingQueue: Array<{ text: string; replyToMessageId: string }> = [];
+    let pendingQueue: string[] = [];
 
     const isActivating = () => FiberHandle.getUnsafe(activationFiber)._tag === "Some";
 
@@ -277,8 +276,7 @@ export const createPiSession = (
       pendingQueue = [];
       if (messages.length === 0) return;
 
-      for (const { text, replyToMessageId } of messages) {
-        output.pushActivationMessageId(replyToMessageId);
+      for (const text of messages) {
         void session.steer(text);
       }
 
@@ -290,8 +288,6 @@ export const createPiSession = (
     const activate = (activation: ActivatePiSessionInput) =>
       operationLock.withPermit(
         Effect.gen(function* () {
-          output.pushActivationMessageId(activation.replyToMessageId);
-
           if (session.isStreaming || isActivating()) {
             yield* Effect.tryPromise({
               try: () => session.steer(activation.prompt),
@@ -301,10 +297,7 @@ export const createPiSession = (
           }
 
           if (session.isCompacting) {
-            pendingQueue.push({
-              text: activation.prompt,
-              replyToMessageId: activation.replyToMessageId,
-            });
+            pendingQueue.push(activation.prompt);
             return;
           }
 

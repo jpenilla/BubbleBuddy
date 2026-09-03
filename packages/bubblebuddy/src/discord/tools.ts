@@ -4,6 +4,7 @@ import { fetchMessageTool } from "./tools/fetch-message.ts";
 import { listCustomEmojisTool } from "./tools/list-custom-emojis.ts";
 import { listStickersTool } from "./tools/list-stickers.ts";
 import { reactTool } from "./tools/react.ts";
+import { replyTool } from "./tools/reply.ts";
 import { saveAssetsTool } from "./tools/save-assets.ts";
 import { saveMessageAssetsTool } from "./tools/save-message-assets.ts";
 import { sendStickerTool } from "./tools/send-sticker.ts";
@@ -15,6 +16,7 @@ export const discordCoreTools = Effect.fn("discordCoreTools")(function* () {
     yield* listStickersTool,
     yield* sendStickerTool,
     yield* reactTool,
+    yield* replyTool,
     yield* fetchMessageTool,
   ];
 });
