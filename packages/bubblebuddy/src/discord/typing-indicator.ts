@@ -24,7 +24,7 @@ const TypingCommand = Data.taggedEnum<TypingCommand>();
 
 const SEND_TYPING_TIMEOUT_MS = 3000;
 const TYPING_INDICATOR_PULSE_INTERVAL_MS = 7000;
-const MESSAGE_SENT_PULSE_DELAY_MS = 100;
+const MESSAGE_SENT_PULSE_DELAY_MS = 200;
 
 export const createTypingIndicator = (
   input: CreateTypingIndicatorInput,
