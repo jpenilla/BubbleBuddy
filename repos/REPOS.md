@@ -5,7 +5,7 @@ Gitlinks pin exact commits; `Ref` names the intended release or update branch.
 | Directory | Ref | Description |
 | --- | --- | --- |
 | `repos/discord.js` | `14.27.0` | Discord clients, gateway events, REST, interactions, and builders. |
-| `repos/effect` | `effect@4.0.0-rc.111` | Effect v4 runtime, platform, SQL, testing, and unstable APIs. |
+| `repos/effect` | `effect@4.0.0-rc.112` | Effect v4 runtime, platform, SQL, testing, and unstable APIs. |
 | `repos/effect-solutions` | `main` | Focused Effect examples for services, layers, errors, configuration, and testing. |
 | `repos/executor` | `main` | Effect patterns for MCP, tool registries, services, and agent infrastructure. |
 | `repos/incus` | `main` | Incus REST routes, operations, container files, and WebSocket exec behavior. |
