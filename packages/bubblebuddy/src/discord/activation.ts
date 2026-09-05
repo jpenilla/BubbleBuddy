@@ -6,7 +6,7 @@ import { Discord } from "./client.ts";
 import { isGuildTextChannel, tryDiscordJsPromise } from "./utils.ts";
 import { createPromptContext } from "./prompt-formatting.ts";
 
-export const ActivationLive = Layer.effectDiscard(
+export const ActivationLayer = Layer.effectDiscard(
   Effect.gen(function* () {
     const discord = yield* Discord;
     yield* discord.events.forkOn(Events.MessageCreate, (message) =>

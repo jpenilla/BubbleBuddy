@@ -10,7 +10,7 @@ import { discardSessionCommand } from "./discard-session.ts";
 import { statusCommand } from "./status.ts";
 import { thinkingCommand } from "./thinking.ts";
 
-export const SlashCommandsLive = Layer.effectDiscard(
+export const SlashCommandsLayer = Layer.effectDiscard(
   Effect.gen(function* () {
     yield* Effect.logInfo("Registering Discord slash commands.");
     const discord = yield* Discord;

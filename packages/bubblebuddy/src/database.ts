@@ -6,7 +6,7 @@ import { AppHome } from "./config/env.ts";
 
 const DATABASE_FILE_NAME = "bubblebuddy.sqlite";
 
-export const DatabaseLive = Layer.unwrap(
+export const DatabaseLayer = Layer.unwrap(
   Effect.gen(function* () {
     const appHome = yield* AppHome;
     const fs = yield* FileSystem.FileSystem;

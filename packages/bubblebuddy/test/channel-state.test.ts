@@ -5,7 +5,7 @@ import { Effect, FileSystem, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { ChannelStateRepository } from "../src/session/state.ts";
 import { AppHome } from "../src/config/env.ts";
-import { DatabaseLive } from "../src/database.ts";
+import { DatabaseLayer } from "../src/database.ts";
 import { createTestEnvLayer } from "./helpers.ts";
 
 const withRepo = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -15,7 +15,7 @@ const withRepo = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     return yield* effect.pipe(
       Effect.provide(
         ChannelStateRepository.layerNoDeps.pipe(
-          Layer.provideMerge(DatabaseLive),
+          Layer.provideMerge(DatabaseLayer),
           Layer.provideMerge(AppHome.layerNoDeps),
           Layer.provideMerge(createTestEnvLayer({ appHome: dir })),
         ),
