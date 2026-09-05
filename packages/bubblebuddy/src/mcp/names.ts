@@ -23,7 +23,7 @@ const sanitizedNamePart = Effect.fnUntraced(function* (kind: "server" | "tool", 
 export const formatToolName = Effect.fnUntraced(function* (serverName: string, toolName: string) {
   const server = yield* sanitizedNamePart("server", serverName);
   const tool = yield* sanitizedNamePart("tool", toolName);
-  return `${server}_${tool}`;
+  return `${server}__${tool}`;
 });
 
 export const defaultBearerTokenEnv = Effect.fnUntraced(function* (serverName: string) {
