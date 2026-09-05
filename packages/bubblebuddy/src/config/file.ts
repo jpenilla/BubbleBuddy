@@ -17,15 +17,20 @@ export type { ThinkingLevel };
 
 const CONFIG_FILE_NAME = "bubblebuddy.json";
 
-// Matches @earendil-works/pi-agent-core's ThinkingLevel type.
-const THINKING_LEVELS: readonly ThinkingLevel[] = [
+const THINKING_LEVELS = [
   "off",
   "minimal",
   "low",
   "medium",
   "high",
   "xhigh",
-];
+  "max",
+] as const satisfies readonly ThinkingLevel[];
+
+type AssertNever<T extends never> = T;
+type _ThinkingLevelsExhaustive = AssertNever<
+  Exclude<ThinkingLevel, (typeof THINKING_LEVELS)[number]>
+>;
 
 export const McpServerConfigEntrySchema = Schema.Union([
   Schema.Struct({
