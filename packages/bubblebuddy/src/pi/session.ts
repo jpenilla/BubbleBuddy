@@ -10,14 +10,25 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
-import { Effect, FiberHandle, FileSystem, Layer, Path, Schema, Scope, Semaphore } from "effect";
+import {
+  Effect,
+  Exit,
+  FiberHandle,
+  FileSystem,
+  Layer,
+  Path,
+  Schema,
+  Scope,
+  Semaphore,
+} from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 import { discordCoreTools, discordWorkspaceTools } from "../discord/tools.ts";
 import { ChannelWorkspace, DiscordToolContext } from "../discord/tool-context.ts";
-import { connectMcpServers } from "../mcp/adapter.ts";
+import { McpPiTools } from "../mcp/pi-tools.ts";
+import { McpClientFactory } from "../mcp/client-factory.ts";
 import { AppHome } from "../config/env.ts";
-import { FileConfig } from "../config/file.ts";
+import { FileConfig, type McpServerConfigEntry } from "../config/file.ts";
 import { LoadedResources } from "../resources.ts";
 import { createChannelWorkspaceResourceLoader } from "./workspace-resource-loader.ts";
 import { createIncusExtension } from "./incus-extension.ts";
@@ -152,6 +163,7 @@ export const createPiSession = (
       followUpMode: "all",
     });
     const extensionFactories: ExtensionFactory[] = [
+      McpPiTools.createMcpToolResultExtension(),
       createPromptComposerExtension({
         botProfile: resources.botProfile,
         discordContextTemplate: resources.discordContextTemplate,
@@ -204,22 +216,14 @@ export const createPiSession = (
       return [...core, ...(yield* discordWorkspaceTools())];
     }).pipe(Effect.provide(toolContextLayer));
 
-    let mcpTools: ToolDefinition[] = [];
-    if (Object.keys(config.mcpServers).length > 0) {
-      mcpTools = yield* connectMcpServers(
-        Object.entries(config.mcpServers).map(([name, cfg]) => ({ name, ...cfg })),
-      ).pipe(
-        Effect.mapError(
-          (error) =>
-            new PiSessionInitError({
-              message: "Failed to configure MCP servers",
-              cause: error,
-            }),
-        ),
-      );
-    }
+    const mcpTools = yield* Effect.forEach(
+      Object.entries(config.mcpServers),
+      ([name, server]) => loadMcpServerTools(name, server),
+      { concurrency: 3 },
+    ).pipe(Effect.map((tools) => tools.flat()));
 
     const allTools = [...discordTools, ...mcpTools];
+    yield* ensureUniqueToolNames(allTools);
 
     const { session } = yield* Effect.acquireRelease(
       Effect.tryPromise({
@@ -364,3 +368,38 @@ export const createPiSession = (
       getSessionStats: () => session.getSessionStats(),
     };
   });
+
+const loadMcpServerTools = Effect.fn("PiSession.loadMcpServerTools")(function* (
+  name: string,
+  server: McpServerConfigEntry,
+) {
+  const serverScope = yield* Scope.fork(yield* Scope.Scope);
+
+  return yield* Effect.gen(function* () {
+    const client = yield* McpClientFactory.createClient(name, server);
+    return yield* McpPiTools.createPiTools(client, name);
+  }).pipe(
+    Scope.provide(serverScope),
+    Effect.timeout("10 seconds"),
+    Effect.onExit((exit) => (Exit.isFailure(exit) ? Scope.close(serverScope, exit) : Effect.void)),
+    Effect.catch((cause) =>
+      Effect.logWarning(
+        `Failed to load tools from MCP server "${name}"; skipping server`,
+        cause,
+      ).pipe(Effect.as([])),
+    ),
+  );
+});
+
+const ensureUniqueToolNames = Effect.fnUntraced(function* (tools: readonly ToolDefinition[]) {
+  const counts = new Map<string, number>();
+  for (const tool of tools) {
+    counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1);
+  }
+  const duplicateCounts = [...counts].filter(([_name, count]) => count > 1);
+  if (duplicateCounts.length > 0) {
+    return yield* new PiSessionInitError({
+      message: `Duplicate tool names detected: ${duplicateCounts.map(([name, count]) => `"${name}" (${count}x)`).join(", ")}`,
+    });
+  }
+});

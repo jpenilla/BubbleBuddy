@@ -19,7 +19,7 @@
     "@earendil-works/pi-coding-agent": "catalog:",
     "@effect/platform-node": "catalog:",
     "@effect/sql-sqlite-node": "catalog:",
-    "@modelcontextprotocol/sdk": "catalog:",
+    "@modelcontextprotocol/client": "catalog:",
     "discord.js": "catalog:",
     "effect": "catalog:",
     "incus-api": "workspace:*",
