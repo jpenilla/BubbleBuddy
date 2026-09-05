@@ -27,17 +27,19 @@ const THINKING_LEVELS: readonly ThinkingLevel[] = [
   "xhigh",
 ];
 
-const McpServerConfigEntrySchema = Schema.Union([
+export const McpServerConfigEntrySchema = Schema.Union([
   Schema.Struct({
+    _tag: Schema.tagDefaultOmit("HTTP"),
     url: Schema.NonEmptyString,
     bearerTokenEnv: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({
+    _tag: Schema.tagDefaultOmit("Stdio"),
     command: Schema.NonEmptyString,
     args: Schema.optionalKey(Schema.Array(Schema.String)),
     env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   }),
-]);
+]).pipe(Schema.toTaggedUnion("_tag"));
 
 export type McpServerConfigEntry = Schema.Schema.Type<typeof McpServerConfigEntrySchema>;
 

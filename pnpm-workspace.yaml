@@ -20,7 +20,7 @@ catalog:
   oxfmt: ^0.66.0
   oxlint: ^1.81.0
   vitest: ^4.1.11
-  "@modelcontextprotocol/sdk": ^1.30.0
+  "@modelcontextprotocol/client": ^2.0.0
   discord.js: ^14.27.0
 
 allowBuilds:
