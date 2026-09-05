@@ -27,7 +27,6 @@ import { discordCoreTools, discordWorkspaceTools } from "../discord/tools.ts";
 import { ChannelWorkspace, DiscordToolContext } from "../discord/tool-context.ts";
 import { McpPiTools } from "../mcp/pi-tools.ts";
 import { McpClientFactory } from "../mcp/client-factory.ts";
-import { formatToolName } from "../mcp/names.ts";
 import { AppHome } from "../config/env.ts";
 import { FileConfig, type McpServerConfigEntry } from "../config/file.ts";
 import { LoadedResources } from "../resources.ts";
@@ -164,6 +163,7 @@ export const createPiSession = (
       followUpMode: "all",
     });
     const extensionFactories: ExtensionFactory[] = [
+      McpPiTools.createMcpToolResultExtension(),
       createPromptComposerExtension({
         botProfile: resources.botProfile,
         discordContextTemplate: resources.discordContextTemplate,
@@ -377,9 +377,7 @@ const loadMcpServerTools = Effect.fn("PiSession.loadMcpServerTools")(function* (
 
   return yield* Effect.gen(function* () {
     const client = yield* McpClientFactory.createClient(name, server);
-    return yield* McpPiTools.createPiTools(client, {
-      name: (tool) => formatToolName(name, tool.name),
-    });
+    return yield* McpPiTools.createPiTools(client, name);
   }).pipe(
     Scope.provide(serverScope),
     Effect.timeout("10 seconds"),
