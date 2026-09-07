@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, FileSystem, Path } from "effect";
+import { Effect, Path } from "effect";
 
 import { createMountedWorkspace } from "../src/shared/workspace.ts";
 import { createChannelWorkspaceResourceLoader } from "../src/pi/workspace-resource-loader.ts";
@@ -35,9 +35,8 @@ describe("channel workspace resource loader", () => {
   const workspace = () =>
     Effect.runSync(
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        return createMountedWorkspace(fs, path, workspaceDir, containerRoot);
+        return createMountedWorkspace(path, workspaceDir, containerRoot);
       }).pipe(Effect.provide(NodeServices.layer)),
     );
 

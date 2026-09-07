@@ -5,12 +5,13 @@ import { Type } from "typebox";
 import { DISCORD_ASSETS_SEGMENT } from "../../shared/constants.ts";
 import { sanitizeAttachmentFilename } from "../../shared/workspace.ts";
 import { defineEffectTool } from "../../pi/effect-tool.ts";
-import { ChannelWorkspace, DiscordToolContext } from "../tool-context.ts";
+import { DiscordToolContext } from "../tool-context.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
 import {
   AssetSaveError,
   downloadAsset,
   downloadAssetByContentType,
+  prepareAssetDirectory,
   runAssetJobs,
 } from "./asset-save.ts";
 
@@ -39,8 +40,7 @@ const saveMessageAttachment = Effect.fn("saveMessageAttachment")(function* (
   const attachment = [...message.attachments.values()][index];
   if (attachment === undefined)
     return yield* new AssetSaveError({ message: "Attachment not found." });
-  const workspace = yield* ChannelWorkspace;
-  const directory = yield* workspace.ensureDirectory(
+  const directory = yield* prepareAssetDirectory(
     DISCORD_ASSETS_SEGMENT,
     message.id,
     "attachments",
@@ -62,8 +62,7 @@ const saveEmbedAsset = Effect.fn("saveEmbedAsset")(function* (
   if (embed === undefined) return yield* new AssetSaveError({ message: "Embed not found." });
   const url = embedAssetUrl(embed, slot);
   if (!url) return yield* new AssetSaveError({ message: `Embed has no downloadable ${slot}.` });
-  const workspace = yield* ChannelWorkspace;
-  const directory = yield* workspace.ensureDirectory(
+  const directory = yield* prepareAssetDirectory(
     DISCORD_ASSETS_SEGMENT,
     message.id,
     "embeds",
@@ -111,8 +110,8 @@ const Indices = Type.Array(Type.Integer({ minimum: 0 }), {
 export const saveMessageAssetsTool = defineEffectTool({
   name: "discord_save_message_assets",
   label: "Save Message Assets",
-  description: "Save message attachments and embed media into /workspace.",
-  promptSnippet: "Save message attachments and embed media into /workspace",
+  description: "Save message attachments and embed media into the container workspace.",
+  promptSnippet: "Save message attachments and embed media into the container workspace",
   parameters: Type.Object({
     messageId: Type.String({ description: "Message ID" }),
     attachments: Type.Optional(Indices),

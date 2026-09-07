@@ -7,49 +7,51 @@ import * as Http from "node:http";
 import * as Https from "node:https";
 import * as net from "node:net";
 
-import { IncusConfig, type IncusConfigService } from "./config.ts";
+import { IncusConfig } from "./incus-config.ts";
 
-export class IncusHttpClient extends Context.Service<IncusHttpClient, HttpClient.HttpClient>()(
-  "incus-api/IncusHttpClient",
-  {
-    make: Effect.gen(function* () {
+export interface Interface extends HttpClient.HttpClient {}
+
+export class Service extends Context.Service<Service, Interface>()("incus-api/IncusHttpClient") {}
+
+export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | IncusConfig.Service> =
+  Layer.effect(
+    Service,
+    Effect.gen(function* () {
       const baseClient = yield* HttpClient.HttpClient;
-      const config = yield* IncusConfig;
+      const config = yield* IncusConfig.Service;
       const baseUrl = config.endpoint.type === "unix" ? "http://incus" : config.endpoint.baseUrl;
-      return baseClient.pipe(
-        HttpClient.mapRequest(HttpClientRequest.prependUrl(baseUrl)),
-        config.transformClient ?? identity,
+      return Service.of(
+        baseClient.pipe(
+          HttpClient.mapRequest(HttpClientRequest.prependUrl(baseUrl)),
+          config.transformClient ?? identity,
+        ),
       );
     }),
-  },
-) {
-  static readonly layer: Layer.Layer<IncusHttpClient, never, HttpClient.HttpClient | IncusConfig> =
-    Layer.effect(this, this.make);
+  );
 
-  static readonly nodeHttpLayer: Layer.Layer<HttpClient.HttpClient, never, IncusConfig> =
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const config = yield* IncusConfig;
-        return NodeHttpClient.layerNodeHttpNoAgent.pipe(
-          Layer.provide(
-            Layer.effect(
-              NodeHttpClient.HttpAgent,
-              Effect.acquireRelease(
-                Effect.sync(() => createAgents(config.endpoint)),
-                ({ http, https }) =>
-                  Effect.sync(() => {
-                    http.destroy();
-                    https.destroy();
-                  }),
-              ),
+export const nodeHttpLayer: Layer.Layer<HttpClient.HttpClient, never, IncusConfig.Service> =
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const config = yield* IncusConfig.Service;
+      return NodeHttpClient.layerNodeHttpNoAgent.pipe(
+        Layer.provide(
+          Layer.effect(
+            NodeHttpClient.HttpAgent,
+            Effect.acquireRelease(
+              Effect.sync(() => createAgents(config.endpoint)),
+              ({ http, https }) =>
+                Effect.sync(() => {
+                  http.destroy();
+                  https.destroy();
+                }),
             ),
           ),
-        );
-      }),
-    );
-}
+        ),
+      );
+    }),
+  );
 
-const createAgents = (endpoint: IncusConfigService["endpoint"]) => {
+const createAgents = (endpoint: IncusConfig.Interface["endpoint"]) => {
   if (endpoint.type === "unix") {
     return {
       http: new UnixSocketAgent(endpoint.socketPath),
@@ -93,3 +95,5 @@ class UnixSocketAgent extends Http.Agent {
     return socket;
   }
 }
+
+export * as IncusHttpClient from "./incus-http-client.ts";

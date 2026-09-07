@@ -1,8 +1,9 @@
 import Mime from "@effect/platform-node/Mime";
-import { Effect, FileSystem, Path, Schema, Stream } from "effect";
+import { Effect, Schema } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { posix } from "node:path";
 
-import type { DualPath } from "../../shared/workspace.ts";
+import { SessionContainer } from "../../session/session-container.ts";
 
 export class AssetSaveError extends Schema.TaggedError<AssetSaveError>()("AssetSaveError", {
   message: Schema.String,
@@ -10,7 +11,19 @@ export class AssetSaveError extends Schema.TaggedError<AssetSaveError>()("AssetS
 
 const fetchAsset = Effect.fn("fetchAsset")(function* (url: string) {
   const http = yield* HttpClient.HttpClient;
-  return yield* http.get(url).pipe(Effect.flatMap(HttpClientResponse.filterStatusOk));
+  return yield* HttpClient.withScope(http)
+    .get(url)
+    .pipe(Effect.flatMap(HttpClientResponse.filterStatusOk));
+});
+
+export const prepareAssetDirectory = Effect.fn("prepareAssetDirectory")(function* (
+  ...segments: string[]
+) {
+  const sessionContainer = yield* SessionContainer.Service;
+  const directory = posix.resolve(sessionContainer.cwd, ...segments);
+  const container = yield* sessionContainer.get;
+  yield* container.files.mkdir(directory, { recursive: true });
+  return directory;
 });
 
 const writeAsset = Effect.fn("writeAsset")(function* (
@@ -18,32 +31,49 @@ const writeAsset = Effect.fn("writeAsset")(function* (
   directory: string,
   filename: string,
 ) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  if (path.basename(filename) !== filename || filename === "." || filename === "..") {
+  if (posix.basename(filename) !== filename || filename === "." || filename === "..") {
     return yield* new AssetSaveError({ message: "Invalid asset filename." });
   }
-  const destination = path.join(directory, filename);
+
+  const sessionContainer = yield* SessionContainer.Service;
+  const container = yield* sessionContainer.get;
+  const destination = posix.join(directory, filename);
   const temporaryPath = `${destination}.${crypto.randomUUID()}.tmp`;
-  yield* Stream.run(response.stream, fs.sink(temporaryPath)).pipe(
-    Effect.andThen(fs.rename(temporaryPath, destination)),
-    Effect.ensuring(fs.remove(temporaryPath, { force: true }).pipe(Effect.ignore)),
-  );
+  yield* container.files
+    .write(temporaryPath, response.stream)
+    .pipe(
+      Effect.andThen(
+        container
+          .exec(["/bin/mv", "-fT", "--", temporaryPath, destination])
+          .pipe(
+            Effect.flatMap((result) =>
+              result.exitCode === 0
+                ? Effect.void
+                : Effect.fail(new AssetSaveError({ message: `Could not replace ${destination}.` })),
+            ),
+          ),
+      ),
+      Effect.ensuring(
+        container
+          .exec(["/bin/rm", "-f", "--", temporaryPath], { timeoutSeconds: 2 })
+          .pipe(Effect.timeout("3 seconds"), Effect.ignore),
+      ),
+    );
 });
 
 export const downloadAsset = Effect.fn("downloadAsset")(function* (
   url: string,
-  directory: DualPath,
+  directory: string,
   filename: string,
 ) {
   const asset = yield* fetchAsset(url);
-  yield* writeAsset(asset, directory.host, filename);
-  return `${directory.container}/${filename}`;
+  yield* writeAsset(asset, directory, filename);
+  return posix.join(directory, filename);
 });
 
 export const downloadAssetByContentType = Effect.fn("downloadAssetByContentType")(function* (
   url: string,
-  directory: DualPath,
+  directory: string,
   filenameStem: string,
 ) {
   const response = yield* fetchAsset(url);
@@ -59,8 +89,8 @@ export const downloadAssetByContentType = Effect.fn("downloadAssetByContentType"
     });
   }
   const filename = `${filenameStem}.${extension}`;
-  yield* writeAsset(response, directory.host, filename);
-  return `${directory.container}/${filename}`;
+  yield* writeAsset(response, directory, filename);
+  return posix.join(directory, filename);
 });
 
 export type AssetJob<E, R> = {

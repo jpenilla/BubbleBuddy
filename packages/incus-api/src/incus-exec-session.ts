@@ -3,53 +3,12 @@ import { Cause, Effect, Exit, Fiber, Option, Schema, Scope } from "effect";
 import * as net from "node:net";
 import * as Socket from "effect/unstable/socket/Socket";
 
-import { IncusApiOperationError, type IncusApiService, type OperationWaitResult } from "./api.ts";
-import type { IncusConfigService } from "./config.ts";
-import type { IncusOperationsService } from "./operations.ts";
+import { IncusContainer } from "./incus-container.ts";
+import type { IncusConfig } from "./transport/incus-config.ts";
+import { IncusApi } from "./transport/incus-api.ts";
 
 const SIGTERM = 15;
 const SIGKILL = 9;
-
-export class IncusContainerExecCallbackError extends Schema.TaggedError<IncusContainerExecCallbackError>()(
-  "IncusContainerExecCallbackError",
-  {
-    cause: Schema.Defect(),
-  },
-) {}
-
-export class IncusContainerExecInvalidOptionsError extends Schema.TaggedError<IncusContainerExecInvalidOptionsError>()(
-  "IncusContainerExecInvalidOptionsError",
-  {
-    message: Schema.String,
-  },
-) {}
-
-export class IncusContainerExecTransportError extends Schema.TaggedError<IncusContainerExecTransportError>()(
-  "IncusContainerExecTransportError",
-  {
-    message: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {}
-
-export class IncusContainerExecTimeoutError extends Schema.TaggedError<IncusContainerExecTimeoutError>()(
-  "IncusContainerExecTimeoutError",
-  {
-    timeoutSeconds: Schema.Finite,
-  },
-) {}
-
-export interface IncusExecOptions {
-  readonly cwd?: string;
-  readonly environment?: Readonly<Record<string, string>>;
-  readonly timeoutSeconds?: number;
-  readonly onStdout?: (chunk: Uint8Array) => void | Effect.Effect<void, unknown, never>;
-  readonly onStderr?: (chunk: Uint8Array) => void | Effect.Effect<void, unknown, never>;
-}
-
-export interface IncusExecResult {
-  readonly exitCode: number;
-}
 
 const ControlSignal = Schema.Struct({
   command: Schema.Literal("signal"),
@@ -65,15 +24,23 @@ const ExecResultMetadata = Schema.Struct({
   return: Schema.Int,
 });
 
+const ExecWebSocketSecrets = Schema.Struct({
+  "0": Schema.String,
+  "1": Schema.String,
+  "2": Schema.String,
+  control: Schema.String,
+});
+type ExecWebSocketSecrets = typeof ExecWebSocketSecrets.Type;
+
 const createWebSocket = (
-  config: IncusConfigService,
+  config: IncusConfig.Interface,
   operationId: string,
   secret: string,
 ): Effect.Effect<globalThis.WebSocket, never, never> => {
   const baseUrl =
     config.endpoint.type === "unix"
       ? "ws://incus"
-      : config.endpoint.baseUrl.replace(/^https?/, (m) => (m === "https" ? "wss" : "ws"));
+      : config.endpoint.baseUrl.replace(/^https?/, (match) => (match === "https" ? "wss" : "ws"));
   const url = `${baseUrl}/1.0/operations/${encodeURIComponent(operationId)}/websocket?secret=${encodeURIComponent(secret)}`;
 
   if (config.endpoint.type === "unix") {
@@ -97,7 +64,7 @@ const createWebSocket = (
 };
 
 const createSocket = (
-  config: IncusConfigService,
+  config: IncusConfig.Interface,
   operationId: string,
   secret: string,
 ): Effect.Effect<Socket.Socket, never, never> =>
@@ -114,16 +81,16 @@ const createSocket = (
 const runCallback = (
   callback: ((chunk: Uint8Array) => void | Effect.Effect<void, unknown, never>) | undefined,
   chunk: Uint8Array,
-): Effect.Effect<void, IncusContainerExecCallbackError, never> => {
+): Effect.Effect<void, IncusContainer.ExecCallbackError, never> => {
   if (!callback) return Effect.void;
   return Effect.try({
     try: () => callback(chunk),
-    catch: (cause) => new IncusContainerExecCallbackError({ cause }),
+    catch: (cause) => new IncusContainer.ExecCallbackError({ cause }),
   }).pipe(
     Effect.flatMap((result) => {
       if (Effect.isEffect(result)) {
         return result.pipe(
-          Effect.mapError((cause) => new IncusContainerExecCallbackError({ cause })),
+          Effect.mapError((cause) => new IncusContainer.ExecCallbackError({ cause })),
         );
       }
       return Effect.void;
@@ -136,7 +103,7 @@ const failWhenFiberFails = <A, E>(fiber: Fiber.Fiber<A, E>): Effect.Effect<never
 
 const drainOutputFiber = <A, E>(
   fiber: Fiber.Fiber<A, E>,
-): Effect.Effect<void, E | IncusContainerExecTransportError, never> =>
+): Effect.Effect<void, E | IncusContainer.ExecTransportError, never> =>
   Fiber.join(fiber).pipe(
     Effect.asVoid,
     Effect.timeoutOption(`${OutputDrainTimeoutSeconds} seconds`),
@@ -144,7 +111,7 @@ const drainOutputFiber = <A, E>(
       Option.isSome(result)
         ? Effect.void
         : Effect.fail(
-            new IncusContainerExecTransportError({
+            new IncusContainer.ExecTransportError({
               message: "Timed out waiting for exec output websocket to drain",
             }),
           ),
@@ -154,21 +121,21 @@ const drainOutputFiber = <A, E>(
 const enforceTimeout =
   (timeoutSeconds: number | undefined) =>
   (
-    result: OperationWaitResult,
-  ): Effect.Effect<OperationWaitResult, IncusContainerExecTimeoutError> => {
+    result: IncusApi.OperationWaitResult,
+  ): Effect.Effect<IncusApi.OperationWaitResult, IncusContainer.ExecTimeoutError> => {
     if (result.status === "running" && timeoutSeconds !== undefined) {
-      return Effect.fail(new IncusContainerExecTimeoutError({ timeoutSeconds }));
+      return Effect.fail(new IncusContainer.ExecTimeoutError({ timeoutSeconds }));
     }
     return Effect.succeed(result);
   };
 
 const asExecWaitResult = (
   operationId: string,
-  result: OperationWaitResult,
-): Effect.Effect<IncusExecResult, IncusApiOperationError> => {
+  result: IncusApi.OperationWaitResult,
+): Effect.Effect<IncusContainer.ExecResult, IncusApi.OperationError> => {
   if (result.status === "running") {
     return Effect.fail(
-      new IncusApiOperationError({
+      new IncusApi.OperationError({
         operation: operationId,
         message: "Incus exec operation is still running",
         metadata: result.metadata,
@@ -179,7 +146,7 @@ const asExecWaitResult = (
   return Schema.decodeUnknownEffect(ExecResultMetadata)(result.metadata).pipe(
     Effect.mapError(
       (cause) =>
-        new IncusApiOperationError({
+        new IncusApi.OperationError({
           operation: operationId,
           message: "Failed to decode Incus operation response",
           metadata: { cause, body: { metadata: result.metadata } },
@@ -189,32 +156,42 @@ const asExecWaitResult = (
   );
 };
 
-const execPayload = (command: readonly string[], options: IncusExecOptions | undefined) => ({
+const execPayload = (
+  command: readonly string[],
+  options: IncusContainer.ExecOptions | undefined,
+): IncusApi.InstanceExecRequest => ({
   command: [...command],
   interactive: false,
   "wait-for-websocket": true,
-  cwd: options?.cwd,
-  environment: options?.environment,
+  ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+  ...(options?.environment === undefined ? {} : { environment: options.environment }),
 });
 
+const decodeExecWebSocketSecrets = (
+  operation: IncusApi.ExecOperationRef,
+): Effect.Effect<ExecWebSocketSecrets, IncusApi.OperationError> =>
+  Schema.decodeUnknownEffect(ExecWebSocketSecrets)(operation.websocketSecrets).pipe(
+    Effect.mapError(
+      (cause) =>
+        new IncusApi.OperationError({
+          operation: operation.id,
+          message: "Failed to decode Incus exec websocket secrets",
+          metadata: { cause, websocketSecrets: operation.websocketSecrets },
+        }),
+    ),
+  );
+
 const createExecSockets = (
-  config: IncusConfigService,
-  operation: {
-    readonly id: string;
-    readonly fds: {
-      readonly stdout: string;
-      readonly stderr: string;
-      readonly stdin: string;
-      readonly control: string;
-    };
-  },
+  config: IncusConfig.Interface,
+  operationId: string,
+  secrets: ExecWebSocketSecrets,
 ) =>
   Effect.all(
     {
-      stdout: createSocket(config, operation.id, operation.fds.stdout),
-      stderr: createSocket(config, operation.id, operation.fds.stderr),
-      stdin: createSocket(config, operation.id, operation.fds.stdin),
-      control: createSocket(config, operation.id, operation.fds.control),
+      stdout: createSocket(config, operationId, secrets["1"]),
+      stderr: createSocket(config, operationId, secrets["2"]),
+      stdin: createSocket(config, operationId, secrets["0"]),
+      control: createSocket(config, operationId, secrets.control),
     },
     { concurrency: "unbounded" },
   );
@@ -249,13 +226,13 @@ const createControlWriter = (
   });
 
 const waitExecResult = (
-  operations: IncusOperationsService,
+  api: IncusApi.Interface,
   operationId: string,
   project: string,
   timeoutSeconds: number | undefined,
 ) =>
   // Incus reports exec exit 127 as operation failure; preserve metadata so callers get output and exit code.
-  operations.wait(operationId, { project, timeoutSeconds, failureMode: "return" }).pipe(
+  api.operations.wait(operationId, { project, timeoutSeconds, failureMode: "return" }).pipe(
     Effect.flatMap(enforceTimeout(timeoutSeconds)),
     Effect.flatMap((result) => asExecWaitResult(operationId, result)),
   );
@@ -264,7 +241,7 @@ const controlSignal = (signal: number) =>
   Schema.encodeEffect(ControlSignalJson)({ command: "signal", signal }).pipe(Effect.orDie);
 
 const terminateExec = (
-  operations: IncusOperationsService,
+  api: IncusApi.Interface,
   operationId: string,
   project: string,
   writeControl: (chunk: Uint8Array | string) => Effect.Effect<void, unknown>,
@@ -277,8 +254,10 @@ const terminateExec = (
     );
 
     // Give process a chance to exit gracefully
-    const wait = yield* Effect.exit(operations.wait(operationId, { project, timeoutSeconds: 2 }));
-    if (Exit.isSuccess(wait) && wait.value.status === "success") return;
+    const waitResult = yield* Effect.exit(
+      api.operations.wait(operationId, { project, timeoutSeconds: 2 }),
+    );
+    if (Exit.isSuccess(waitResult) && waitResult.value.status === "success") return;
 
     yield* controlSignal(SIGKILL).pipe(
       Effect.flatMap((sigkill) => writeControl(sigkill)),
@@ -303,20 +282,19 @@ const scopedPreservingBodyExit =
       return yield* bodyExit;
     }) as Effect.Effect<A, E, Exclude<R, Scope.Scope>>;
 
-export const execStream = Effect.fn("IncusContainer.execStream")(function* (
+export const exec = Effect.fn("IncusExecSession.exec")(function* (
   name: string,
   project: string,
-  api: IncusApiService,
-  operations: IncusOperationsService,
-  config: IncusConfigService,
+  api: IncusApi.Interface,
+  config: IncusConfig.Interface,
   command: readonly string[],
-  options?: IncusExecOptions,
+  options?: IncusContainer.ExecOptions,
 ) {
   if (
     options?.timeoutSeconds !== undefined &&
     (!Number.isInteger(options.timeoutSeconds) || options.timeoutSeconds <= 0)
   ) {
-    return yield* new IncusContainerExecInvalidOptionsError({
+    return yield* new IncusContainer.ExecInvalidOptionsError({
       message: `Invalid timeoutSeconds: ${options.timeoutSeconds}. Must be a positive integer.`,
     });
   }
@@ -325,7 +303,17 @@ export const execStream = Effect.fn("IncusContainer.execStream")(function* (
 
   return yield* Effect.gen(function* () {
     const scope = yield* Scope.Scope;
-    const sockets = yield* createExecSockets(config, operation);
+    const secrets = yield* decodeExecWebSocketSecrets(operation).pipe(
+      Effect.onError(() =>
+        api.operations.cancel(operation.id, { project }).pipe(
+          Effect.ignore({
+            log: "Warn",
+            message: "Failed to cancel Incus exec after invalid websocket secrets",
+          }),
+        ),
+      ),
+    );
+    const sockets = yield* createExecSockets(config, operation.id, secrets);
     const commandTimeoutSeconds = options?.timeoutSeconds;
 
     const stdinFiber = yield* startStdin(sockets.stdin, scope);
@@ -343,7 +331,7 @@ export const execStream = Effect.fn("IncusContainer.execStream")(function* (
     );
 
     const main = Effect.raceFirst(
-      waitExecResult(operations, operation.id, project, commandTimeoutSeconds),
+      waitExecResult(api, operation.id, project, commandTimeoutSeconds),
       outputFailure,
     ).pipe(
       Effect.tap(() => awaitOutput),
@@ -353,14 +341,14 @@ export const execStream = Effect.fn("IncusContainer.execStream")(function* (
     return yield* main.pipe(
       Effect.onExit((exit) =>
         exit._tag === "Failure"
-          ? terminateExec(operations, operation.id, project, writeControl)
+          ? terminateExec(api, operation.id, project, writeControl)
           : Effect.void,
       ),
       Effect.catchIf(
         (error): error is Socket.SocketError => error instanceof Socket.SocketError,
         (error) =>
           Effect.fail(
-            new IncusContainerExecTransportError({
+            new IncusContainer.ExecTransportError({
               message: `Websocket error: ${error.message}`,
               cause: error,
             }),
@@ -369,3 +357,5 @@ export const execStream = Effect.fn("IncusContainer.execStream")(function* (
     );
   }).pipe(scopedPreservingBodyExit("incus-exec"));
 });
+
+export * as IncusExecSession from "./incus-exec-session.ts";
