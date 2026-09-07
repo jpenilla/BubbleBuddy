@@ -11,6 +11,7 @@
   "scripts": {
     "check": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test",
     "test": "vitest run --passWithNoTests",
+    "test:integration": "INCUS_API_INTEGRATION=1 vitest run test/integration.test.ts",
     "lint": "oxlint src test",
     "lint:fix": "oxlint src test --fix",
     "fmt": "oxfmt src test",

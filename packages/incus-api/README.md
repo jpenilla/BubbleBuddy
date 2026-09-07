@@ -46,3 +46,6 @@ File paths are absolute guest paths. `openRead` and `write` use `Stream.Stream<U
 
 Connection layers are `IncusClient.layer`, `IncusClient.layerLocal({ socketPath })`, and
 `IncusClient.layerRemote({ baseUrl, tls })`.
+
+With a running local Incus daemon, run `pnpm --filter incus-api run test:integration` for the
+opt-in integration scenario.
