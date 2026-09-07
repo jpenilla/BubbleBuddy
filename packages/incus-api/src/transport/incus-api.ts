@@ -36,8 +36,7 @@ export interface InstanceCreateRequest extends Schema.Schema.Type<typeof Instanc
 
 const InstanceStateRequest = Schema.Struct({
   action: Schema.Literals(["start", "stop", "restart", "freeze", "unfreeze"]),
-  /** @effect-diagnostics schemaNumber:off */
-  timeout: Schema.optionalKey(Schema.Number),
+  timeout: Schema.optionalKey(Schema.Int),
   force: Schema.optionalKey(Schema.Boolean),
 });
 
