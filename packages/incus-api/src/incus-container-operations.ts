@@ -3,16 +3,14 @@ import { Cause, Effect, Exit } from "effect";
 import { IncusContainer } from "./incus-container.ts";
 import { IncusExecSession } from "./incus-exec-session.ts";
 import { IncusFileOperations } from "./incus-file-operations.ts";
-import type { IncusConfig } from "./transport/incus-config.ts";
-import type { IncusApi } from "./transport/incus-api.ts";
+import type { IncusApi } from "./incus-api.ts";
 
 export const create = (
   project: string,
   api: IncusApi.Interface,
-  config: IncusConfig.Interface,
 ): IncusContainer.ContainerCollection => ({
   scoped: (options) =>
-    Effect.acquireRelease(acquire(project, api, config, options), (container, exit) =>
+    Effect.acquireRelease(acquire(project, api, options), (container, exit) =>
       release(api, container, exit),
     ),
   exists: (name) => api.instances.exists(name, { project }),
@@ -21,12 +19,11 @@ export const create = (
 const acquire = (
   project: string,
   api: IncusApi.Interface,
-  config: IncusConfig.Interface,
   options: IncusContainer.CreateOptions,
 ): Effect.Effect<IncusContainer.Container, IncusApi.ApiError> =>
   Effect.gen(function* () {
     const name = options.name ?? `incus-api-${crypto.randomUUID().slice(0, 8)}`;
-    const container = createContainer(project, api, config, name);
+    const container = createContainer(project, api, name);
 
     const operation = yield* api.instances.create(
       {
@@ -116,7 +113,6 @@ const deleteContainer = Effect.fn("IncusContainer.delete")(function* (
 const createContainer = (
   project: string,
   api: IncusApi.Interface,
-  config: IncusConfig.Interface,
   name: string,
 ): IncusContainer.Container => ({
   name,
@@ -125,7 +121,7 @@ const createContainer = (
     command: readonly string[],
     options?: IncusContainer.ExecOptions,
   ) {
-    return yield* IncusExecSession.exec(name, project, api, config, command, options);
+    return yield* IncusExecSession.exec(name, project, api, command, options);
   }),
   files: IncusFileOperations.create(api, name, project),
 });

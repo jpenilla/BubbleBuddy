@@ -1,9 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Exit, Stream } from "effect";
+import { Effect, Exit, Layer, Stream } from "effect";
 
-import { IncusClient, IncusContainer } from "../src/index.ts";
+import { IncusApi, IncusClient, IncusContainer, IncusTransport } from "../src/index.ts";
+
+const IncusClientLayer = IncusClient.layer.pipe(
+  Layer.provide(IncusApi.layer),
+  Layer.provide(IncusTransport.layer({ endpoint: { type: "unix" } })),
+);
 
 const describeIntegration = process.env.INCUS_API_INTEGRATION === "1" ? describe : describe.skip;
 
@@ -188,7 +193,7 @@ describeIntegration("Incus integration", () => {
           onSuccess: Effect.succeed,
           onFailure: Effect.failCause,
         });
-      }).pipe(Effect.provide(IncusClient.layerLocal())),
+      }).pipe(Effect.provide(IncusClientLayer)),
     120_000,
   );
 });

@@ -2,7 +2,7 @@ import { Effect, Option, Ref, Stream } from "effect";
 import { posix } from "node:path";
 
 import { IncusContainer } from "./incus-container.ts";
-import type { IncusApi } from "./transport/incus-api.ts";
+import type { IncusApi } from "./incus-api.ts";
 
 export const create = (
   api: IncusApi.Interface,

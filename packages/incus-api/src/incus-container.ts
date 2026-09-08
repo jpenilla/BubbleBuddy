@@ -1,6 +1,6 @@
 import { Effect, Schema, Scope, Stream } from "effect";
 
-import type { IncusApi } from "./transport/incus-api.ts";
+import type { IncusApi } from "./incus-api.ts";
 
 export class PathError extends Schema.TaggedError<PathError>()("IncusContainer.PathError", {
   path: Schema.String,

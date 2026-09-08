@@ -1,11 +1,8 @@
-import { NodeSocket } from "@effect/platform-node";
 import { Cause, Effect, Exit, Fiber, Option, Schema, Scope } from "effect";
-import * as net from "node:net";
 import * as Socket from "effect/unstable/socket/Socket";
 
+import { IncusApi } from "./incus-api.ts";
 import { IncusContainer } from "./incus-container.ts";
-import type { IncusConfig } from "./transport/incus-config.ts";
-import { IncusApi } from "./transport/incus-api.ts";
 
 const SIGTERM = 15;
 const SIGKILL = 9;
@@ -31,52 +28,6 @@ const ExecWebSocketSecrets = Schema.Struct({
   control: Schema.String,
 });
 type ExecWebSocketSecrets = typeof ExecWebSocketSecrets.Type;
-
-const createWebSocket = (
-  config: IncusConfig.Interface,
-  operationId: string,
-  secret: string,
-): Effect.Effect<globalThis.WebSocket, never, never> => {
-  const baseUrl =
-    config.endpoint.type === "unix"
-      ? "ws://incus"
-      : config.endpoint.baseUrl.replace(/^https?/, (match) => (match === "https" ? "wss" : "ws"));
-  const url = `${baseUrl}/1.0/operations/${encodeURIComponent(operationId)}/websocket?secret=${encodeURIComponent(secret)}`;
-
-  if (config.endpoint.type === "unix") {
-    const socketPath = config.endpoint.socketPath;
-    return Effect.sync(() => {
-      return new NodeSocket.NodeWS.WebSocket(url, undefined, {
-        createConnection: () => net.createConnection({ path: socketPath }),
-      }) as unknown as globalThis.WebSocket;
-    });
-  }
-
-  const endpoint = config.endpoint;
-  return Effect.sync(() => {
-    return new NodeSocket.NodeWS.WebSocket(url, undefined, {
-      ca: endpoint.tls?.caCert,
-      cert: endpoint.tls?.clientCert,
-      key: endpoint.tls?.clientKey,
-      rejectUnauthorized: endpoint.tls?.rejectUnauthorized,
-    }) as unknown as globalThis.WebSocket;
-  });
-};
-
-const createSocket = (
-  config: IncusConfig.Interface,
-  operationId: string,
-  secret: string,
-): Effect.Effect<Socket.Socket, never, never> =>
-  Socket.fromWebSocket(
-    Effect.acquireRelease(createWebSocket(config, operationId, secret), (ws) =>
-      Effect.sync(() => ws.close(1000)),
-    ),
-    // Incus may close the exec websocket without a proper close frame after
-    // the process exits, resulting in code 1005/1006. The exec outcome is
-    // determined by the operation wait, not the close code.
-    { closeCodeIsError: () => false, openTimeout: WebSocketSetupTimeoutMs },
-  );
 
 const runCallback = (
   callback: ((chunk: Uint8Array) => void | Effect.Effect<void, unknown, never>) | undefined,
@@ -182,19 +133,26 @@ const decodeExecWebSocketSecrets = (
   );
 
 const createExecSockets = (
-  config: IncusConfig.Interface,
+  api: IncusApi.Interface,
   operationId: string,
   secrets: ExecWebSocketSecrets,
 ) =>
   Effect.all(
     {
-      stdout: createSocket(config, operationId, secrets["1"]),
-      stderr: createSocket(config, operationId, secrets["2"]),
-      stdin: createSocket(config, operationId, secrets["0"]),
-      control: createSocket(config, operationId, secrets.control),
+      stdout: api.operations.makeWebSocket(operationId, secrets["1"], execWebSocketOptions),
+      stderr: api.operations.makeWebSocket(operationId, secrets["2"], execWebSocketOptions),
+      stdin: api.operations.makeWebSocket(operationId, secrets["0"], execWebSocketOptions),
+      control: api.operations.makeWebSocket(operationId, secrets.control, execWebSocketOptions),
     },
     { concurrency: "unbounded" },
   );
+
+const execWebSocketOptions = {
+  // Incus may close the exec websocket without a proper close frame after
+  // the process exits. The exec outcome is determined by the operation wait.
+  closeCodeIsError: () => false,
+  openTimeout: WebSocketSetupTimeoutMs,
+};
 
 const startStdin = (stdinSocket: Socket.Socket, scope: Scope.Scope) =>
   Effect.gen(function* () {
@@ -286,7 +244,6 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
   name: string,
   project: string,
   api: IncusApi.Interface,
-  config: IncusConfig.Interface,
   command: readonly string[],
   options?: IncusContainer.ExecOptions,
 ) {
@@ -313,7 +270,7 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
         ),
       ),
     );
-    const sockets = yield* createExecSockets(config, operation.id, secrets);
+    const sockets = yield* createExecSockets(api, operation.id, secrets);
     const commandTimeoutSeconds = options?.timeoutSeconds;
 
     const stdinFiber = yield* startStdin(sockets.stdin, scope);

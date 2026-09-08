@@ -3,8 +3,13 @@
 Effect-based Incus client for scoped container operations.
 
 ```typescript
-import { Effect, Stream } from "effect";
-import { IncusClient, IncusContainer } from "incus-api";
+import { Effect, Layer, Stream } from "effect";
+import { IncusApi, IncusClient, IncusContainer, IncusTransport } from "incus-api";
+
+const IncusClientLayer = IncusClient.layer.pipe(
+  Layer.provide(IncusApi.layer),
+  Layer.provide(IncusTransport.layer({ endpoint: { type: "unix" } })),
+);
 
 const image: IncusContainer.ImageSource = {
   type: "remote",
@@ -35,7 +40,7 @@ const program = Effect.scoped(
   }),
 );
 
-Effect.runPromise(program.pipe(Effect.provide(IncusClient.layerLocal())));
+Effect.runPromise(program.pipe(Effect.provide(IncusClientLayer)));
 ```
 
 `IncusClient.Service` exposes projects and their `IncusContainer.ContainerCollection`s.
@@ -44,8 +49,8 @@ File paths are absolute guest paths. `openRead` and `write` use `Stream.Stream<U
 `readBytes` and `readText` are buffered helpers.
 `exec` streams output through callbacks and returns the process exit code.
 
-Connection layers are `IncusClient.layer`, `IncusClient.layerLocal({ socketPath })`, and
-`IncusClient.layerRemote({ baseUrl, tls })`.
+The Unix endpoint uses Incus's default socket path when `socketPath` is omitted. Pass an HTTPS
+endpoint and TLS options to connect to a remote Incus server.
 
 With a running local Incus daemon, run `pnpm --filter incus-api run test:integration` for the
 opt-in integration scenario.

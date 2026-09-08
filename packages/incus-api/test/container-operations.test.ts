@@ -3,14 +3,8 @@ import { describe, expect, it } from "@effect/vitest";
 
 import { IncusContainerOperations } from "../src/incus-container-operations.ts";
 import { IncusContainer } from "../src/incus-container.ts";
-import { IncusApi } from "../src/transport/incus-api.ts";
-import type { IncusConfig } from "../src/transport/incus-config.ts";
+import { IncusApi } from "../src/incus-api.ts";
 import { apiFixture, errorFrom } from "./incus-fixtures.ts";
-
-const config: IncusConfig.Interface = {
-  endpoint: { type: "unix", socketPath: "/unused/incus.socket" },
-  transformClient: undefined,
-};
 
 const image: IncusContainer.ImageSource = {
   type: "remote",
@@ -61,7 +55,7 @@ describe("Incus container operations", () => {
       });
 
       const exit = yield* Effect.scoped(
-        IncusContainerOperations.create("default", api, config).scoped({
+        IncusContainerOperations.create("default", api).scoped({
           name: "failed-start",
           image,
         }),
@@ -86,7 +80,7 @@ describe("Incus container operations", () => {
       );
 
       const exit = yield* Effect.scoped(
-        IncusContainerOperations.create("default", api, config)
+        IncusContainerOperations.create("default", api)
           .scoped({ name: "container", image })
           .pipe(Effect.flatMap((container) => container.exec(["true"]))),
       ).pipe(Effect.exit);
@@ -115,7 +109,7 @@ describe("Incus container operations", () => {
       );
 
       const exit = yield* Effect.scoped(
-        IncusContainerOperations.create("default", api, config)
+        IncusContainerOperations.create("default", api)
           .scoped({ name: "container", image })
           .pipe(Effect.flatMap((container) => container.exec(["true"]))),
       ).pipe(Effect.exit);

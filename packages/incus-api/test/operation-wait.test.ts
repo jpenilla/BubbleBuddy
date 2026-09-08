@@ -6,8 +6,8 @@ import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import { TestClock } from "effect/testing";
 
-import { IncusApi } from "../src/transport/incus-api.ts";
-import { IncusHttpClient } from "../src/transport/incus-http-client.ts";
+import { IncusApi } from "../src/incus-api.ts";
+import { IncusTransport } from "../src/incus-transport.ts";
 import { errorFrom } from "./incus-fixtures.ts";
 
 type HttpHandler = (
@@ -23,7 +23,14 @@ const httpClient = (handler: HttpHandler): HttpClient.HttpClient =>
   >(Effect.flatMap(handler), Effect.succeed);
 
 const layerWith = (handler: HttpHandler) =>
-  IncusApi.layer.pipe(Layer.provide(Layer.succeed(IncusHttpClient.Service, httpClient(handler))));
+  IncusApi.layer.pipe(
+    Layer.provide(
+      Layer.succeed(IncusTransport.Service, {
+        httpClient: httpClient(handler),
+        makeWebSocket: () => Effect.die(new Error("Unexpected websocket request")),
+      }),
+    ),
+  );
 
 const response = (request: HttpClientRequest.HttpClientRequest, metadata: unknown) =>
   HttpClientResponse.fromWeb(

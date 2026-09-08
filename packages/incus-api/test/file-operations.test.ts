@@ -2,7 +2,7 @@ import { Context, Effect, Layer, Ref, Schema, Stream } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 
 import { IncusFileOperations } from "../src/incus-file-operations.ts";
-import { IncusApi } from "../src/transport/incus-api.ts";
+import { IncusApi } from "../src/incus-api.ts";
 import { apiFixture, errorFrom } from "./incus-fixtures.ts";
 
 class StreamValue extends Context.Service<

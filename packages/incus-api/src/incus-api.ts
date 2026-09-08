@@ -1,4 +1,5 @@
 import { Cause, Context, Effect, Layer, Option, Schema, Scope, Stream } from "effect";
+import * as Socket from "effect/unstable/socket/Socket";
 import {
   Headers,
   HttpBody,
@@ -9,7 +10,7 @@ import {
   HttpMethod,
 } from "effect/unstable/http";
 
-import { IncusHttpClient } from "./incus-http-client.ts";
+import { IncusTransport } from "./incus-transport.ts";
 
 const ImageSource = Schema.Struct({
   type: Schema.Literal("image"),
@@ -164,6 +165,11 @@ export interface Interface {
     };
   };
   readonly operations: {
+    readonly makeWebSocket: (
+      operationId: string,
+      secret: string,
+      options?: IncusTransport.WebSocketOptions,
+    ) => Effect.Effect<Socket.Socket>;
     readonly wait: (
       operationId: string,
       options: WaitOperationOptions,
@@ -177,10 +183,11 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("incus-api/IncusApi") {}
 
-export const layer: Layer.Layer<Service, never, IncusHttpClient.Service> = Layer.effect(
+export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const client = yield* IncusHttpClient.Service;
+    const transport = yield* IncusTransport.Service;
+    const client = transport.httpClient;
 
     const operationFromBody = (
       response: AsyncOperationResponse,
@@ -280,6 +287,14 @@ export const layer: Layer.Layer<Service, never, IncusHttpClient.Service> = Layer
         },
       },
       operations: {
+        makeWebSocket: Effect.fn("IncusApi.operations.makeWebSocket")(
+          function* (operationId, secret, options) {
+            return yield* transport.makeWebSocket(
+              `/1.0/operations/${encodeURIComponent(operationId)}/websocket?secret=${encodeURIComponent(secret)}`,
+              options,
+            );
+          },
+        ),
         wait: Effect.fn("IncusApi.operations.wait")(function* (operationId, options) {
           const wait = Effect.gen(function* () {
             const body = yield* operationWaitGet(client, operationId, options);

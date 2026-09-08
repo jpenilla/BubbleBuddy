@@ -23,7 +23,7 @@ import {
   Semaphore,
 } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import { IncusClient } from "incus-api";
+import { IncusApi, IncusClient, IncusTransport } from "incus-api";
 
 import { discordCoreTools, discordWorkspaceTools } from "../discord/tools.ts";
 import { DiscordToolContext } from "../discord/tool-context.ts";
@@ -41,6 +41,11 @@ import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
 import { channelHostSessionsDir, createChannelMountedWorkspace } from "../shared/workspace.ts";
 import { SessionContainer } from "../session/session-container.ts";
 import type { PromptTemplateContext } from "./system-prompt.ts";
+
+const IncusClientLayer = IncusClient.layer.pipe(
+  Layer.provide(IncusApi.layer),
+  Layer.provide(IncusTransport.layer({ endpoint: { type: "unix" } })),
+);
 
 export interface PiSessionModelInfo {
   readonly id: string;
@@ -159,18 +164,19 @@ export const createPiSession = (
       steeringMode: "all",
       followUpMode: "all",
     });
-    const sessionContainer = config.enableAgenticWorkspace
-      ? Context.get(
-          yield* Layer.build(
-            SessionContainer.layer({
-              channelId: input.channel.id,
-              cwd: workspace.root.container,
-              workspaceDir: workspace.root.host,
-            }).pipe(Layer.provide(IncusClient.layerLocal())),
-          ),
-          SessionContainer.Service,
-        )
-      : undefined;
+    const sessionContainer = yield* Effect.gen(function* () {
+      if (!config.enableAgenticWorkspace) return undefined;
+
+      const context = yield* Layer.build(
+        SessionContainer.layer({
+          channelId: input.channel.id,
+          cwd: workspace.root.container,
+          workspaceDir: workspace.root.host,
+        }).pipe(Layer.provide(IncusClientLayer)),
+      );
+
+      return Context.get(context, SessionContainer.Service);
+    });
     const extensionFactories: ExtensionFactory[] = [
       McpPiTools.createMcpToolResultExtension(),
       createPromptComposerExtension({
@@ -206,22 +212,17 @@ export const createPiSession = (
     });
 
     const output = input.output;
-    const toolContextLayer = Layer.mergeAll(
-      Layer.succeed(
-        DiscordToolContext,
-        DiscordToolContext.of({
-          channel: input.channel,
-          executeOrdered: output.executeOrdered,
-        }),
-      ),
+    const toolContextLayer = Layer.succeed(
+      DiscordToolContext,
+      DiscordToolContext.of({
+        channel: input.channel,
+        executeOrdered: output.executeOrdered,
+      }),
     );
 
     const discordTools = yield* Effect.gen(function* () {
       const core = yield* discordCoreTools();
-      if (!config.enableAgenticWorkspace) return core;
-      if (sessionContainer === undefined) {
-        return yield* Effect.die(new Error("Agentic workspace has no session container"));
-      }
+      if (sessionContainer === undefined) return core;
       const workspaceTools = yield* discordWorkspaceTools().pipe(
         Effect.provideService(SessionContainer.Service, sessionContainer),
       );

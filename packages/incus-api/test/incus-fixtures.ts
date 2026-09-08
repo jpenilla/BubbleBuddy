@@ -1,6 +1,6 @@
 import { Cause, Effect, Exit, Option } from "effect";
 
-import type { IncusApi } from "../src/transport/incus-api.ts";
+import type { IncusApi } from "../src/incus-api.ts";
 
 export interface ApiOverrides {
   readonly create?: IncusApi.Interface["instances"]["create"];
@@ -13,6 +13,7 @@ export interface ApiOverrides {
   readonly write?: IncusApi.Interface["instances"]["files"]["write"];
   readonly wait?: IncusApi.Interface["operations"]["wait"];
   readonly cancel?: IncusApi.Interface["operations"]["cancel"];
+  readonly makeWebSocket?: IncusApi.Interface["operations"]["makeWebSocket"];
 }
 
 const unavailable = (method: string) =>
@@ -32,6 +33,7 @@ export const apiFixture = (overrides: ApiOverrides = {}): IncusApi.Interface => 
     },
   },
   operations: {
+    makeWebSocket: overrides.makeWebSocket ?? (() => unavailable("operations.makeWebSocket")),
     wait: overrides.wait ?? (() => unavailable("operations.wait")),
     cancel: overrides.cancel ?? (() => unavailable("operations.cancel")),
   },
