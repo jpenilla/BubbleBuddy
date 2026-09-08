@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Layer, Option, Schema, Scope, Stream } from "effect";
+import { Cause, Context, Data, Effect, Layer, Match, Option, Schema, Scope, Stream } from "effect";
 import * as Socket from "effect/unstable/socket/Socket";
 import {
   Headers,
@@ -109,19 +109,38 @@ export type OperationWaitResult =
   | { readonly status: "success"; readonly metadata?: unknown }
   | { readonly status: "failure"; readonly error?: string; readonly metadata?: unknown };
 
+const FileType = Schema.Literals(["file", "symlink", "directory"]);
+
+const DirectoryResponse = Schema.Struct({
+  type: Schema.Literal("sync"),
+  metadata: Schema.Array(Schema.String),
+});
+
 export interface FileInfo {
-  readonly type?: string;
+  readonly type: typeof FileType.Type;
   readonly uid?: number;
   readonly gid?: number;
   readonly mode?: number;
   readonly modified?: string;
 }
 
-export interface FileRead {
-  readonly type: string | undefined;
-  readonly size: bigint | undefined;
-  readonly bytes: Stream.Stream<Uint8Array, HttpClientError.HttpClientError>;
-}
+export type FileRead = Data.TaggedEnum<{
+  File: {
+    readonly size: bigint | undefined;
+    /** Consume before the scope that acquired this response closes. */
+    readonly bytes: Stream.Stream<Uint8Array, HttpClientError.HttpClientError>;
+  };
+  Symlink: {
+    /** Target path returned by Incus; not guaranteed to be fully dereferenced. */
+    readonly target: string;
+  };
+  Directory: {
+    /** Immediate entry names, not full paths. */
+    readonly entries: readonly string[];
+  };
+}>;
+
+export const FileRead = Data.taggedEnum<FileRead>();
 
 export interface Interface {
   readonly instances: {
@@ -145,7 +164,7 @@ export interface Interface {
       options: ProjectOptions,
     ) => Effect.Effect<ExecOperationRef, ApiError>;
     readonly files: {
-      readonly openRead: (
+      readonly read: (
         name: string,
         path: string,
         options: ProjectOptions,
@@ -258,16 +277,33 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
           return yield* execOperationFromBody(body);
         }),
         files: {
-          openRead: Effect.fn("IncusApi.instances.files.openRead")(function* (name, path, options) {
+          read: Effect.fn("IncusApi.instances.files.read")(function* (name, path, options) {
             const response = yield* scopedRequest(client, {
               method: "GET",
               path: instanceFilePath(name, path, options.project),
             });
-            return {
-              type: header(response, "x-incus-type"),
-              size: bigintHeader(response, "content-length"),
-              bytes: response.stream,
-            };
+            const type = yield* Schema.decodeUnknownEffect(FileType)(
+              header(response, "x-incus-type"),
+            );
+            return yield* Match.value(type).pipe(
+              Match.when("file", () =>
+                Effect.succeed(
+                  FileRead.File({
+                    size: bigintHeader(response, "content-length"),
+                    bytes: response.stream,
+                  }),
+                ),
+              ),
+              Match.when("symlink", () =>
+                response.text.pipe(Effect.map((target) => FileRead.Symlink({ target }))),
+              ),
+              Match.when("directory", () =>
+                HttpClientResponse.schemaBodyJson(DirectoryResponse)(response).pipe(
+                  Effect.map((body) => FileRead.Directory({ entries: body.metadata })),
+                ),
+              ),
+              Match.exhaustive,
+            );
           }),
           stat: Effect.fn("IncusApi.instances.files.stat")(function* (name, path, options) {
             return yield* instanceFileHead(client, name, path, options).pipe(
@@ -449,13 +485,17 @@ const instanceFileHead = (
   options: ProjectOptions,
 ) =>
   emptyRequest(client, "HEAD", instanceFilePath(name, path, options.project)).pipe(
-    Effect.map((response): FileInfo => ({
-      type: header(response, "x-incus-type"),
-      uid: numberHeader(response, "x-incus-uid"),
-      gid: numberHeader(response, "x-incus-gid"),
-      mode: numberHeader(response, "x-incus-mode"),
-      modified: header(response, "x-incus-modified"),
-    })),
+    Effect.flatMap((response) =>
+      Schema.decodeUnknownEffect(FileType)(header(response, "x-incus-type")).pipe(
+        Effect.map((type): FileInfo => ({
+          type,
+          uid: numberHeader(response, "x-incus-uid"),
+          gid: numberHeader(response, "x-incus-gid"),
+          mode: numberHeader(response, "x-incus-mode"),
+          modified: header(response, "x-incus-modified"),
+        })),
+      ),
+    ),
   );
 
 const emptyRequest = (client: HttpClient.HttpClient, method: HttpMethod.HttpMethod, path: string) =>

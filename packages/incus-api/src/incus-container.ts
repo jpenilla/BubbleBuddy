@@ -95,11 +95,6 @@ export interface FileWriteOptions {
   readonly createParents?: boolean;
 }
 
-export interface FileRead {
-  readonly size: bigint | undefined;
-  readonly bytes: Stream.Stream<Uint8Array, FileError>;
-}
-
 export interface ExecOptions {
   readonly cwd?: string;
   readonly environment?: Readonly<Record<string, string>>;
@@ -112,9 +107,16 @@ export interface ExecResult {
   readonly exitCode: number;
 }
 
+/** Paths must be absolute guest paths. */
 export interface FileOperations {
-  readonly openRead: (path: string) => Effect.Effect<FileRead, FileError, Scope.Scope>;
+  readonly read: (path: string) => Effect.Effect<IncusApi.FileRead, FileError, Scope.Scope>;
+  /** Rejects directories and symlinks. */
+  readonly readFile: (
+    path: string,
+  ) => Effect.Effect<Extract<IncusApi.FileRead, { readonly _tag: "File" }>, FileError, Scope.Scope>;
+  /** Rejects directories and symlinks. */
   readonly readBytes: (path: string) => Effect.Effect<Uint8Array, FileError>;
+  /** Decodes UTF-8; rejects directories and symlinks. */
   readonly readText: (path: string) => Effect.Effect<string, FileError>;
   readonly write: <E, R>(
     path: string,
@@ -138,6 +140,7 @@ export interface Container {
 }
 
 export interface ContainerCollection {
+  /** Creates an ephemeral container; scope closure attempts cleanup, logging any cleanup failure. */
   readonly scoped: (
     options: CreateOptions,
   ) => Effect.Effect<Container, IncusApi.ApiError, Scope.Scope>;

@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { describe, expect, it } from "@effect/vitest";
+import { assert, describe, expect, it } from "@effect/vitest";
 import { Effect, Exit, Stream } from "effect";
 
-import { IncusClient, IncusContainer } from "../src/index.ts";
+import { IncusApi, IncusClient, IncusContainer } from "../src/index.ts";
 
 const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
@@ -94,7 +94,8 @@ describeIntegration("Incus integration", () => {
         const containers = incus.project("default").containers;
         const name = `incus-api-integration-${randomUUID().slice(0, 8)}`;
         const payload = binaryFixture();
-        const payloadPath = "/tmp/incus api integration/nested #?/payload #?.bin";
+        // Keep fixtures outside /tmp, which the guest may mount during early boot.
+        const payloadPath = "/root/incus api integration/nested #?/payload #?.bin";
         const cwd = "/tmp/incus api integration/cwd";
         const pidPath = "/tmp/incus-api-timeout-process";
 
@@ -115,10 +116,31 @@ describeIntegration("Incus integration", () => {
               ]),
               { createParents: true },
             );
-            const file = yield* container.files.openRead(payloadPath);
+            const file = yield* container.files.readFile(payloadPath);
             const read = concatenate(Array.from(yield* file.bytes.pipe(Stream.runCollect)));
             expect(read.byteLength).toBe(payload.byteLength);
             expect(read).toEqual(payload);
+
+            const directoryPath = "/root/incus api integration/nested #?";
+            const linkPath = `${directoryPath}/latest.bin`;
+            const linkErrors: Uint8Array[] = [];
+            const link = yield* container.exec(["/bin/ln", "-s", "payload #?.bin", linkPath], {
+              onStderr: (chunk) => {
+                linkErrors.push(chunk);
+              },
+            });
+            expect(link.exitCode, new TextDecoder().decode(concatenate(linkErrors))).toBe(0);
+
+            const directory = yield* container.files.read(directoryPath);
+            assert(IncusApi.FileRead.$is("Directory")(directory), "Expected a directory");
+            expect([...directory.entries].sort()).toEqual(["latest.bin", "payload #?.bin"]);
+
+            const symlink = yield* container.files.read(linkPath);
+            assert(IncusApi.FileRead.$is("Symlink")(symlink), "Expected a symlink");
+            expect(symlink.target).toBe(payloadPath);
+            const target = yield* container.files.read(symlink.target);
+            assert(IncusApi.FileRead.$is("File")(target), "Expected a regular file");
+            expect(concatenate(yield* target.bytes.pipe(Stream.runCollect))).toEqual(payload);
 
             yield* container.files.mkdir(cwd, { recursive: true });
             const stdout: Uint8Array[] = [];

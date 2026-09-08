@@ -2,7 +2,7 @@ import { Effect, Option, Ref, Stream } from "effect";
 import { posix } from "node:path";
 
 import { IncusContainer } from "./incus-container.ts";
-import type { IncusApi } from "./incus-api.ts";
+import { IncusApi } from "./incus-api.ts";
 
 export const create = (
   api: IncusApi.Interface,
@@ -11,19 +11,30 @@ export const create = (
 ): IncusContainer.FileOperations => {
   const projectOptions = { project };
 
-  const openRead: IncusContainer.Container["files"]["openRead"] = Effect.fn(
-    "IncusContainer.openRead",
-  )(function* (path: string) {
+  const read: IncusContainer.FileOperations["read"] = Effect.fn("IncusContainer.read")(function* (
+    path: string,
+  ) {
     yield* requireAbsolutePath(path);
-    const response = yield* api.instances.files.openRead(name, path, projectOptions);
-    if (response.type !== "file") {
-      return yield* new IncusContainer.MetadataError({
-        operation: "openRead",
-        message: `Path is not a regular file: ${path}`,
-        metadata: { path, type: response.type },
-      });
-    }
-    return { size: response.size, bytes: response.bytes };
+    return yield* api.instances.files.read(name, path, projectOptions);
+  });
+
+  const readFile: IncusContainer.Container["files"]["readFile"] = Effect.fn(
+    "IncusContainer.readFile",
+  )(function* (path: string) {
+    const response = yield* read(path);
+    const reject = (entry: IncusApi.FileRead) =>
+      Effect.fail(
+        new IncusContainer.MetadataError({
+          operation: "readFile",
+          message: `Path is not a regular file: ${path}`,
+          metadata: { path, type: entry._tag },
+        }),
+      );
+    return yield* IncusApi.FileRead.$match(response, {
+      File: (file) => Effect.succeed(file),
+      Symlink: reject,
+      Directory: reject,
+    });
   });
 
   const write: IncusContainer.Container["files"]["write"] = Effect.fn("IncusContainer.writeFile")(
@@ -77,17 +88,18 @@ export const create = (
   );
 
   return {
-    openRead,
+    read,
+    readFile,
     readBytes: (path) =>
       Effect.scoped(
-        openRead(path).pipe(
+        readFile(path).pipe(
           Effect.flatMap((file) => file.bytes.pipe(Stream.runCollect)),
           Effect.map(concatBytes),
         ),
       ).pipe(Effect.withSpan("IncusContainer.files.readBytes")),
     readText: (path) =>
       Effect.scoped(
-        openRead(path).pipe(
+        readFile(path).pipe(
           Effect.flatMap((file) => file.bytes.pipe(Stream.decodeText(), Stream.runCollect)),
           Effect.map((chunks) => Array.from(chunks).join("")),
         ),

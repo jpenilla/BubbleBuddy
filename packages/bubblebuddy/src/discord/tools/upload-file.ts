@@ -46,7 +46,7 @@ export const uploadFileTool = defineEffectTool({
       const container = yield* sessionContainer.get;
       const guestPath = yield* resolveGuestPath(sessionContainer.cwd, params.path);
       const limit = getGuildUploadLimit(context.channel.guild.premiumTier);
-      const file = yield* container.files.openRead(guestPath);
+      const file = yield* container.files.readFile(guestPath);
       if (file.size !== undefined && file.size > limit) {
         return yield* new AgentToolError({
           message: `File size ${file.size} exceeds this server's upload limit of ${limit} bytes.`,

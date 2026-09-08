@@ -25,7 +25,7 @@ const program = Effect.scoped(
       "/tmp/hello.txt",
       Stream.make(new TextEncoder().encode("hello")),
     );
-    const file = yield* container.files.openRead("/tmp/hello.txt");
+    const file = yield* container.files.readFile("/tmp/hello.txt");
     const text = yield* file.bytes.pipe(Stream.decodeText(), Stream.runFold("", (a, b) => a + b));
     console.log(text);
 
@@ -39,15 +39,3 @@ const program = Effect.scoped(
 
 Effect.runPromise(program.pipe(Effect.provide(IncusClientLayer)));
 ```
-
-`IncusClient.Service` exposes projects and their `IncusContainer.ContainerCollection`s.
-`containers.scoped` creates an ephemeral container and cleans it up when its enclosing scope closes.
-File paths are absolute guest paths. `openRead` and `write` use `Stream.Stream<Uint8Array, ...>`;
-`readBytes` and `readText` are buffered helpers.
-`exec` streams output through callbacks and returns the process exit code.
-
-The Unix endpoint uses Incus's default socket path when `socketPath` is omitted. Pass an HTTPS
-endpoint and TLS options to connect to a remote Incus server.
-
-With a running local Incus daemon, run `pnpm --filter incus-api run test:integration` for the
-opt-in integration scenario.

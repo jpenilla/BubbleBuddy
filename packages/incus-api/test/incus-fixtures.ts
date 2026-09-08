@@ -8,7 +8,7 @@ export interface ApiOverrides {
   readonly delete?: IncusApi.Interface["instances"]["delete"];
   readonly setState?: IncusApi.Interface["instances"]["setState"];
   readonly exec?: IncusApi.Interface["instances"]["exec"];
-  readonly openRead?: IncusApi.Interface["instances"]["files"]["openRead"];
+  readonly read?: IncusApi.Interface["instances"]["files"]["read"];
   readonly stat?: IncusApi.Interface["instances"]["files"]["stat"];
   readonly write?: IncusApi.Interface["instances"]["files"]["write"];
   readonly wait?: IncusApi.Interface["operations"]["wait"];
@@ -27,7 +27,7 @@ export const apiFixture = (overrides: ApiOverrides = {}): IncusApi.Interface => 
     setState: overrides.setState ?? (() => unavailable("instances.setState")),
     exec: overrides.exec ?? (() => unavailable("instances.exec")),
     files: {
-      openRead: overrides.openRead ?? (() => unavailable("instances.files.openRead")),
+      read: overrides.read ?? (() => unavailable("instances.files.read")),
       stat: overrides.stat ?? (() => unavailable("instances.files.stat")),
       write: overrides.write ?? (() => unavailable("instances.files.write")),
     },
