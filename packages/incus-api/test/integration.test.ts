@@ -42,6 +42,52 @@ const expectedStdout = Array.from(
   (_, index) => `stdout-${String(index).padStart(4, "0")}\n`,
 ).join("");
 
+const timeoutProcessScript = (pidPath: string) =>
+  [
+    `pid_path=${JSON.stringify(pidPath)}`,
+    "pid=$$",
+    "case \"$pid\" in ''|*[!0-9]*) exit 92 ;; esac",
+    "start_time=$(awk '{ print $22 }' \"/proc/$$/stat\")",
+    "case \"$start_time\" in ''|*[!0-9]*) exit 93 ;; esac",
+    'printf "%s %s\\n" "$$" "$start_time" > "$pid_path"',
+    'identity=$(cat "$pid_path") || exit 94',
+    "set -- $identity",
+    '[ "$#" -eq 2 ] || exit 95',
+    '[ "$1" = "$pid" ] && [ "$2" = "$start_time" ] || exit 96',
+    'printf "ready\\n"',
+    "exec sleep 60",
+  ].join("; ");
+
+const processTerminationCheckScript = (pidPath: string) =>
+  [
+    `pid_path=${JSON.stringify(pidPath)}`,
+    'identity=$(cat "$pid_path") || exit 20',
+    "set -- $identity",
+    '[ "$#" -eq 2 ] || exit 21',
+    "pid=$1",
+    "start_time=$2",
+    "case \"$pid\" in ''|*[!0-9]*) exit 22 ;; esac",
+    "case \"$start_time\" in ''|*[!0-9]*) exit 23 ;; esac",
+    "attempt=0",
+    'while [ "$attempt" -lt 10 ]; do',
+    '  stat_path="/proc/$pid/stat"',
+    '  if [ ! -e "$stat_path" ]; then exit 0; fi',
+    '  if [ ! -r "$stat_path" ]; then',
+    '    [ ! -e "$stat_path" ] && exit 0',
+    "    exit 24",
+    "  fi",
+    "  current_start_time=$(awk '{ print $22 }' \"$stat_path\") || {",
+    '    [ ! -e "$stat_path" ] && exit 0',
+    "    exit 25",
+    "  }",
+    "  case \"$current_start_time\" in ''|*[!0-9]*) exit 26 ;; esac",
+    '  if [ "$current_start_time" != "$start_time" ]; then exit 0; fi',
+    "  attempt=$((attempt + 1))",
+    "  sleep 1",
+    "done",
+    "exit 1",
+  ].join("\n");
+
 describeIntegration("Incus integration", () => {
   it.live(
     "uses scoped containers for streamed files and exec sessions",
@@ -118,69 +164,18 @@ describeIntegration("Incus integration", () => {
 
             const timeoutOutput: Uint8Array[] = [];
             const timeoutError = yield* container
-              .exec(
-                [
-                  "/bin/sh",
-                  "-lc",
-                  [
-                    `pid_path=${JSON.stringify(pidPath)}`,
-                    "pid=$$",
-                    "case \"$pid\" in ''|*[!0-9]*) exit 92 ;; esac",
-                    "start_time=$(awk '{ print $22 }' \"/proc/$$/stat\")",
-                    "case \"$start_time\" in ''|*[!0-9]*) exit 93 ;; esac",
-                    'printf "%s %s\\n" "$$" "$start_time" > "$pid_path"',
-                    'identity=$(cat "$pid_path") || exit 94',
-                    "set -- $identity",
-                    '[ "$#" -eq 2 ] || exit 95',
-                    '[ "$1" = "$pid" ] && [ "$2" = "$start_time" ] || exit 96',
-                    'printf "ready\\n"',
-                    "exec sleep 60",
-                  ].join("; "),
-                ],
-                {
-                  timeoutSeconds: 1,
-                  onStdout: (chunk) => {
-                    timeoutOutput.push(chunk);
-                  },
+              .exec(["/bin/sh", "-lc", timeoutProcessScript(pidPath)], {
+                timeoutSeconds: 1,
+                onStdout: (chunk) => {
+                  timeoutOutput.push(chunk);
                 },
-              )
+              })
               .pipe(Effect.flip);
             expect(timeoutError).toBeInstanceOf(IncusContainer.ExecTimeoutError);
             expect(new TextDecoder().decode(concatenate(timeoutOutput))).toBe("ready\n");
 
             const processEnded = yield* container.exec(
-              [
-                "/bin/sh",
-                "-lc",
-                [
-                  `pid_path=${JSON.stringify(pidPath)}`,
-                  'identity=$(cat "$pid_path") || exit 20',
-                  "set -- $identity",
-                  '[ "$#" -eq 2 ] || exit 21',
-                  "pid=$1",
-                  "start_time=$2",
-                  "case \"$pid\" in ''|*[!0-9]*) exit 22 ;; esac",
-                  "case \"$start_time\" in ''|*[!0-9]*) exit 23 ;; esac",
-                  "attempt=0",
-                  'while [ "$attempt" -lt 10 ]; do',
-                  '  stat_path="/proc/$pid/stat"',
-                  '  if [ ! -e "$stat_path" ]; then exit 0; fi',
-                  '  if [ ! -r "$stat_path" ]; then',
-                  '    [ ! -e "$stat_path" ] && exit 0',
-                  "    exit 24",
-                  "  fi",
-                  "  current_start_time=$(awk '{ print $22 }' \"$stat_path\") || {",
-                  '    [ ! -e "$stat_path" ] && exit 0',
-                  "    exit 25",
-                  "  }",
-                  "  case \"$current_start_time\" in ''|*[!0-9]*) exit 26 ;; esac",
-                  '  if [ "$current_start_time" != "$start_time" ]; then exit 0; fi',
-                  "  attempt=$((attempt + 1))",
-                  "  sleep 1",
-                  "done",
-                  "exit 1",
-                ].join("\n"),
-              ],
+              ["/bin/sh", "-lc", processTerminationCheckScript(pidPath)],
               { timeoutSeconds: 15 },
             );
             expect(processEnded.exitCode).toBe(0);
