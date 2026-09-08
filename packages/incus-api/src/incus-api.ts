@@ -230,55 +230,61 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
     return Service.of({
       instances: {
         create: Effect.fn("IncusApi.instances.create")(function* (payload, options) {
-          const response = yield* request(client, {
+          const body = yield* request(client, {
             method: "POST",
             path: `/1.0/instances${projectQuery(options.project)}`,
             body: yield* HttpBody.jsonSchema(InstanceCreateRequest)(payload),
-          });
-          const body = yield* HttpClientResponse.schemaBodyJson(AsyncOperationResponse)(response);
+          }).pipe(
+            Effect.flatMap(HttpClientResponse.schemaBodyJson(AsyncOperationResponse)),
+            Effect.scoped,
+          );
           return yield* operationFromBody(body);
         }),
-        exists: Effect.fn("IncusApi.instances.exists")(function* (name, options) {
-          return yield* emptyRequest(
-            client,
-            "GET",
-            `/1.0/instances/${encodeURIComponent(name)}${projectQuery(options.project)}`,
-          ).pipe(
+        exists: Effect.fn("IncusApi.instances.exists")((name, options) =>
+          request(client, {
+            method: "GET",
+            path: `/1.0/instances/${encodeURIComponent(name)}${projectQuery(options.project)}`,
+          }).pipe(
             Effect.as(true),
+            Effect.scoped,
             Effect.catchIf(isNotFound, () => Effect.succeed(false)),
-          );
-        }),
+          ),
+        ),
         delete: Effect.fn("IncusApi.instances.delete")(function* (name, options) {
-          const response = yield* request(client, {
+          const body = yield* request(client, {
             method: "DELETE",
             path: `/1.0/instances/${encodeURIComponent(name)}${projectQuery(options.project)}`,
-          });
-          const body = yield* HttpClientResponse.schemaBodyJson(AsyncOperationResponse)(response);
+          }).pipe(
+            Effect.flatMap(HttpClientResponse.schemaBodyJson(AsyncOperationResponse)),
+            Effect.scoped,
+          );
           return yield* operationFromBody(body);
         }),
         setState: Effect.fn("IncusApi.instances.setState")(function* (name, payload, options) {
-          const response = yield* request(client, {
+          const body = yield* request(client, {
             method: "PUT",
             path: `/1.0/instances/${encodeURIComponent(name)}/state${projectQuery(options.project)}`,
             body: yield* HttpBody.jsonSchema(InstanceStateRequest)(payload),
-          });
-          const body = yield* HttpClientResponse.schemaBodyJson(AsyncOperationResponse)(response);
+          }).pipe(
+            Effect.flatMap(HttpClientResponse.schemaBodyJson(AsyncOperationResponse)),
+            Effect.scoped,
+          );
           return yield* operationFromBody(body);
         }),
         exec: Effect.fn("IncusApi.instances.exec")(function* (name, payload, options) {
-          const response = yield* request(client, {
+          const body = yield* request(client, {
             method: "POST",
             path: `/1.0/instances/${encodeURIComponent(name)}/exec${projectQuery(options.project)}`,
             body: yield* HttpBody.jsonSchema(InstanceExecRequest)(payload),
-          });
-          const body = yield* HttpClientResponse.schemaBodyJson(ExecAsyncOperationResponse)(
-            response,
+          }).pipe(
+            Effect.flatMap(HttpClientResponse.schemaBodyJson(ExecAsyncOperationResponse)),
+            Effect.scoped,
           );
           return yield* execOperationFromBody(body);
         }),
         files: {
           read: Effect.fn("IncusApi.instances.files.read")(function* (name, path, options) {
-            const response = yield* scopedRequest(client, {
+            const response = yield* request(client, {
               method: "GET",
               path: instanceFilePath(name, path, options.project),
             });
@@ -305,31 +311,28 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
               Match.exhaustive,
             );
           }),
-          stat: Effect.fn("IncusApi.instances.files.stat")(function* (name, path, options) {
-            return yield* instanceFileHead(client, name, path, options).pipe(
+          stat: Effect.fn("IncusApi.instances.files.stat")((name, path, options) =>
+            instanceFileHead(client, name, path, options).pipe(
               Effect.catchIf(isNotFound, () => Effect.succeed(null)),
-            );
-          }),
-          write: Effect.fn("IncusApi.instances.files.write")(
-            function* (name, path, body, headers, options) {
-              return yield* request(client, {
-                method: "POST",
-                path: instanceFilePath(name, path, options.project),
-                body: body === undefined ? HttpBody.empty : HttpBody.stream(body),
-                headers,
-              }).pipe(Effect.asVoid);
-            },
+            ),
+          ),
+          write: Effect.fn("IncusApi.instances.files.write")((name, path, body, headers, options) =>
+            request(client, {
+              method: "POST",
+              path: instanceFilePath(name, path, options.project),
+              body: body === undefined ? HttpBody.empty : HttpBody.stream(body),
+              headers,
+            }).pipe(Effect.asVoid, Effect.scoped),
           ),
         },
       },
       operations: {
         makeWebSocket: Effect.fn("IncusApi.operations.makeWebSocket")(
-          function* (operationId, secret, options) {
-            return yield* transport.makeWebSocket(
+          (operationId, secret, options) =>
+            transport.makeWebSocket(
               `/1.0/operations/${encodeURIComponent(operationId)}/websocket?secret=${encodeURIComponent(secret)}`,
               options,
-            );
-          },
+            ),
         ),
         wait: Effect.fn("IncusApi.operations.wait")(function* (operationId, options) {
           const wait = Effect.gen(function* () {
@@ -356,13 +359,12 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
             ),
           );
         }),
-        cancel: Effect.fn("IncusApi.operations.cancel")(function* (operationId, options) {
-          return yield* emptyRequest(
-            client,
-            "DELETE",
-            `/1.0/operations/${encodeURIComponent(operationId)}${projectQuery(options.project)}`,
-          ).pipe(Effect.asVoid);
-        }),
+        cancel: Effect.fn("IncusApi.operations.cancel")((operationId, options) =>
+          request(client, {
+            method: "DELETE",
+            path: `/1.0/operations/${encodeURIComponent(operationId)}${projectQuery(options.project)}`,
+          }).pipe(Effect.asVoid, Effect.scoped),
+        ),
       },
     });
   }),
@@ -418,6 +420,7 @@ const operationWaitGet = (
   const path = `/1.0/operations/${encodeURIComponent(operationId)}/wait?${params.toString()}`;
   return request(client, { method: "GET", path }).pipe(
     Effect.flatMap(HttpClientResponse.schemaBodyJson(OperationWaitResponse)),
+    Effect.scoped,
   );
 };
 
@@ -484,7 +487,10 @@ const instanceFileHead = (
   path: string,
   options: ProjectOptions,
 ) =>
-  emptyRequest(client, "HEAD", instanceFilePath(name, path, options.project)).pipe(
+  request(client, {
+    method: "HEAD",
+    path: instanceFilePath(name, path, options.project),
+  }).pipe(
     Effect.flatMap((response) =>
       Schema.decodeUnknownEffect(FileType)(header(response, "x-incus-type")).pipe(
         Effect.map((type): FileInfo => ({
@@ -496,39 +502,19 @@ const instanceFileHead = (
         })),
       ),
     ),
+    Effect.scoped,
   );
 
-const emptyRequest = (client: HttpClient.HttpClient, method: HttpMethod.HttpMethod, path: string) =>
-  request(client, { method, path });
+interface RequestOptions {
+  readonly method: HttpMethod.HttpMethod;
+  readonly path: string;
+  readonly body?: HttpBody.HttpBody;
+  readonly headers?: Record<string, string>;
+}
 
 const request = (
   client: HttpClient.HttpClient,
-  options: {
-    readonly method: HttpMethod.HttpMethod;
-    readonly path: string;
-    readonly body?: HttpBody.HttpBody;
-    readonly headers?: Record<string, string>;
-  },
-): Effect.Effect<HttpClientResponse.HttpClientResponse, ApiError> =>
-  Effect.gen(function* () {
-    const req = HttpClientRequest.make(options.method)(options.path, {
-      body: options.body ?? HttpBody.empty,
-      headers: options.headers,
-    });
-
-    const response = yield* client.execute(req);
-    if (response.status >= 200 && response.status < 300) return response;
-    return yield* statusError(options.method, options.path, response);
-  });
-
-const scopedRequest = (
-  client: HttpClient.HttpClient,
-  options: {
-    readonly method: HttpMethod.HttpMethod;
-    readonly path: string;
-    readonly body?: HttpBody.HttpBody;
-    readonly headers?: Record<string, string>;
-  },
+  options: RequestOptions,
 ): Effect.Effect<HttpClientResponse.HttpClientResponse, ApiError, Scope.Scope> =>
   Effect.gen(function* () {
     const req = HttpClientRequest.make(options.method)(options.path, {
