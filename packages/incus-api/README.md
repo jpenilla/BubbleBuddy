@@ -3,13 +3,10 @@
 Effect-based Incus client for scoped container operations.
 
 ```typescript
-import { Effect, Layer, Stream } from "effect";
-import { IncusApi, IncusClient, IncusContainer, IncusTransport } from "incus-api";
+import { Effect, Stream } from "effect";
+import { IncusClient, IncusContainer } from "incus-api";
 
-const IncusClientLayer = IncusClient.layer.pipe(
-  Layer.provide(IncusApi.layer),
-  Layer.provide(IncusTransport.layer({ endpoint: { type: "unix" } })),
-);
+const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
 const image: IncusContainer.ImageSource = {
   type: "remote",

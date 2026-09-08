@@ -23,7 +23,7 @@ import {
   Semaphore,
 } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import { IncusApi, IncusClient, IncusTransport } from "incus-api";
+import { IncusClient } from "incus-api";
 
 import { discordCoreTools, discordWorkspaceTools } from "../discord/tools.ts";
 import { DiscordToolContext } from "../discord/tool-context.ts";
@@ -42,10 +42,7 @@ import { channelHostSessionsDir, createChannelMountedWorkspace } from "../shared
 import { SessionContainer } from "../session/session-container.ts";
 import type { PromptTemplateContext } from "./system-prompt.ts";
 
-const IncusClientLayer = IncusClient.layer.pipe(
-  Layer.provide(IncusApi.layer),
-  Layer.provide(IncusTransport.layer({ endpoint: { type: "unix" } })),
-);
+const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
 export interface PiSessionModelInfo {
   readonly id: string;

@@ -3,6 +3,7 @@ import { Context, Effect, Layer } from "effect";
 import { IncusContainerOperations } from "./incus-container-operations.ts";
 import { IncusContainer } from "./incus-container.ts";
 import { IncusApi } from "./incus-api.ts";
+import { IncusTransport } from "./incus-transport.ts";
 
 export interface Project {
   readonly name: string;
@@ -15,7 +16,7 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("incus-api/IncusClient") {}
 
-export const layer: Layer.Layer<Service, never, IncusApi.Service> = Layer.effect(
+export const layerNoDeps: Layer.Layer<Service, never, IncusApi.Service> = Layer.effect(
   Service,
   Effect.gen(function* () {
     const api = yield* IncusApi.Service;
@@ -27,5 +28,8 @@ export const layer: Layer.Layer<Service, never, IncusApi.Service> = Layer.effect
     });
   }),
 );
+
+export const layer = (options: IncusTransport.ConnectionOptions): Layer.Layer<Service> =>
+  layerNoDeps.pipe(Layer.provide(IncusApi.layer), Layer.provide(IncusTransport.layer(options)));
 
 export * as IncusClient from "./incus-client.ts";
