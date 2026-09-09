@@ -48,16 +48,6 @@ interface SocketRunner {
 const OutputEnd = Symbol("IncusExecOutputEnd");
 type OutputItem = Uint8Array | typeof OutputEnd;
 
-const runCallback = (
-  callback: ((chunk: Uint8Array) => Effect.Effect<void, unknown>) | undefined,
-  chunk: Uint8Array,
-) =>
-  callback
-    ? Effect.suspend(() => callback(chunk)).pipe(
-        Effect.mapError((cause) => new IncusContainer.ExecCallbackError({ cause })),
-      )
-    : Effect.void;
-
 const failWhenFiberFails = <A, E>(fiber: Fiber.Fiber<A, E>): Effect.Effect<never, E, never> =>
   Fiber.join(fiber).pipe(Effect.flatMap(() => Effect.never));
 
@@ -111,7 +101,11 @@ const startOutputConsumer = Effect.fnUntraced(function* (
     while (true) {
       const item = yield* Queue.take(queue);
       if (item === OutputEnd) return;
-      yield* runCallback(callback, item);
+      if (callback) {
+        yield* callback(item).pipe(
+          Effect.mapError((cause) => new IncusContainer.ExecCallbackError({ cause })),
+        );
+      }
     }
   }).pipe(Effect.forkIn(scope));
   return { queue, fiber };
