@@ -48,25 +48,19 @@ interface SocketRunner {
 const OutputEnd = Symbol("IncusExecOutputEnd");
 type OutputItem = Uint8Array | typeof OutputEnd;
 
-const runCallback = (
+const runCallback = Effect.fnUntraced(function* (
   callback: ((chunk: Uint8Array) => void | Effect.Effect<void, unknown, never>) | undefined,
   chunk: Uint8Array,
-): Effect.Effect<void, IncusContainer.ExecCallbackError, never> => {
-  if (!callback) return Effect.void;
-  return Effect.try({
+) {
+  if (!callback) return;
+  const result = yield* Effect.try({
     try: () => callback(chunk),
     catch: (cause) => new IncusContainer.ExecCallbackError({ cause }),
-  }).pipe(
-    Effect.flatMap((result) => {
-      if (Effect.isEffect(result)) {
-        return result.pipe(
-          Effect.mapError((cause) => new IncusContainer.ExecCallbackError({ cause })),
-        );
-      }
-      return Effect.void;
-    }),
-  );
-};
+  });
+  if (Effect.isEffect(result)) {
+    yield* result.pipe(Effect.mapError((cause) => new IncusContainer.ExecCallbackError({ cause })));
+  }
+});
 
 const failWhenFiberFails = <A, E>(fiber: Fiber.Fiber<A, E>): Effect.Effect<never, E, never> =>
   Fiber.join(fiber).pipe(Effect.flatMap(() => Effect.never));

@@ -362,9 +362,14 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
           const wait = Effect.gen(function* () {
             const body = yield* operationWaitGet(client, operationId, options);
             const result = yield* operationWaitResult(operationId, body);
-            return yield* options.failureMode === "return"
-              ? Effect.succeed(result)
-              : failOperationWaitResult(operationId, result, body);
+            if (options.failureMode !== "return" && result.status === "failure") {
+              return yield* new OperationError({
+                operation: operationId,
+                message: result.error ?? "Incus operation failed",
+                metadata: body,
+              });
+            }
+            return result;
           });
           if (options.timeoutSeconds === undefined) return yield* wait;
           const requestedTimeoutSeconds = options.timeoutSeconds;
@@ -473,21 +478,6 @@ const operationWaitResult = (
   }
   return Effect.succeed({ status: "success", metadata: body.metadata.metadata });
 };
-
-const failOperationWaitResult = (
-  operationId: string,
-  result: OperationWaitResult,
-  body: OperationWaitResponse,
-): Effect.Effect<OperationWaitResult, OperationError> =>
-  result.status === "failure"
-    ? Effect.fail(
-        new OperationError({
-          operation: operationId,
-          message: result.error ?? "Incus operation failed",
-          metadata: body,
-        }),
-      )
-    : Effect.succeed(result);
 
 const operationIdFromPath = (
   operation: string,
