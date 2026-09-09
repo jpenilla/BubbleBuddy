@@ -228,26 +228,6 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
         Effect.map((id) => ({ id })),
       );
 
-    const execOperationFromBody = Effect.fnUntraced(function* (
-      operation: OperationRef,
-      response: ExecAsyncOperationResponse,
-    ) {
-      const bodyOperationId = yield* execOperationIdFromPath("body", response.operation);
-      if (bodyOperationId !== operation.id) {
-        return yield* new OperationError({
-          operation: operation.id,
-          message: "Incus exec response operation did not match its Location header",
-          metadata: { locationOperationId: operation.id, bodyOperationId },
-        });
-      }
-      return {
-        ...operation,
-        ...(response.metadata.metadata.fds === undefined
-          ? {}
-          : { websocketSecrets: response.metadata.metadata.fds }),
-      };
-    });
-
     const execOperationFromLocation = Effect.fnUntraced(function* (
       response: HttpClientResponse.HttpClientResponse,
     ) {
@@ -260,7 +240,7 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
         });
       }
 
-      const id = yield* execOperationIdFromPath("Location header", location);
+      const id = yield* execOperationIdFromPath(location);
       return { id };
     });
 
@@ -333,7 +313,12 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
               const body = yield* HttpClientResponse.schemaBodyJson(ExecAsyncOperationResponse)(
                 response,
               );
-              return yield* execOperationFromBody(operation, body);
+              return {
+                ...operation,
+                ...(body.metadata.metadata.fds === undefined
+                  ? {}
+                  : { websocketSecrets: body.metadata.metadata.fds }),
+              };
             }),
           );
         }),
@@ -456,7 +441,6 @@ const ExecAsyncOperationResponse = Schema.Struct({
   operation: Schema.String,
   metadata: ExecOperation,
 });
-type ExecAsyncOperationResponse = typeof ExecAsyncOperationResponse.Type;
 
 const OperationWaitResponse = Schema.Struct({
   type: Schema.Literal("sync"),
@@ -536,16 +520,13 @@ const operationIdFromPath = (
   );
 };
 
-const execOperationIdFromPath = Effect.fnUntraced(function* (
-  source: "Location header" | "body",
-  value: string,
-) {
+const execOperationIdFromPath = Effect.fnUntraced(function* (value: string) {
   const path = yield* Effect.try({
     try: () => new URL(value, "http://incus.invalid").pathname,
     catch: () =>
       new OperationError({
         operation: "exec",
-        message: `Incus exec response ${source} was invalid`,
+        message: "Incus exec response Location header was invalid",
         metadata: { value },
       }),
   });
@@ -555,7 +536,7 @@ const execOperationIdFromPath = Effect.fnUntraced(function* (
   if (id === undefined || id.length === 0 || id.includes("/")) {
     return yield* new OperationError({
       operation: "exec",
-      message: `Incus exec response ${source} did not contain an operation id`,
+      message: "Incus exec response Location header did not contain an operation id",
       metadata: { value },
     });
   }
