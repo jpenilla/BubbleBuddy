@@ -48,19 +48,15 @@ interface SocketRunner {
 const OutputEnd = Symbol("IncusExecOutputEnd");
 type OutputItem = Uint8Array | typeof OutputEnd;
 
-const runCallback = Effect.fnUntraced(function* (
-  callback: ((chunk: Uint8Array) => void | Effect.Effect<void, unknown, never>) | undefined,
+const runCallback = (
+  callback: ((chunk: Uint8Array) => Effect.Effect<void, unknown>) | undefined,
   chunk: Uint8Array,
-) {
-  if (!callback) return;
-  const result = yield* Effect.try({
-    try: () => callback(chunk),
-    catch: (cause) => new IncusContainer.ExecCallbackError({ cause }),
-  });
-  if (Effect.isEffect(result)) {
-    yield* result.pipe(Effect.mapError((cause) => new IncusContainer.ExecCallbackError({ cause })));
-  }
-});
+) =>
+  callback
+    ? Effect.suspend(() => callback(chunk)).pipe(
+        Effect.mapError((cause) => new IncusContainer.ExecCallbackError({ cause })),
+      )
+    : Effect.void;
 
 const failWhenFiberFails = <A, E>(fiber: Fiber.Fiber<A, E>): Effect.Effect<never, E, never> =>
   Fiber.join(fiber).pipe(Effect.flatMap(() => Effect.never));
@@ -103,7 +99,7 @@ const startSocketRunner = Effect.fnUntraced(function* (
 const awaitSocketRunnerReady = (runner: SocketRunner) => Deferred.await(runner.ready);
 
 const startOutputConsumer = Effect.fnUntraced(function* (
-  callback: ((chunk: Uint8Array) => void | Effect.Effect<void, unknown, never>) | undefined,
+  callback: ((chunk: Uint8Array) => Effect.Effect<void, unknown>) | undefined,
   scope: Scope.Scope,
 ) {
   // Callbacks are ordered per stream; buffering is intentionally unbounded.

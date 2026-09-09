@@ -125,9 +125,10 @@ describeIntegration("Incus integration", () => {
             const linkPath = `${directoryPath}/latest.bin`;
             const linkErrors: Uint8Array[] = [];
             const link = yield* container.exec(["/bin/ln", "-s", "payload #?.bin", linkPath], {
-              onStderr: (chunk) => {
-                linkErrors.push(chunk);
-              },
+              onStderr: (chunk) =>
+                Effect.sync(() => {
+                  linkErrors.push(chunk);
+                }),
             });
             expect(link.exitCode, new TextDecoder().decode(concatenate(linkErrors))).toBe(0);
 
@@ -161,12 +162,14 @@ describeIntegration("Incus integration", () => {
               {
                 cwd,
                 environment: { INTEGRATION_VALUE: "present" },
-                onStdout: (chunk) => {
-                  stdout.push(chunk);
-                },
-                onStderr: (chunk) => {
-                  stderr.push(chunk);
-                },
+                onStdout: (chunk) =>
+                  Effect.sync(() => {
+                    stdout.push(chunk);
+                  }),
+                onStderr: (chunk) =>
+                  Effect.sync(() => {
+                    stderr.push(chunk);
+                  }),
               },
             );
             const stdoutText = new TextDecoder().decode(concatenate(stdout));
@@ -185,9 +188,10 @@ describeIntegration("Incus integration", () => {
             const timeoutError = yield* container
               .exec(["/bin/sh", "-lc", timeoutProcessScript(pidPath)], {
                 timeoutSeconds: 1,
-                onStdout: (chunk) => {
-                  timeoutOutput.push(chunk);
-                },
+                onStdout: (chunk) =>
+                  Effect.sync(() => {
+                    timeoutOutput.push(chunk);
+                  }),
               })
               .pipe(Effect.flip);
             expect(timeoutError).toBeInstanceOf(IncusContainer.ExecTimeoutError);

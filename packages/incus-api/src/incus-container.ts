@@ -99,8 +99,8 @@ export interface ExecOptions {
   readonly cwd?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly timeoutSeconds?: number;
-  readonly onStdout?: (chunk: Uint8Array) => void | Effect.Effect<void, unknown, never>;
-  readonly onStderr?: (chunk: Uint8Array) => void | Effect.Effect<void, unknown, never>;
+  readonly onStdout?: (chunk: Uint8Array) => Effect.Effect<void, unknown>;
+  readonly onStderr?: (chunk: Uint8Array) => Effect.Effect<void, unknown>;
 }
 
 export interface ExecResult {

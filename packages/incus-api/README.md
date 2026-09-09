@@ -30,8 +30,12 @@ const program = Effect.scoped(
     console.log(text);
 
     const result = yield* container.exec(["/bin/cat", "/tmp/hello.txt"], {
-      onStdout: (chunk) => process.stdout.write(chunk),
-      onStderr: (chunk) => process.stderr.write(chunk),
+      onStdout: (chunk) => Effect.sync(() => {
+        process.stdout.write(chunk);
+      }),
+      onStderr: (chunk) => Effect.sync(() => {
+        process.stderr.write(chunk);
+      }),
     });
     console.log(`Process exited with code ${result.exitCode}`);
   }),

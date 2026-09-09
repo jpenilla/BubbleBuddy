@@ -44,9 +44,10 @@ export const createIncusExtension = Effect.gen(function* () {
         const chunks: Uint8Array[] = [];
         await runInContainer((container) =>
           container.exec(["/bin/sh", "-lc", `head -c ${IMAGE_TYPE_SNIFF_BYTES} ${shQuote(path)}`], {
-            onStdout: (chunk) => {
-              chunks.push(chunk.slice());
-            },
+            onStdout: (chunk) =>
+              Effect.sync(() => {
+                chunks.push(chunk.slice());
+              }),
           }),
         );
         return detectSupportedImageMimeType(Buffer.concat(chunks));
@@ -94,8 +95,8 @@ export const createIncusExtension = Effect.gen(function* () {
           container.exec(["/bin/bash", "-c", command], {
             cwd,
             timeoutSeconds,
-            onStdout: (chunk) => execOptions.onData(Buffer.from(chunk)),
-            onStderr: (chunk) => execOptions.onData(Buffer.from(chunk)),
+            onStdout: (chunk) => Effect.sync(() => execOptions.onData(Buffer.from(chunk))),
+            onStderr: (chunk) => Effect.sync(() => execOptions.onData(Buffer.from(chunk))),
           }),
         ).pipe(Effect.exit),
         { signal: execOptions.signal },
