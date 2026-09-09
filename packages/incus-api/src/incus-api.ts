@@ -228,47 +228,41 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
         Effect.map((id) => ({ id })),
       );
 
-    const execOperationFromBody = (
+    const execOperationFromBody = Effect.fnUntraced(function* (
       operation: OperationRef,
       response: ExecAsyncOperationResponse,
-    ): Effect.Effect<ExecOperationRef, OperationError> =>
-      execOperationIdFromPath("body", response.operation).pipe(
-        Effect.flatMap((bodyOperationId) =>
-          bodyOperationId === operation.id
-            ? Effect.succeed({
-                ...operation,
-                ...(response.metadata.metadata.fds === undefined
-                  ? {}
-                  : { websocketSecrets: response.metadata.metadata.fds }),
-              })
-            : Effect.fail(
-                new OperationError({
-                  operation: operation.id,
-                  message: "Incus exec response operation did not match its Location header",
-                  metadata: { locationOperationId: operation.id, bodyOperationId },
-                }),
-              ),
-        ),
-      );
+    ) {
+      const bodyOperationId = yield* execOperationIdFromPath("body", response.operation);
+      if (bodyOperationId !== operation.id) {
+        return yield* new OperationError({
+          operation: operation.id,
+          message: "Incus exec response operation did not match its Location header",
+          metadata: { locationOperationId: operation.id, bodyOperationId },
+        });
+      }
+      return {
+        ...operation,
+        ...(response.metadata.metadata.fds === undefined
+          ? {}
+          : { websocketSecrets: response.metadata.metadata.fds }),
+      };
+    });
 
-    const execOperationFromLocation = (
+    const execOperationFromLocation = Effect.fnUntraced(function* (
       response: HttpClientResponse.HttpClientResponse,
-    ): Effect.Effect<OperationRef, OperationError> => {
+    ) {
       const location = header(response, "location");
       if (location === undefined) {
-        return Effect.fail(
-          new OperationError({
-            operation: "exec",
-            message: "Incus exec response did not include a Location header",
-            metadata: {},
-          }),
-        );
+        return yield* new OperationError({
+          operation: "exec",
+          message: "Incus exec response did not include a Location header",
+          metadata: {},
+        });
       }
 
-      return execOperationIdFromPath("Location header", location).pipe(
-        Effect.map((id) => ({ id })),
-      );
-    };
+      const id = yield* execOperationIdFromPath("Location header", location);
+      return { id };
+    });
 
     return Service.of({
       instances: {
@@ -542,60 +536,51 @@ const operationIdFromPath = (
   );
 };
 
-const execOperationIdFromPath = (
+const execOperationIdFromPath = Effect.fnUntraced(function* (
   source: "Location header" | "body",
   value: string,
-): Effect.Effect<string, OperationError> => {
-  let path: string;
-  try {
-    path = new URL(value, "http://incus.invalid").pathname;
-  } catch {
-    return Effect.fail(
+) {
+  const path = yield* Effect.try({
+    try: () => new URL(value, "http://incus.invalid").pathname,
+    catch: () =>
       new OperationError({
         operation: "exec",
         message: `Incus exec response ${source} was invalid`,
         metadata: { value },
       }),
-    );
-  }
+  });
 
   const prefix = "/1.0/operations/";
   const id = path.startsWith(prefix) ? path.slice(prefix.length) : undefined;
   if (id === undefined || id.length === 0 || id.includes("/")) {
-    return Effect.fail(
-      new OperationError({
-        operation: "exec",
-        message: `Incus exec response ${source} did not contain an operation id`,
-        metadata: { value },
-      }),
-    );
+    return yield* new OperationError({
+      operation: "exec",
+      message: `Incus exec response ${source} did not contain an operation id`,
+      metadata: { value },
+    });
   }
-  return Effect.succeed(id);
-};
+  return id;
+});
 
-const instanceFileHead = (
+const instanceFileHead = Effect.fnUntraced(function* (
   client: HttpClient.HttpClient,
   name: string,
   path: string,
   options: ProjectOptions,
-) =>
-  request(client, {
+) {
+  const response = yield* request(client, {
     method: "HEAD",
     path: instanceFilePath(name, path, options.project),
-  }).pipe(
-    Effect.flatMap((response) =>
-      Schema.decodeUnknownEffect(FileType)(header(response, "x-incus-type")).pipe(
-        Effect.map((type): FileInfo => ({
-          type,
-          uid: numberHeader(response, "x-incus-uid"),
-          gid: numberHeader(response, "x-incus-gid"),
-          mode: numberHeader(response, "x-incus-mode"),
-          modified: header(response, "x-incus-modified"),
-        })),
-      ),
-    ),
-    Effect.scoped,
-  );
+  });
+  const type = yield* Schema.decodeUnknownEffect(FileType)(header(response, "x-incus-type"));
+  return {
+    type,
+    uid: numberHeader(response, "x-incus-uid"),
+    gid: numberHeader(response, "x-incus-gid"),
+    mode: numberHeader(response, "x-incus-mode"),
+    modified: header(response, "x-incus-modified"),
+  };
+}, Effect.scoped);
 
 interface RequestOptions {
   readonly method: HttpMethod.HttpMethod;
@@ -604,38 +589,25 @@ interface RequestOptions {
   readonly headers?: Record<string, string>;
 }
 
-const request = (
+const request = Effect.fnUntraced(function* (
   client: HttpClient.HttpClient,
   options: RequestOptions,
-): Effect.Effect<HttpClientResponse.HttpClientResponse, ApiError, Scope.Scope> =>
-  Effect.gen(function* () {
-    const req = HttpClientRequest.make(options.method)(options.path, {
-      body: options.body ?? HttpBody.empty,
-      headers: options.headers,
-    });
-
-    const response = yield* HttpClient.withScope(client).execute(req);
-    if (response.status >= 200 && response.status < 300) return response;
-    return yield* statusError(options.method, options.path, response);
+) {
+  const req = HttpClientRequest.make(options.method)(options.path, {
+    body: options.body ?? HttpBody.empty,
+    headers: options.headers,
   });
 
-const statusError = (
-  method: string,
-  path: string,
-  response: HttpClientResponse.HttpClientResponse,
-) =>
-  response.text.pipe(
-    Effect.flatMap((body) =>
-      Effect.fail(
-        new StatusCodeError({
-          method,
-          path,
-          status: response.status,
-          body,
-        }),
-      ),
-    ),
-  );
+  const response = yield* HttpClient.withScope(client).execute(req);
+  if (response.status >= 200 && response.status < 300) return response;
+  const body = yield* response.text;
+  return yield* new StatusCodeError({
+    method: options.method,
+    path: options.path,
+    status: response.status,
+    body,
+  });
+});
 
 const instanceFilePath = (name: string, path: string, project: string) => {
   const params = new URLSearchParams();

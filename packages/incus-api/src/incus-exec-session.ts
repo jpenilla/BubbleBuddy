@@ -1,4 +1,4 @@
-import { Cause, Deferred, Effect, Exit, Fiber, Option, Queue, Schema, Scope } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Queue, Schema, Scope } from "effect";
 import * as Socket from "effect/unstable/socket/Socket";
 
 import { IncusApi } from "./incus-api.ts";
@@ -40,18 +40,13 @@ interface ExecLifecycle {
   terminal: boolean;
 }
 
-interface SocketRunner<E> {
-  readonly ready: Deferred.Deferred<void, E | Socket.SocketError>;
-  readonly fiber: Fiber.Fiber<void, E>;
+interface SocketRunner {
+  readonly ready: Deferred.Deferred<void, Socket.SocketError>;
+  readonly fiber: Fiber.Fiber<void, Socket.SocketError>;
 }
 
 const OutputEnd = Symbol("IncusExecOutputEnd");
 type OutputItem = Uint8Array | typeof OutputEnd;
-
-interface OutputConsumer {
-  readonly queue: Queue.Queue<OutputItem>;
-  readonly fiber: Fiber.Fiber<void, IncusContainer.ExecCallbackError>;
-}
 
 const runCallback = (
   callback: ((chunk: Uint8Array) => void | Effect.Effect<void, unknown, never>) | undefined,
@@ -92,81 +87,76 @@ const socketRunnerUnavailableError = (name: string) =>
     }),
   });
 
-const startSocketRunner = <E, R>(
+const startSocketRunner = Effect.fnUntraced(function* (
   name: string,
-  run: (onOpen: Effect.Effect<void>) => Effect.Effect<void, E, R>,
+  run: (onOpen: Effect.Effect<void>) => Effect.Effect<void, Socket.SocketError>,
   scope: Scope.Scope,
-): Effect.Effect<SocketRunner<E>, never, R> =>
-  Effect.gen(function* () {
-    const ready = yield* Deferred.make<void, E | Socket.SocketError>();
-    const onOpen = Deferred.succeed(ready, undefined).pipe(Effect.asVoid);
-    const fiber = yield* run(onOpen).pipe(
-      // onOpen and onExit race to complete readiness, so a runner cannot leave setup waiting forever.
-      Effect.onExit((exit) =>
-        Exit.isSuccess(exit)
-          ? Deferred.fail(ready, socketRunnerOpenError(name)).pipe(Effect.asVoid)
-          : Deferred.failCause(ready, exit.cause).pipe(Effect.asVoid),
-      ),
-      Effect.forkIn(scope),
-    );
-    return { ready, fiber };
-  });
+) {
+  const ready = yield* Deferred.make<void, Socket.SocketError>();
+  const onOpen = Deferred.succeed(ready, undefined).pipe(Effect.asVoid);
+  const fiber = yield* run(onOpen).pipe(
+    // onOpen and onExit race to complete readiness, so a runner cannot leave setup waiting forever.
+    Effect.onExit((exit) =>
+      Exit.isSuccess(exit)
+        ? Deferred.fail(ready, socketRunnerOpenError(name)).pipe(Effect.asVoid)
+        : Deferred.failCause(ready, exit.cause).pipe(Effect.asVoid),
+    ),
+    Effect.forkIn(scope),
+  );
+  return { ready, fiber };
+});
 
-const awaitSocketRunnerReady = <E>(runner: SocketRunner<E>) => Deferred.await(runner.ready);
+const awaitSocketRunnerReady = (runner: SocketRunner) => Deferred.await(runner.ready);
 
-const startOutputConsumer = (
+const startOutputConsumer = Effect.fnUntraced(function* (
   callback: ((chunk: Uint8Array) => void | Effect.Effect<void, unknown, never>) | undefined,
   scope: Scope.Scope,
-): Effect.Effect<OutputConsumer> =>
-  Effect.gen(function* () {
-    // Callbacks are ordered per stream; buffering is intentionally unbounded.
-    const queue = yield* Scope.provide(
-      Effect.acquireRelease(Queue.unbounded<OutputItem>(), Queue.shutdown),
-      scope,
-    );
-    const fiber = yield* Effect.gen(function* () {
-      while (true) {
-        const item = yield* Queue.take(queue);
-        if (item === OutputEnd) return;
-        yield* runCallback(callback, item);
-      }
-    }).pipe(Effect.forkIn(scope));
-    return { queue, fiber };
-  });
+) {
+  // Callbacks are ordered per stream; buffering is intentionally unbounded.
+  const queue = yield* Scope.provide(
+    Effect.acquireRelease(Queue.unbounded<OutputItem>(), Queue.shutdown),
+    scope,
+  );
+  const fiber = yield* Effect.gen(function* () {
+    while (true) {
+      const item = yield* Queue.take(queue);
+      if (item === OutputEnd) return;
+      yield* runCallback(callback, item);
+    }
+  }).pipe(Effect.forkIn(scope));
+  return { queue, fiber };
+});
 
 const drainOutputCallbacks = <A, E>(
   fibers: readonly Fiber.Fiber<A, E>[],
 ): Effect.Effect<void, E | IncusContainer.ExecTransportError, never> =>
-  Effect.forEach(fibers, (fiber) => Fiber.join(fiber), { concurrency: "unbounded" }).pipe(
-    Effect.asVoid,
-    Effect.timeoutOption(`${OutputDrainTimeoutSeconds} seconds`),
-    Effect.flatMap((result) =>
-      Option.isSome(result)
-        ? Effect.void
-        : Effect.fail(
-            new IncusContainer.ExecTransportError({
-              message: "Timed out waiting for exec output callbacks to drain",
-            }),
-          ),
-    ),
+  Effect.forEach(fibers, (fiber) => Fiber.join(fiber), {
+    concurrency: "unbounded",
+    discard: true,
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: `${OutputDrainTimeoutSeconds} seconds`,
+      orElse: () =>
+        Effect.fail(
+          new IncusContainer.ExecTransportError({
+            message: "Timed out waiting for exec output callbacks to drain",
+          }),
+        ),
+    }),
   );
-
-const enforceTimeout =
-  (timeoutSeconds: number | undefined) =>
-  (
-    result: IncusApi.OperationWaitResult,
-  ): Effect.Effect<IncusApi.OperationWaitResult, IncusContainer.ExecTimeoutError> => {
-    if (result.status === "running" && timeoutSeconds !== undefined) {
-      return Effect.fail(new IncusContainer.ExecTimeoutError({ timeoutSeconds }));
-    }
-    return Effect.succeed(result);
-  };
 
 const asExecWaitResult = (
   operationId: string,
   result: IncusApi.OperationWaitResult,
-): Effect.Effect<IncusContainer.ExecResult, IncusApi.OperationError> => {
+  timeoutSeconds: number | undefined,
+): Effect.Effect<
+  IncusContainer.ExecResult,
+  IncusApi.OperationError | IncusContainer.ExecTimeoutError
+> => {
   if (result.status === "running") {
+    if (timeoutSeconds !== undefined) {
+      return Effect.fail(new IncusContainer.ExecTimeoutError({ timeoutSeconds }));
+    }
     return Effect.fail(
       new IncusApi.OperationError({
         operation: operationId,
@@ -236,31 +226,30 @@ const execWebSocketOptions = {
   openTimeout: WebSocketSetupTimeoutMs,
 };
 
-const startStdin = (
+const startStdin = Effect.fn("IncusExecSession.startStdin")(function* (
   stdinSocket: Socket.Socket,
   scope: Scope.Scope,
-): Effect.Effect<SocketRunner<Socket.SocketError>, Socket.SocketError> =>
-  Effect.gen(function* () {
-    const stdinWriter = yield* Scope.provide(stdinSocket.writer, scope);
-    const runner = yield* startSocketRunner(
-      "stdin",
-      (onOpen) => stdinSocket.runRaw(() => {}, { onOpen }),
-      scope,
-    );
-    yield* awaitSocketRunnerReady(runner);
-    // Stdin is not exposed by this API yet, so close it immediately. This lets commands
-    // waiting for EOF, such as `cat`, exit instead of hanging forever.
-    yield* stdinWriter(new Socket.CloseEvent(1000, "stdin unsupported"));
-    return runner;
-  });
+) {
+  const stdinWriter = yield* Scope.provide(stdinSocket.writer, scope);
+  const runner = yield* startSocketRunner(
+    "stdin",
+    (onOpen) => stdinSocket.runRaw(() => {}, { onOpen }),
+    scope,
+  );
+  yield* awaitSocketRunnerReady(runner);
+  // Stdin is not exposed by this API yet, so close it immediately. This lets commands
+  // waiting for EOF, such as `cat`, exit instead of hanging forever.
+  yield* stdinWriter(new Socket.CloseEvent(1000, "stdin unsupported"));
+  return runner;
+});
 
 const startOutput = (
   name: string,
   socket: Socket.Socket,
   queue: Queue.Queue<OutputItem>,
   scope: Scope.Scope,
-): Effect.Effect<SocketRunner<Socket.SocketError>> =>
-  startSocketRunner<Socket.SocketError, never>(
+): Effect.Effect<SocketRunner> =>
+  startSocketRunner(
     name,
     (onOpen) =>
       socket
@@ -285,96 +274,92 @@ const startOutput = (
 const startControl = (
   controlSocket: Socket.Socket,
   scope: Scope.Scope,
-): Effect.Effect<SocketRunner<Socket.SocketError>> =>
-  startSocketRunner<Socket.SocketError, never>(
-    "control",
-    (onOpen) => controlSocket.runRaw(() => {}, { onOpen }),
-    scope,
-  );
+): Effect.Effect<SocketRunner> =>
+  startSocketRunner("control", (onOpen) => controlSocket.runRaw(() => {}, { onOpen }), scope);
 
-const createControlWriter = (
+const createControlWriter = Effect.fnUntraced(function* (
   controlSocket: Socket.Socket,
-  controlRunner: SocketRunner<Socket.SocketError>,
+  controlRunner: SocketRunner,
   scope: Scope.Scope,
-) =>
-  Effect.gen(function* () {
-    const controlWriter = yield* Scope.provide(controlSocket.writer, scope);
-    return (chunk: Uint8Array | string) =>
-      Effect.raceFirst(
-        controlWriter(chunk),
-        Fiber.join(controlRunner.fiber).pipe(
-          Effect.andThen(Effect.fail(socketRunnerUnavailableError("control"))),
-        ),
-      );
-  });
-
-const waitExecResult = (
-  api: IncusApi.Interface,
-  operationId: string,
-  project: string,
-  timeoutSeconds: number | undefined,
-  lifecycle: ExecLifecycle,
-) =>
-  // Incus reports exec exit 127 as operation failure; preserve metadata so callers get output and exit code.
-  api.operations.wait(operationId, { project, timeoutSeconds, failureMode: "return" }).pipe(
-    Effect.flatMap((result) =>
-      Effect.uninterruptible(
-        Effect.sync(() => {
-          if (result.status !== "running") lifecycle.terminal = true;
-        }).pipe(Effect.as(result), Effect.flatMap(enforceTimeout(timeoutSeconds))),
+) {
+  const controlWriter = yield* Scope.provide(controlSocket.writer, scope);
+  return (chunk: Uint8Array | string) =>
+    Effect.raceFirst(
+      controlWriter(chunk),
+      Fiber.join(controlRunner.fiber).pipe(
+        Effect.andThen(Effect.fail(socketRunnerUnavailableError("control"))),
       ),
-    ),
-    Effect.flatMap((result) => asExecWaitResult(operationId, result)),
-  );
+    );
+});
 
-const shutdownExec = (
+const waitExecResult = Effect.fn("IncusExecSession.waitExecResult")(
+  (
+    api: IncusApi.Interface,
+    operationId: string,
+    project: string,
+    timeoutSeconds: number | undefined,
+    lifecycle: ExecLifecycle,
+  ) =>
+    // Incus reports exec exit 127 as operation failure; preserve metadata so callers get output and exit code.
+    api.operations.wait(operationId, { project, timeoutSeconds, failureMode: "return" }).pipe(
+      Effect.flatMap((result) =>
+        Effect.uninterruptible(
+          Effect.sync(() => {
+            if (result.status !== "running") lifecycle.terminal = true;
+          }).pipe(Effect.as(result)),
+        ),
+      ),
+      Effect.flatMap((result) => asExecWaitResult(operationId, result, timeoutSeconds)),
+    ),
+);
+
+const shutdownExec = Effect.fn("IncusExecSession.shutdownExec")(function* (
   api: IncusApi.Interface,
   project: string,
   operation: IncusApi.OperationRef,
   lifecycle: ExecLifecycle,
-) =>
-  Effect.gen(function* () {
-    if (lifecycle.terminal) return;
+) {
+  if (lifecycle.terminal) return;
 
-    const writeControl = lifecycle.writeControl;
-    if (!writeControl) {
-      yield* api.operations
-        .cancel(operation.id, { project })
-        .pipe(
-          Effect.timeout("250 millis"),
-          Effect.ignore({ log: "Warn", message: "Failed to cancel Incus exec during cleanup" }),
-        );
-      return;
-    }
-
-    const sendSignal = (signal: number) =>
-      controlSignal(signal).pipe(
-        Effect.flatMap(writeControl),
+  const writeControl = lifecycle.writeControl;
+  if (!writeControl) {
+    yield* api.operations
+      .cancel(operation.id, { project })
+      .pipe(
         Effect.timeout("250 millis"),
-        Effect.ignore({
-          log: "Warn",
-          message: `Failed to send signal ${signal} to Incus exec during cleanup`,
-        }),
+        Effect.ignore({ log: "Warn", message: "Failed to cancel Incus exec during cleanup" }),
       );
+    return;
+  }
 
-    yield* sendSignal(SIGTERM);
-
-    // Give process a chance to exit gracefully
-    const waitResult = yield* Effect.exit(
-      api.operations.wait(operation.id, { project, timeoutSeconds: 2, failureMode: "return" }),
+  const sendSignal = (signal: number) =>
+    controlSignal(signal).pipe(
+      Effect.flatMap(writeControl),
+      Effect.timeout("250 millis"),
+      Effect.ignore({
+        log: "Warn",
+        message: `Failed to send signal ${signal} to Incus exec during cleanup`,
+      }),
     );
-    if (Exit.isSuccess(waitResult) && waitResult.value.status !== "running") {
-      lifecycle.terminal = true;
-      return;
-    }
-    if (Exit.isFailure(waitResult)) {
-      yield* Effect.logWarning("Failed waiting for Incus exec shutdown; sending SIGKILL", {
-        cause: Cause.pretty(waitResult.cause),
-      });
-    }
 
-    yield* sendSignal(SIGKILL);
-  });
+  yield* sendSignal(SIGTERM);
+
+  // Give process a chance to exit gracefully
+  const waitResult = yield* Effect.exit(
+    api.operations.wait(operation.id, { project, timeoutSeconds: 2, failureMode: "return" }),
+  );
+  if (Exit.isSuccess(waitResult) && waitResult.value.status !== "running") {
+    lifecycle.terminal = true;
+    return;
+  }
+  if (Exit.isFailure(waitResult)) {
+    yield* Effect.logWarning("Failed waiting for Incus exec shutdown; sending SIGKILL", {
+      cause: Cause.pretty(waitResult.cause),
+    });
+  }
+
+  yield* sendSignal(SIGKILL);
+});
 
 export const exec = Effect.fn("IncusExecSession.exec")(function* (
   name: string,
