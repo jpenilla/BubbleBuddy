@@ -6,8 +6,13 @@ import { DISCORD_ASSETS_SEGMENT } from "../../shared/constants.ts";
 import { sanitizeAttachmentFilename } from "../../shared/workspace.ts";
 import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { listUsableStickers, type UsableSticker } from "../assets.ts";
-import { ChannelWorkspace, DiscordToolContext } from "../tool-context.ts";
-import { AssetSaveError, downloadAsset, runAssetJobs } from "./asset-save.ts";
+import { DiscordToolContext } from "../tool-context.ts";
+import {
+  AssetSaveError,
+  downloadAsset,
+  prepareAssetDirectory,
+  runAssetJobs,
+} from "./asset-save.ts";
 
 const saveCustomEmojiAsset = Effect.fn("saveCustomEmojiAsset")(function* (input: string) {
   const emoji = yield* Effect.try({
@@ -18,9 +23,8 @@ const saveCustomEmojiAsset = Effect.fn("saveCustomEmojiAsset")(function* (input:
     return yield* new AssetSaveError({ message: `Invalid custom emoji syntax: ${input}` });
 
   const context = yield* DiscordToolContext;
-  const workspace = yield* ChannelWorkspace;
   const extension = emoji.animated ? "gif" : "png";
-  const directory = yield* workspace.ensureDirectory(DISCORD_ASSETS_SEGMENT, "emojis", emoji.id);
+  const directory = yield* prepareAssetDirectory(DISCORD_ASSETS_SEGMENT, "emojis", emoji.id);
   return yield* downloadAsset(
     context.channel.client.rest.cdn.emoji(emoji.id, { extension }),
     directory,
@@ -57,13 +61,8 @@ const saveStickerAsset = Effect.fn("saveStickerAsset")(function* (
     return yield* new AssetSaveError({ message: "Lottie stickers are not supported." });
   }
 
-  const workspace = yield* ChannelWorkspace;
   const extension = Constants.StickerFormatExtensionMap[sticker.format];
-  const directory = yield* workspace.ensureDirectory(
-    DISCORD_ASSETS_SEGMENT,
-    "stickers",
-    sticker.id,
-  );
+  const directory = yield* prepareAssetDirectory(DISCORD_ASSETS_SEGMENT, "stickers", sticker.id);
   return yield* downloadAsset(
     sticker.url,
     directory,
@@ -74,8 +73,8 @@ const saveStickerAsset = Effect.fn("saveStickerAsset")(function* (
 export const saveAssetsTool = defineEffectTool({
   name: "discord_save_assets",
   label: "Save Discord Assets",
-  description: "Save custom emojis and stickers into /workspace.",
-  promptSnippet: "Save custom emojis and stickers into /workspace",
+  description: "Save custom emojis and stickers into the container workspace.",
+  promptSnippet: "Save custom emojis and stickers into the container workspace",
   parameters: Type.Object({
     customEmojis: Type.Optional(
       Type.Array(

@@ -11,6 +11,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
 import {
+  Context,
   Effect,
   Exit,
   FiberHandle,
@@ -22,9 +23,10 @@ import {
   Semaphore,
 } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import { IncusClient } from "incus-api";
 
 import { discordCoreTools, discordWorkspaceTools } from "../discord/tools.ts";
-import { ChannelWorkspace, DiscordToolContext } from "../discord/tool-context.ts";
+import { DiscordToolContext } from "../discord/tool-context.ts";
 import { McpPiTools } from "../mcp/pi-tools.ts";
 import { McpClientFactory } from "../mcp/client-factory.ts";
 import { AppHome } from "../config/env.ts";
@@ -37,7 +39,10 @@ import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
 import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
 import { channelHostSessionsDir, createChannelMountedWorkspace } from "../shared/workspace.ts";
+import { SessionContainer } from "../session/session-container.ts";
 import type { PromptTemplateContext } from "./system-prompt.ts";
+
+const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
 export interface PiSessionModelInfo {
   readonly id: string;
@@ -111,13 +116,7 @@ export const createPiSession = (
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const sessionsDir = channelHostSessionsDir(path, appHome, input.channel.id);
-    const workspace = createChannelMountedWorkspace(
-      fs,
-      path,
-      appHome,
-      input.channel.id,
-      WORKSPACE_CWD,
-    );
+    const workspace = createChannelMountedWorkspace(path, appHome, input.channel.id, WORKSPACE_CWD);
 
     yield* fs
       .makeDirectory(sessionsDir, { recursive: true })
@@ -162,6 +161,19 @@ export const createPiSession = (
       steeringMode: "all",
       followUpMode: "all",
     });
+    const sessionContainer = yield* Effect.gen(function* () {
+      if (!config.enableAgenticWorkspace) return undefined;
+
+      const context = yield* Layer.build(
+        SessionContainer.layer({
+          channelId: input.channel.id,
+          cwd: workspace.root.container,
+          workspaceDir: workspace.root.host,
+        }).pipe(Layer.provide(IncusClientLayer)),
+      );
+
+      return Context.get(context, SessionContainer.Service);
+    });
     const extensionFactories: ExtensionFactory[] = [
       McpPiTools.createMcpToolResultExtension(),
       createPromptComposerExtension({
@@ -172,13 +184,11 @@ export const createPiSession = (
       }),
     ];
 
-    if (config.enableAgenticWorkspace) {
+    if (sessionContainer !== undefined) {
       extensionFactories.push(
-        yield* createIncusExtension({
-          channelId: input.channel.id,
-          sessionCwd: workspace.root.container,
-          workspaceDir: workspace.root.host,
-        }),
+        yield* createIncusExtension.pipe(
+          Effect.provideService(SessionContainer.Service, sessionContainer),
+        ),
       );
     }
 
@@ -199,21 +209,21 @@ export const createPiSession = (
     });
 
     const output = input.output;
-    const toolContextLayer = Layer.mergeAll(
-      Layer.succeed(
-        DiscordToolContext,
-        DiscordToolContext.of({
-          channel: input.channel,
-          executeOrdered: output.executeOrdered,
-        }),
-      ),
-      Layer.succeed(ChannelWorkspace, ChannelWorkspace.of(workspace)),
+    const toolContextLayer = Layer.succeed(
+      DiscordToolContext,
+      DiscordToolContext.of({
+        channel: input.channel,
+        executeOrdered: output.executeOrdered,
+      }),
     );
 
     const discordTools = yield* Effect.gen(function* () {
       const core = yield* discordCoreTools();
-      if (!config.enableAgenticWorkspace) return core;
-      return [...core, ...(yield* discordWorkspaceTools())];
+      if (sessionContainer === undefined) return core;
+      const workspaceTools = yield* discordWorkspaceTools().pipe(
+        Effect.provideService(SessionContainer.Service, sessionContainer),
+      );
+      return [...core, ...workspaceTools];
     }).pipe(Effect.provide(toolContextLayer));
 
     const mcpTools = yield* Effect.forEach(
