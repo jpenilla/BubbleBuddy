@@ -20,7 +20,11 @@ const invalidWebSocketSecretsApi = (cancel: IncusApi.Interface["operations"]["ca
   apiFixture({
     create: () => Effect.succeed({ id: "start" }),
     setState: () => Effect.succeed({ id: "stop" }),
-    exec: () => Effect.succeed({ id: "exec-operation", websocketSecrets: { "0": "stdin" } }),
+    exec: (_name, _payload, _options, release) =>
+      Effect.acquireRelease(
+        Effect.succeed({ id: "exec-operation", websocketSecrets: { "0": "stdin" } }),
+        release,
+      ),
     wait: () => Effect.succeed(successfulOperation),
     cancel,
   });
