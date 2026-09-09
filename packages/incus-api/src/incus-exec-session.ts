@@ -145,40 +145,6 @@ const drainOutputCallbacks = <A, E>(
     }),
   );
 
-const asExecWaitResult = (
-  operationId: string,
-  result: IncusApi.OperationWaitResult,
-  timeoutSeconds: number | undefined,
-): Effect.Effect<
-  IncusContainer.ExecResult,
-  IncusApi.OperationError | IncusContainer.ExecTimeoutError
-> => {
-  if (result.status === "running") {
-    if (timeoutSeconds !== undefined) {
-      return Effect.fail(new IncusContainer.ExecTimeoutError({ timeoutSeconds }));
-    }
-    return Effect.fail(
-      new IncusApi.OperationError({
-        operation: operationId,
-        message: "Incus exec operation is still running",
-        metadata: result.metadata,
-      }),
-    );
-  }
-
-  return Schema.decodeUnknownEffect(ExecResultMetadata)(result.metadata).pipe(
-    Effect.mapError(
-      (cause) =>
-        new IncusApi.OperationError({
-          operation: operationId,
-          message: "Failed to decode Incus operation response",
-          metadata: { cause, body: { metadata: result.metadata } },
-        }),
-    ),
-    Effect.map((metadata) => ({ exitCode: metadata.return })),
-  );
-};
-
 const execPayload = (
   command: readonly string[],
   options: IncusContainer.ExecOptions | undefined,
@@ -271,12 +237,6 @@ const startOutput = (
     scope,
   );
 
-const startControl = (
-  controlSocket: Socket.Socket,
-  scope: Scope.Scope,
-): Effect.Effect<SocketRunner> =>
-  startSocketRunner("control", (onOpen) => controlSocket.runRaw(() => {}, { onOpen }), scope);
-
 const createControlWriter = Effect.fnUntraced(function* (
   controlSocket: Socket.Socket,
   controlRunner: SocketRunner,
@@ -292,26 +252,48 @@ const createControlWriter = Effect.fnUntraced(function* (
     );
 });
 
-const waitExecResult = Effect.fn("IncusExecSession.waitExecResult")(
-  (
-    api: IncusApi.Interface,
-    operationId: string,
-    project: string,
-    timeoutSeconds: number | undefined,
-    lifecycle: ExecLifecycle,
-  ) =>
-    // Incus reports exec exit 127 as operation failure; preserve metadata so callers get output and exit code.
-    api.operations.wait(operationId, { project, timeoutSeconds, failureMode: "return" }).pipe(
-      Effect.flatMap((result) =>
-        Effect.uninterruptible(
-          Effect.sync(() => {
-            if (result.status !== "running") lifecycle.terminal = true;
-          }).pipe(Effect.as(result)),
-        ),
-      ),
-      Effect.flatMap((result) => asExecWaitResult(operationId, result, timeoutSeconds)),
+const waitExecResult = Effect.fn("IncusExecSession.waitExecResult")(function* (
+  api: IncusApi.Interface,
+  operationId: string,
+  project: string,
+  timeoutSeconds: number | undefined,
+  lifecycle: ExecLifecycle,
+) {
+  // Incus reports exec exit 127 as operation failure; preserve metadata so callers get output and exit code.
+  const result = yield* api.operations.wait(operationId, {
+    project,
+    timeoutSeconds,
+    failureMode: "return",
+  });
+  yield* Effect.uninterruptible(
+    Effect.sync(() => {
+      if (result.status !== "running") lifecycle.terminal = true;
+    }),
+  );
+  if (result.status === "running") {
+    if (timeoutSeconds !== undefined) {
+      return yield* new IncusContainer.ExecTimeoutError({ timeoutSeconds });
+    }
+    return yield* new IncusApi.OperationError({
+      operation: operationId,
+      message: "Incus exec operation is still running",
+      metadata: result.metadata,
+    });
+  }
+
+  const metadata = yield* Schema.decodeUnknownEffect(ExecResultMetadata)(result.metadata).pipe(
+    Effect.mapError(
+      (cause) =>
+        new IncusApi.OperationError({
+          operation: operationId,
+          message: "Failed to decode Incus operation response",
+          metadata: { cause, body: { metadata: result.metadata } },
+        }),
     ),
-);
+  );
+
+  return { exitCode: metadata.return };
+});
 
 const shutdownExec = Effect.fn("IncusExecSession.shutdownExec")(function* (
   api: IncusApi.Interface,
@@ -403,7 +385,11 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
       const sockets = yield* makeExecSockets(api, operation.id, secrets);
       const commandTimeoutSeconds = options?.timeoutSeconds;
 
-      const controlRunner = yield* startControl(sockets.control, socketScope);
+      const controlRunner = yield* startSocketRunner(
+        "control",
+        (onOpen) => sockets.control.runRaw(() => {}, { onOpen }),
+        socketScope,
+      );
       yield* awaitSocketRunnerReady(controlRunner);
       const writeControl = yield* createControlWriter(sockets.control, controlRunner, socketScope);
       lifecycle.writeControl = writeControl;

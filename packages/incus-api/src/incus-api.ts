@@ -228,22 +228,6 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
         Effect.map((id) => ({ id })),
       );
 
-    const execOperationFromLocation = Effect.fnUntraced(function* (
-      response: HttpClientResponse.HttpClientResponse,
-    ) {
-      const location = header(response, "location");
-      if (location === undefined) {
-        return yield* new OperationError({
-          operation: "exec",
-          message: "Incus exec response did not include a Location header",
-          metadata: {},
-        });
-      }
-
-      const id = yield* execOperationIdFromPath(location);
-      return { id };
-    });
-
     return Service.of({
       instances: {
         create: Effect.fn("IncusApi.instances.create")(function* (payload, options) {
@@ -520,7 +504,17 @@ const operationIdFromPath = (
   );
 };
 
-const execOperationIdFromPath = Effect.fnUntraced(function* (value: string) {
+const execOperationFromLocation = Effect.fnUntraced(function* (
+  response: HttpClientResponse.HttpClientResponse,
+) {
+  const value = header(response, "location");
+  if (value === undefined) {
+    return yield* new OperationError({
+      operation: "exec",
+      message: "Incus exec response did not include a Location header",
+      metadata: {},
+    });
+  }
   const path = yield* Effect.try({
     try: () => new URL(value, "http://incus.invalid").pathname,
     catch: () =>
@@ -540,7 +534,7 @@ const execOperationIdFromPath = Effect.fnUntraced(function* (value: string) {
       metadata: { value },
     });
   }
-  return id;
+  return { id };
 });
 
 const instanceFileHead = Effect.fnUntraced(function* (
