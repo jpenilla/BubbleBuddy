@@ -320,24 +320,21 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
             Effect.gen(function* () {
               const requestBody = yield* HttpBody.jsonSchema(InstanceExecRequest)(payload);
               const { operation, response } = yield* Effect.uninterruptibleMask((restore) =>
-                restore(
-                  request(client, {
-                    method: "POST",
-                    path: `/1.0/instances/${encodeURIComponent(name)}/exec${projectQuery(options.project)}`,
-                    body: requestBody,
-                  }),
-                ).pipe(
-                  Effect.flatMap((response) =>
-                    execOperationFromLocation(response).pipe(
-                      Effect.flatMap((operation) =>
-                        Scope.provide(
-                          Effect.acquireRelease(Effect.succeed(operation), release),
-                          callerScope,
-                        ).pipe(Effect.as({ operation, response })),
-                      ),
-                    ),
-                  ),
-                ),
+                Effect.gen(function* () {
+                  const response = yield* restore(
+                    request(client, {
+                      method: "POST",
+                      path: `/1.0/instances/${encodeURIComponent(name)}/exec${projectQuery(options.project)}`,
+                      body: requestBody,
+                    }),
+                  );
+                  const operation = yield* execOperationFromLocation(response);
+                  yield* Scope.provide(
+                    Effect.acquireRelease(Effect.succeed(operation), release),
+                    callerScope,
+                  );
+                  return { operation, response };
+                }),
               );
               const body = yield* HttpClientResponse.schemaBodyJson(ExecAsyncOperationResponse)(
                 response,

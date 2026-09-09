@@ -13,6 +13,10 @@ const ControlSignal = Schema.Struct({
 });
 
 const ControlSignalJson = Schema.fromJsonString(ControlSignal);
+const encodeControlSignalJson = Schema.encodeEffect(ControlSignalJson);
+
+const controlSignal = (signal: number) =>
+  encodeControlSignalJson({ command: "signal", signal }).pipe(Effect.orDie);
 
 const WebSocketSetupTimeoutMs = 5_000;
 const OutputDrainTimeoutSeconds = 5;
@@ -131,9 +135,9 @@ const startOutputConsumer = (
   });
 
 const drainOutputCallbacks = <A, E>(
-  fiber: Fiber.Fiber<A, E>,
+  fibers: readonly Fiber.Fiber<A, E>[],
 ): Effect.Effect<void, E | IncusContainer.ExecTransportError, never> =>
-  Fiber.join(fiber).pipe(
+  Effect.forEach(fibers, (fiber) => Fiber.join(fiber), { concurrency: "unbounded" }).pipe(
     Effect.asVoid,
     Effect.timeoutOption(`${OutputDrainTimeoutSeconds} seconds`),
     Effect.flatMap((result) =>
@@ -235,29 +239,19 @@ const execWebSocketOptions = {
 const startStdin = (
   stdinSocket: Socket.Socket,
   scope: Scope.Scope,
-): Effect.Effect<SocketRunner<Socket.SocketError>> =>
+): Effect.Effect<SocketRunner<Socket.SocketError>, Socket.SocketError> =>
   Effect.gen(function* () {
     const stdinWriter = yield* Scope.provide(stdinSocket.writer, scope);
-    const ready = yield* Deferred.make<void, Socket.SocketError>();
+    const runner = yield* startSocketRunner(
+      "stdin",
+      (onOpen) => stdinSocket.runRaw(() => {}, { onOpen }),
+      scope,
+    );
+    yield* awaitSocketRunnerReady(runner);
     // Stdin is not exposed by this API yet, so close it immediately. This lets commands
     // waiting for EOF, such as `cat`, exit instead of hanging forever.
-    const fiber = yield* stdinSocket
-      .runRaw(() => {}, {
-        onOpen: stdinWriter(new Socket.CloseEvent(1000, "stdin unsupported")).pipe(
-          Effect.exit,
-          Effect.flatMap((exit) => Deferred.done(ready, exit)),
-          Effect.asVoid,
-        ),
-      })
-      .pipe(
-        Effect.onExit((exit) =>
-          Exit.isSuccess(exit)
-            ? Deferred.fail(ready, socketRunnerOpenError("stdin")).pipe(Effect.asVoid)
-            : Deferred.failCause(ready, exit.cause).pipe(Effect.asVoid),
-        ),
-        Effect.forkIn(scope),
-      );
-    return { ready, fiber };
+    yield* stdinWriter(new Socket.CloseEvent(1000, "stdin unsupported"));
+    return runner;
   });
 
 const startOutput = (
@@ -333,9 +327,6 @@ const waitExecResult = (
     Effect.flatMap((result) => asExecWaitResult(operationId, result)),
   );
 
-const controlSignal = (signal: number) =>
-  Schema.encodeEffect(ControlSignalJson)({ command: "signal", signal }).pipe(Effect.orDie);
-
 const shutdownExec = (
   api: IncusApi.Interface,
   project: string,
@@ -356,14 +347,17 @@ const shutdownExec = (
       return;
     }
 
-    yield* controlSignal(SIGTERM).pipe(
-      Effect.flatMap((sigterm) => writeControl(sigterm)),
-      Effect.timeout("250 millis"),
-      Effect.ignore({
-        log: "Warn",
-        message: "Failed to send SIGTERM to Incus exec during cleanup",
-      }),
-    );
+    const sendSignal = (signal: number) =>
+      controlSignal(signal).pipe(
+        Effect.flatMap(writeControl),
+        Effect.timeout("250 millis"),
+        Effect.ignore({
+          log: "Warn",
+          message: `Failed to send signal ${signal} to Incus exec during cleanup`,
+        }),
+      );
+
+    yield* sendSignal(SIGTERM);
 
     // Give process a chance to exit gracefully
     const waitResult = yield* Effect.exit(
@@ -379,14 +373,7 @@ const shutdownExec = (
       });
     }
 
-    yield* controlSignal(SIGKILL).pipe(
-      Effect.flatMap((sigkill) => writeControl(sigkill)),
-      Effect.timeout("250 millis"),
-      Effect.ignore({
-        log: "Warn",
-        message: "Failed to send SIGKILL to Incus exec during cleanup",
-      }),
-    );
+    yield* sendSignal(SIGKILL);
   });
 
 export const exec = Effect.fn("IncusExecSession.exec")(function* (
@@ -412,7 +399,8 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
 
   return yield* Effect.scoped(
     Effect.gen(function* () {
-      const scope = yield* Effect.acquireRelease(Scope.make(), Scope.close);
+      // Registered first so it closes last: operation cleanup still needs the control socket.
+      const socketScope = yield* Effect.acquireRelease(Scope.make(), Scope.close);
       const operation = yield* api.instances.exec(
         name,
         execPayload(command, options),
@@ -430,52 +418,36 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
       const sockets = yield* makeExecSockets(api, operation.id, secrets);
       const commandTimeoutSeconds = options?.timeoutSeconds;
 
-      const controlRunner = yield* startControl(sockets.control, scope);
+      const controlRunner = yield* startControl(sockets.control, socketScope);
       yield* awaitSocketRunnerReady(controlRunner);
-      const writeControl = yield* createControlWriter(sockets.control, controlRunner, scope);
+      const writeControl = yield* createControlWriter(sockets.control, controlRunner, socketScope);
       lifecycle.writeControl = writeControl;
-      const stdoutConsumer = yield* startOutputConsumer(options?.onStdout, scope);
-      const stderrConsumer = yield* startOutputConsumer(options?.onStderr, scope);
+      const stdoutConsumer = yield* startOutputConsumer(options?.onStdout, socketScope);
+      const stderrConsumer = yield* startOutputConsumer(options?.onStderr, socketScope);
 
       const runners = yield* Effect.all(
         {
-          stdin: startStdin(sockets.stdin, scope),
-          stdout: startOutput("stdout", sockets.stdout, stdoutConsumer.queue, scope),
-          stderr: startOutput("stderr", sockets.stderr, stderrConsumer.queue, scope),
+          stdin: startStdin(sockets.stdin, socketScope),
+          stdout: startOutput("stdout", sockets.stdout, stdoutConsumer.queue, socketScope),
+          stderr: startOutput("stderr", sockets.stderr, stderrConsumer.queue, socketScope),
         },
         { concurrency: "unbounded" },
       );
-      const runnerFailure = Effect.raceFirst(
-        Effect.raceFirst(
-          failWhenFiberFails(controlRunner.fiber),
-          failWhenFiberFails(runners.stdin.fiber),
-        ),
-        Effect.raceFirst(
-          failWhenFiberFails(runners.stdout.fiber),
-          failWhenFiberFails(runners.stderr.fiber),
-        ),
-      );
-      const callbackFailure = Effect.raceFirst(
+      const executionFailure = Effect.raceAllFirst([
+        failWhenFiberFails(controlRunner.fiber),
+        failWhenFiberFails(runners.stdin.fiber),
+        failWhenFiberFails(runners.stdout.fiber),
+        failWhenFiberFails(runners.stderr.fiber),
         failWhenFiberFails(stdoutConsumer.fiber),
         failWhenFiberFails(stderrConsumer.fiber),
-      );
-      const executionFailure = Effect.raceFirst(runnerFailure, callbackFailure);
+      ]);
       const allReady = Effect.all(
-        [
-          awaitSocketRunnerReady(runners.stdin),
-          awaitSocketRunnerReady(runners.stdout),
-          awaitSocketRunnerReady(runners.stderr),
-        ],
+        [awaitSocketRunnerReady(runners.stdout), awaitSocketRunnerReady(runners.stderr)],
         { concurrency: "unbounded" },
       );
       yield* Effect.raceFirst(allReady, executionFailure);
 
-      const awaitCallbacks = Effect.all(
-        [drainOutputCallbacks(stdoutConsumer.fiber), drainOutputCallbacks(stderrConsumer.fiber)],
-        {
-          concurrency: "unbounded",
-        },
-      );
+      const awaitCallbacks = drainOutputCallbacks([stdoutConsumer.fiber, stderrConsumer.fiber]);
       const main = Effect.raceFirst(
         waitExecResult(api, operation.id, project, commandTimeoutSeconds, lifecycle),
         executionFailure,
