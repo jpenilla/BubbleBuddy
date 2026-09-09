@@ -32,7 +32,6 @@ type ExecWebSocketSecrets = typeof ExecWebSocketSecrets.Type;
 type ControlWriter = (chunk: Uint8Array | string) => Effect.Effect<void, unknown>;
 
 interface ExecLifecycle {
-  operation: IncusApi.ExecOperationRef | undefined;
   writeControl: ControlWriter | undefined;
   terminal: boolean;
 }
@@ -337,10 +336,14 @@ const waitExecResult = (
 const controlSignal = (signal: number) =>
   Schema.encodeEffect(ControlSignalJson)({ command: "signal", signal }).pipe(Effect.orDie);
 
-const shutdownExec = (api: IncusApi.Interface, project: string, lifecycle: ExecLifecycle) =>
+const shutdownExec = (
+  api: IncusApi.Interface,
+  project: string,
+  operation: IncusApi.OperationRef,
+  lifecycle: ExecLifecycle,
+) =>
   Effect.gen(function* () {
-    const operation = lifecycle.operation;
-    if (!operation || lifecycle.terminal) return;
+    if (lifecycle.terminal) return;
 
     const writeControl = lifecycle.writeControl;
     if (!writeControl) {
@@ -403,31 +406,25 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
   }
 
   const lifecycle: ExecLifecycle = {
-    operation: undefined,
     writeControl: undefined,
     terminal: false,
   };
 
   return yield* Effect.scoped(
     Effect.gen(function* () {
-      const scope = yield* Effect.acquireRelease(Scope.make(), (scope, exit) =>
-        shutdownExec(api, project, lifecycle).pipe(
-          Effect.catchCause((cause) =>
-            Effect.logWarning("Incus exec shutdown failed; preserving body result", {
-              cause: Cause.pretty(cause),
-            }),
+      const scope = yield* Effect.acquireRelease(Scope.make(), Scope.close);
+      const operation = yield* api.instances.exec(
+        name,
+        execPayload(command, options),
+        { project },
+        (operation) =>
+          shutdownExec(api, project, operation, lifecycle).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Incus exec shutdown failed; preserving body result", {
+                cause: Cause.pretty(cause),
+              }),
+            ),
           ),
-          Effect.ensuring(Scope.close(scope, exit)),
-        ),
-      );
-      const operation = yield* Effect.uninterruptible(
-        api.instances.exec(name, execPayload(command, options), { project }).pipe(
-          Effect.tap((operation) =>
-            Effect.sync(() => {
-              lifecycle.operation = operation;
-            }),
-          ),
-        ),
       );
       const secrets = yield* decodeExecWebSocketSecrets(operation);
       const sockets = yield* makeExecSockets(api, operation.id, secrets);

@@ -1,4 +1,16 @@
-import { Cause, Context, Data, Effect, Layer, Match, Option, Schema, Scope, Stream } from "effect";
+import {
+  Cause,
+  Context,
+  Data,
+  Effect,
+  Exit,
+  Layer,
+  Match,
+  Option,
+  Schema,
+  Scope,
+  Stream,
+} from "effect";
 import * as Socket from "effect/unstable/socket/Socket";
 import {
   Headers,
@@ -162,7 +174,8 @@ export interface Interface {
       name: string,
       payload: InstanceExecRequest,
       options: ProjectOptions,
-    ) => Effect.Effect<ExecOperationRef, ApiError>;
+      release: (operation: OperationRef, exit: Exit.Exit<unknown, unknown>) => Effect.Effect<void>,
+    ) => Effect.Effect<ExecOperationRef, ApiError, Scope.Scope>;
     readonly files: {
       readonly read: (
         name: string,
@@ -216,16 +229,46 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
       );
 
     const execOperationFromBody = (
+      operation: OperationRef,
       response: ExecAsyncOperationResponse,
     ): Effect.Effect<ExecOperationRef, OperationError> =>
-      operationIdFromPath("execOperationFromBody", response.operation).pipe(
-        Effect.map((id) => ({
-          id,
-          ...(response.metadata.metadata.fds === undefined
-            ? {}
-            : { websocketSecrets: response.metadata.metadata.fds }),
-        })),
+      execOperationIdFromPath("body", response.operation).pipe(
+        Effect.flatMap((bodyOperationId) =>
+          bodyOperationId === operation.id
+            ? Effect.succeed({
+                ...operation,
+                ...(response.metadata.metadata.fds === undefined
+                  ? {}
+                  : { websocketSecrets: response.metadata.metadata.fds }),
+              })
+            : Effect.fail(
+                new OperationError({
+                  operation: operation.id,
+                  message: "Incus exec response operation did not match its Location header",
+                  metadata: { locationOperationId: operation.id, bodyOperationId },
+                }),
+              ),
+        ),
       );
+
+    const execOperationFromLocation = (
+      response: HttpClientResponse.HttpClientResponse,
+    ): Effect.Effect<OperationRef, OperationError> => {
+      const location = header(response, "location");
+      if (location === undefined) {
+        return Effect.fail(
+          new OperationError({
+            operation: "exec",
+            message: "Incus exec response did not include a Location header",
+            metadata: {},
+          }),
+        );
+      }
+
+      return execOperationIdFromPath("Location header", location).pipe(
+        Effect.map((id) => ({ id })),
+      );
+    };
 
     return Service.of({
       instances: {
@@ -271,16 +314,37 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
           );
           return yield* operationFromBody(body);
         }),
-        exec: Effect.fn("IncusApi.instances.exec")(function* (name, payload, options) {
-          const body = yield* request(client, {
-            method: "POST",
-            path: `/1.0/instances/${encodeURIComponent(name)}/exec${projectQuery(options.project)}`,
-            body: yield* HttpBody.jsonSchema(InstanceExecRequest)(payload),
-          }).pipe(
-            Effect.flatMap(HttpClientResponse.schemaBodyJson(ExecAsyncOperationResponse)),
-            Effect.scoped,
+        exec: Effect.fn("IncusApi.instances.exec")(function* (name, payload, options, release) {
+          const callerScope = yield* Effect.scope;
+          return yield* Effect.scoped(
+            Effect.gen(function* () {
+              const requestBody = yield* HttpBody.jsonSchema(InstanceExecRequest)(payload);
+              const { operation, response } = yield* Effect.uninterruptibleMask((restore) =>
+                restore(
+                  request(client, {
+                    method: "POST",
+                    path: `/1.0/instances/${encodeURIComponent(name)}/exec${projectQuery(options.project)}`,
+                    body: requestBody,
+                  }),
+                ).pipe(
+                  Effect.flatMap((response) =>
+                    execOperationFromLocation(response).pipe(
+                      Effect.flatMap((operation) =>
+                        Scope.provide(
+                          Effect.acquireRelease(Effect.succeed(operation), release),
+                          callerScope,
+                        ).pipe(Effect.as({ operation, response })),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+              const body = yield* HttpClientResponse.schemaBodyJson(ExecAsyncOperationResponse)(
+                response,
+              );
+              return yield* execOperationFromBody(operation, body);
+            }),
           );
-          return yield* execOperationFromBody(body);
         }),
         files: {
           read: Effect.fn("IncusApi.instances.files.read")(function* (name, path, options) {
@@ -479,6 +543,37 @@ const operationIdFromPath = (
       metadata: { operation: path },
     }),
   );
+};
+
+const execOperationIdFromPath = (
+  source: "Location header" | "body",
+  value: string,
+): Effect.Effect<string, OperationError> => {
+  let path: string;
+  try {
+    path = new URL(value, "http://incus.invalid").pathname;
+  } catch {
+    return Effect.fail(
+      new OperationError({
+        operation: "exec",
+        message: `Incus exec response ${source} was invalid`,
+        metadata: { value },
+      }),
+    );
+  }
+
+  const prefix = "/1.0/operations/";
+  const id = path.startsWith(prefix) ? path.slice(prefix.length) : undefined;
+  if (id === undefined || id.length === 0 || id.includes("/")) {
+    return Effect.fail(
+      new OperationError({
+        operation: "exec",
+        message: `Incus exec response ${source} did not contain an operation id`,
+        metadata: { value },
+      }),
+    );
+  }
+  return Effect.succeed(id);
 };
 
 const instanceFileHead = (
