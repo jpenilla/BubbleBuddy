@@ -8,8 +8,8 @@ import { SlashCommandsLayer } from "./discord/commands/index.ts";
 import { ChannelSessions } from "./session/registry.ts";
 
 const AppLayer = Layer.mergeAll(ActivationLayer, SlashCommandsLayer).pipe(
-  Layer.provide(Discord.layer),
   Layer.provide(ChannelSessions.layer),
+  Layer.provide(Discord.layer),
   Layer.provide(NodeServices.layer),
 );
 
