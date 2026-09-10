@@ -59,11 +59,12 @@ describe("Incus operation waits", () => {
         expect(error.operation).toBe("operation-failed");
         expect(error.message).toBe("command failed");
       }
-      expect(returned).toEqual({
-        status: "failure",
-        error: "command failed",
-        metadata: { return: 127 },
-      });
+      expect(returned).toEqual(
+        IncusApi.OperationWaitResult.Failure({
+          error: "command failed",
+          metadata: { return: 127 },
+        }),
+      );
     }).pipe(
       Effect.provide(
         layerWith((request) =>
@@ -84,7 +85,9 @@ describe("Incus operation waits", () => {
       const api = yield* IncusApi.Service;
       const result = yield* api.operations.wait("operation-running", { project: "default" });
 
-      expect(result).toEqual({ status: "running", metadata: { progress: "copying" } });
+      expect(result).toEqual(
+        IncusApi.OperationWaitResult.Running({ metadata: { progress: "copying" } }),
+      );
     }).pipe(
       Effect.provide(
         layerWith((request) =>

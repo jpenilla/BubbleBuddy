@@ -12,15 +12,17 @@ const image: IncusContainer.ImageSource = {
   server: "https://images.linuxcontainers.org",
 };
 
-const successfulOperation: IncusApi.OperationWaitResult = {
-  status: "success",
-};
+const successfulOperation = IncusApi.OperationWaitResult.Success({});
 
 const invalidWebSocketSecretsApi = (cancel: IncusApi.Interface["operations"]["cancel"]) =>
   apiFixture({
     create: () => Effect.succeed({ id: "start" }),
     setState: () => Effect.succeed({ id: "stop" }),
-    exec: () => Effect.succeed({ id: "exec-operation", websocketSecrets: { "0": "stdin" } }),
+    exec: (_name, _payload, _options, release) =>
+      Effect.acquireRelease(
+        Effect.succeed({ id: "exec-operation", websocketSecrets: { "0": "stdin" } }),
+        release,
+      ),
     wait: () => Effect.succeed(successfulOperation),
     cancel,
   });
