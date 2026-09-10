@@ -251,10 +251,10 @@ const waitExecResult = Effect.fn("IncusExecSession.waitExecResult")(function* (
   });
   yield* Effect.uninterruptible(
     Effect.sync(() => {
-      if (result.status !== "running") lifecycle.terminal = true;
+      if (!IncusApi.OperationWaitResult.$is("Running")(result)) lifecycle.terminal = true;
     }),
   );
-  if (result.status === "running") {
+  if (IncusApi.OperationWaitResult.$is("Running")(result)) {
     if (timeoutSeconds !== undefined) {
       return yield* new IncusContainer.ExecTimeoutError({ timeoutSeconds });
     }
@@ -314,7 +314,10 @@ const shutdownExec = Effect.fn("IncusExecSession.shutdownExec")(function* (
   const waitResult = yield* Effect.exit(
     api.operations.wait(operation.id, { project, timeoutSeconds: 2, failureMode: "return" }),
   );
-  if (Exit.isSuccess(waitResult) && waitResult.value.status !== "running") {
+  if (
+    Exit.isSuccess(waitResult) &&
+    !IncusApi.OperationWaitResult.$is("Running")(waitResult.value)
+  ) {
     lifecycle.terminal = true;
     return;
   }
@@ -403,15 +406,13 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
       yield* Effect.raceFirst(allReady, executionFailure);
 
       const awaitCallbacks = drainOutputCallbacks([stdoutConsumer.fiber, stderrConsumer.fiber]);
-      const main = Effect.raceFirst(
+      return yield* Effect.raceFirst(
         waitExecResult(api, operation.id, project, commandTimeoutSeconds, lifecycle),
         executionFailure,
       ).pipe(
         Effect.tap(() => Effect.raceFirst(awaitCallbacks, executionFailure)),
         Effect.onExit(() => Fiber.interrupt(runners.stdin.fiber).pipe(Effect.asVoid)),
       );
-
-      return yield* main;
     }).pipe(
       Effect.catchIf(
         (error): error is Socket.SocketError => error instanceof Socket.SocketError,

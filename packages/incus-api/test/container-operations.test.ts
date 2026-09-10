@@ -12,9 +12,7 @@ const image: IncusContainer.ImageSource = {
   server: "https://images.linuxcontainers.org",
 };
 
-const successfulOperation: IncusApi.OperationWaitResult = {
-  status: "success",
-};
+const successfulOperation = IncusApi.OperationWaitResult.Success({});
 
 const invalidWebSocketSecretsApi = (cancel: IncusApi.Interface["operations"]["cancel"]) =>
   apiFixture({
