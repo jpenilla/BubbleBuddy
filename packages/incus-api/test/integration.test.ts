@@ -1,3 +1,4 @@
+import { GuestPath } from "../src/guest-path.ts";
 import { randomUUID } from "node:crypto";
 
 import { assert, describe, expect, it } from "@effect/vitest";
@@ -95,8 +96,9 @@ describeIntegration("Incus integration", () => {
         const name = `incus-api-integration-${randomUUID().slice(0, 8)}`;
         const payload = binaryFixture();
         // Keep fixtures outside /tmp, which the guest may mount during early boot.
-        const payloadPath = "/root/incus api integration/nested #?/payload #?.bin";
-        const cwd = "/tmp/incus api integration/cwd";
+        const directoryPath = yield* GuestPath.of("/root/incus api integration/nested #?");
+        const payloadPath = yield* GuestPath.resolve(directoryPath, "payload #?.bin");
+        const cwd = yield* GuestPath.of("/tmp/incus api integration/cwd");
         const pidPath = "/tmp/incus-api-timeout-process";
 
         const scenario = Effect.scoped(
@@ -121,8 +123,7 @@ describeIntegration("Incus integration", () => {
             expect(read.byteLength).toBe(payload.byteLength);
             expect(read).toEqual(payload);
 
-            const directoryPath = "/root/incus api integration/nested #?";
-            const linkPath = `${directoryPath}/latest.bin`;
+            const linkPath = yield* GuestPath.resolve(directoryPath, "latest.bin");
             const linkErrors: Uint8Array[] = [];
             const link = yield* container.exec(["/bin/ln", "-s", "payload #?.bin", linkPath], {
               onStderr: (chunk) =>
@@ -139,7 +140,7 @@ describeIntegration("Incus integration", () => {
             const symlink = yield* container.files.read(linkPath);
             assert(IncusApi.FileRead.$is("Symlink")(symlink), "Expected a symlink");
             expect(symlink.target).toBe(payloadPath);
-            const target = yield* container.files.read(symlink.target);
+            const target = yield* container.files.read(yield* GuestPath.of(symlink.target));
             assert(IncusApi.FileRead.$is("File")(target), "Expected a regular file");
             expect(concatenate(yield* target.bytes.pipe(Stream.runCollect))).toEqual(payload);
 

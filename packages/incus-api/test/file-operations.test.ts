@@ -1,3 +1,4 @@
+import { GuestPath } from "../src/guest-path.ts";
 import { Context, Effect, Layer, Ref, Schema, Stream } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 
@@ -44,7 +45,7 @@ describe("Incus file writes", () => {
       );
 
       yield* IncusFileOperations.create(api, "container", "default")
-        .write("/tmp/message.txt", source)
+        .write(yield* GuestPath.of("/tmp/message.txt"), source)
         .pipe(
           Effect.provide(
             Layer.succeed(StreamValue, {
@@ -79,7 +80,7 @@ describe("Incus file writes", () => {
       });
 
       const exit = yield* IncusFileOperations.create(api, "container", "default")
-        .write("/tmp/message.txt", Stream.fail(sourceFailure))
+        .write(yield* GuestPath.of("/tmp/message.txt"), Stream.fail(sourceFailure))
         .pipe(Effect.exit);
 
       expect(errorFrom(exit)).toBe(sourceFailure);
@@ -106,7 +107,7 @@ describe("Incus file writes", () => {
       });
 
       const exit = yield* IncusFileOperations.create(api, "container", "default")
-        .write("/tmp/message.txt", Stream.make(new Uint8Array([1])))
+        .write(yield* GuestPath.of("/tmp/message.txt"), Stream.make(new Uint8Array([1])))
         .pipe(Effect.exit);
 
       expect(errorFrom(exit)).toBe(transportFailure);

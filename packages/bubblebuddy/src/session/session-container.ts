@@ -1,9 +1,9 @@
 import { Context, Effect, Layer, ScopedRef, Semaphore } from "effect";
-import { IncusClient, IncusContainer } from "incus-api";
+import { GuestPath, IncusClient, IncusContainer } from "incus-api";
 import type { IncusApi } from "incus-api";
 
 export interface Interface {
-  readonly cwd: string;
+  readonly cwd: GuestPath.GuestPath;
   readonly get: Effect.Effect<IncusContainer.Container, IncusApi.ApiError>;
 }
 
@@ -17,11 +17,12 @@ export class Service extends Context.Service<Service, Interface>()(
   "bubblebuddy/session/SessionContainer",
 ) {}
 
-export const layer = (options: Options): Layer.Layer<Service, never, IncusClient.Service> =>
+export const layer = (options: Options) =>
   Layer.effect(
     Service,
     Effect.gen(function* () {
       const incus = yield* IncusClient.Service;
+      const cwd = yield* GuestPath.of(options.cwd);
       const containerRef = yield* ScopedRef.make<IncusContainer.Container | undefined>(
         () => undefined,
       );
@@ -43,7 +44,7 @@ export const layer = (options: Options): Layer.Layer<Service, never, IncusClient
                   server: "https://images.linuxcontainers.org",
                 },
                 profiles: ["default"],
-                mounts: [{ source: options.workspaceDir, path: options.cwd }],
+                mounts: [{ source: options.workspaceDir, path: cwd }],
               });
               yield* Effect.addFinalizer(() =>
                 Effect.logInfo(`Closing Incus container for channel ${options.channelId}.`),
@@ -68,7 +69,7 @@ export const layer = (options: Options): Layer.Layer<Service, never, IncusClient
         }),
       );
 
-      return Service.of({ cwd: options.cwd, get });
+      return Service.of({ cwd, get });
     }),
   );
 

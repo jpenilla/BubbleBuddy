@@ -1,12 +1,8 @@
 import { Effect, Schema, Scope, Stream } from "effect";
 
-import type { IncusApi } from "./incus-api.ts";
+import type { GuestPath } from "./guest-path.ts";
 
-export class PathError extends Schema.TaggedError<PathError>()("IncusContainer.PathError", {
-  path: Schema.String,
-  message: Schema.String,
-  metadata: Schema.optional(Schema.Unknown),
-}) {}
+import type { IncusApi } from "./incus-api.ts";
 
 export class MetadataError extends Schema.TaggedError<MetadataError>()(
   "IncusContainer.MetadataError",
@@ -44,7 +40,7 @@ export class ExecTimeoutError extends Schema.TaggedError<ExecTimeoutError>()(
   },
 ) {}
 
-export type FileError = IncusApi.ApiError | PathError | MetadataError;
+export type FileError = IncusApi.ApiError | MetadataError;
 export type ExecError =
   | IncusApi.ApiError
   | ExecCallbackError
@@ -107,24 +103,24 @@ export interface ExecResult {
   readonly exitCode: number;
 }
 
-/** Paths must be absolute guest paths. */
+/** Paths must be validated, lexically normalized absolute guest paths. */
 export interface FileOperations {
-  readonly read: (path: string) => Effect.Effect<IncusApi.FileRead, FileError, Scope.Scope>;
+  readonly read: (path: GuestPath) => Effect.Effect<IncusApi.FileRead, FileError, Scope.Scope>;
   /** Rejects directories and symlinks. */
   readonly readFile: (
-    path: string,
+    path: GuestPath,
   ) => Effect.Effect<Extract<IncusApi.FileRead, { readonly _tag: "File" }>, FileError, Scope.Scope>;
   /** Rejects directories and symlinks. */
-  readonly readBytes: (path: string) => Effect.Effect<Uint8Array, FileError>;
+  readonly readBytes: (path: GuestPath) => Effect.Effect<Uint8Array, FileError>;
   /** Decodes UTF-8; rejects directories and symlinks. */
-  readonly readText: (path: string) => Effect.Effect<string, FileError>;
+  readonly readText: (path: GuestPath) => Effect.Effect<string, FileError>;
   readonly write: <E, R>(
-    path: string,
+    path: GuestPath,
     content: Stream.Stream<Uint8Array, E, R>,
     options?: FileWriteOptions,
   ) => Effect.Effect<void, FileError | E, R>;
   readonly mkdir: (
-    path: string,
+    path: GuestPath,
     options?: { readonly recursive?: boolean },
   ) => Effect.Effect<void, FileError>;
 }

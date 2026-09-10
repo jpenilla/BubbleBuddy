@@ -1,3 +1,4 @@
+import { GuestPath } from "incus-api";
 import Mime from "@effect/platform-node/Mime";
 import { Effect, Schema } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
@@ -20,7 +21,7 @@ export const prepareAssetDirectory = Effect.fn("prepareAssetDirectory")(function
   ...segments: string[]
 ) {
   const sessionContainer = yield* SessionContainer.Service;
-  const directory = posix.resolve(sessionContainer.cwd, ...segments);
+  const directory = yield* GuestPath.resolve(sessionContainer.cwd, ...segments);
   const container = yield* sessionContainer.get;
   yield* container.files.mkdir(directory, { recursive: true });
   return directory;
@@ -28,7 +29,7 @@ export const prepareAssetDirectory = Effect.fn("prepareAssetDirectory")(function
 
 const writeAsset = Effect.fn("writeAsset")(function* (
   response: HttpClientResponse.HttpClientResponse,
-  directory: string,
+  directory: GuestPath.GuestPath,
   filename: string,
 ) {
   if (posix.basename(filename) !== filename || filename === "." || filename === "..") {
@@ -37,8 +38,11 @@ const writeAsset = Effect.fn("writeAsset")(function* (
 
   const sessionContainer = yield* SessionContainer.Service;
   const container = yield* sessionContainer.get;
-  const destination = posix.join(directory, filename);
-  const temporaryPath = `${destination}.${crypto.randomUUID()}.tmp`;
+  const destination = yield* GuestPath.resolve(directory, filename);
+  const temporaryPath = yield* GuestPath.resolve(
+    directory,
+    `${filename}.${crypto.randomUUID()}.tmp`,
+  );
   yield* container.files
     .write(temporaryPath, response.stream)
     .pipe(
@@ -59,21 +63,21 @@ const writeAsset = Effect.fn("writeAsset")(function* (
           .pipe(Effect.timeout("3 seconds"), Effect.ignore),
       ),
     );
+  return destination;
 });
 
 export const downloadAsset = Effect.fn("downloadAsset")(function* (
   url: string,
-  directory: string,
+  directory: GuestPath.GuestPath,
   filename: string,
 ) {
   const asset = yield* fetchAsset(url);
-  yield* writeAsset(asset, directory, filename);
-  return posix.join(directory, filename);
+  return yield* writeAsset(asset, directory, filename);
 });
 
 export const downloadAssetByContentType = Effect.fn("downloadAssetByContentType")(function* (
   url: string,
-  directory: string,
+  directory: GuestPath.GuestPath,
   filenameStem: string,
 ) {
   const response = yield* fetchAsset(url);
@@ -89,8 +93,7 @@ export const downloadAssetByContentType = Effect.fn("downloadAssetByContentType"
     });
   }
   const filename = `${filenameStem}.${extension}`;
-  yield* writeAsset(response, directory, filename);
-  return posix.join(directory, filename);
+  return yield* writeAsset(response, directory, filename);
 });
 
 export type AssetJob<E, R> = {

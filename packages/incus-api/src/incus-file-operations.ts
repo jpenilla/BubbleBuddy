@@ -1,5 +1,5 @@
 import { Effect, Option, Ref, Stream } from "effect";
-import { posix } from "node:path";
+import { GuestPath } from "./guest-path.ts";
 
 import { IncusContainer } from "./incus-container.ts";
 import { IncusApi } from "./incus-api.ts";
@@ -12,15 +12,14 @@ export const create = (
   const projectOptions = { project };
 
   const read: IncusContainer.FileOperations["read"] = Effect.fn("IncusContainer.read")(function* (
-    path: string,
+    path: GuestPath.GuestPath,
   ) {
-    yield* requireAbsolutePath(path);
     return yield* api.instances.files.read(name, path, projectOptions);
   });
 
   const readFile: IncusContainer.Container["files"]["readFile"] = Effect.fn(
     "IncusContainer.readFile",
-  )(function* (path: string) {
+  )(function* (path: GuestPath.GuestPath) {
     const response = yield* read(path);
     const reject = (entry: IncusApi.FileRead) =>
       Effect.fail(
@@ -39,11 +38,10 @@ export const create = (
 
   const write: IncusContainer.Container["files"]["write"] = Effect.fn("IncusContainer.writeFile")(
     function* <E, R>(
-      path: string,
+      path: GuestPath.GuestPath,
       content: Stream.Stream<Uint8Array, E, R>,
       options?: IncusContainer.FileWriteOptions,
     ) {
-      yield* requireAbsolutePath(path);
       const context = yield* Effect.context<R>();
       const sourceError = yield* Ref.make(Option.none<E>());
       const body: Stream.Stream<Uint8Array, E, never> = content.pipe(
@@ -71,8 +69,7 @@ export const create = (
   );
 
   const mkdir: IncusContainer.Container["files"]["mkdir"] = Effect.fn("IncusContainer.mkdir")(
-    function* (path: string, options?: { readonly recursive?: boolean }) {
-      yield* requireAbsolutePath(path);
+    function* (path: GuestPath.GuestPath, options?: { readonly recursive?: boolean }) {
       if (options?.recursive) {
         yield* createDirectories(api, name, project, path);
       } else {
@@ -109,13 +106,6 @@ export const create = (
   };
 };
 
-const requireAbsolutePath = (path: string) =>
-  posix.isAbsolute(path)
-    ? Effect.void
-    : Effect.fail(
-        new IncusContainer.PathError({ path, message: "Incus container paths must be absolute" }),
-      );
-
 const concatBytes = (chunks: Iterable<Uint8Array>): Uint8Array => {
   const values = Array.from(chunks);
   const length = values.reduce((total, chunk) => total + chunk.byteLength, 0);
@@ -132,20 +122,19 @@ const ensureParentDirectories = (
   api: IncusApi.Interface,
   name: string,
   project: string,
-  path: string,
+  path: GuestPath.GuestPath,
   fileOptions?: IncusContainer.FileWriteOptions,
-) =>
-  createDirectories(api, name, project, posix.dirname(normalizeContainerPath(path)), fileOptions);
+) => createDirectories(api, name, project, GuestPath.dirname(path), fileOptions);
 
 const createDirectories = (
   api: IncusApi.Interface,
   name: string,
   project: string,
-  path: string,
+  path: GuestPath.GuestPath,
   fileOptions?: IncusContainer.FileWriteOptions,
 ) =>
   Effect.forEach(
-    directoryChain(path),
+    GuestPath.directoryChain(path),
     (directory) => ensureDirectory(api, name, project, directory, fileOptions),
     { discard: true },
   );
@@ -154,43 +143,32 @@ const ensureDirectory = (
   api: IncusApi.Interface,
   name: string,
   project: string,
-  path: string,
+  path: GuestPath.GuestPath,
   fileOptions?: IncusContainer.FileWriteOptions,
 ) =>
   api.instances.files.stat(name, path, { project }).pipe(
-    Effect.flatMap((info): Effect.Effect<void, IncusApi.ApiError | IncusContainer.PathError> => {
-      if (info === null) {
-        return api.instances.files.write(
-          name,
-          path,
-          undefined,
-          fileHeaders("directory", fileOptions),
-          { project },
+    Effect.flatMap(
+      (info): Effect.Effect<void, IncusApi.ApiError | IncusContainer.MetadataError> => {
+        if (info === null) {
+          return api.instances.files.write(
+            name,
+            path,
+            undefined,
+            fileHeaders("directory", fileOptions),
+            { project },
+          );
+        }
+        if (info.type === "directory") return Effect.void;
+        return Effect.fail(
+          new IncusContainer.MetadataError({
+            operation: "ensureDirectory",
+            message: `Path exists but is not a directory: ${path}`,
+            metadata: { path, fileType: info.type },
+          }),
         );
-      }
-      if (info.type === "directory") return Effect.void;
-      return Effect.fail(
-        new IncusContainer.PathError({
-          path,
-          message: `Path exists but is not a directory: ${path}`,
-          metadata: { fileType: info.type },
-        }),
-      );
-    }),
+      },
+    ),
   );
-
-const normalizeContainerPath = (path: string) => {
-  const normalized = posix.normalize(path);
-  if (normalized === ".") return "/";
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
-};
-
-const directoryChain = (path: string): ReadonlyArray<string> => {
-  const normalized = normalizeContainerPath(path);
-  if (normalized === "/") return [];
-  const parts = normalized.split("/").filter(Boolean);
-  return parts.map((_, index) => `/${parts.slice(0, index + 1).join("/")}`);
-};
 
 const fileHeaders = (type: string, options?: IncusContainer.FileWriteOptions) => ({
   "x-incus-type": type,

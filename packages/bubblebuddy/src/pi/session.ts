@@ -170,6 +170,11 @@ export const createPiSession = (
           cwd: workspace.root.container,
           workspaceDir: workspace.root.host,
         }).pipe(Layer.provide(IncusClientLayer)),
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new PiSessionInitError({ message: "Invalid container working directory", cause }),
+        ),
       );
 
       return Context.get(context, SessionContainer.Service);
