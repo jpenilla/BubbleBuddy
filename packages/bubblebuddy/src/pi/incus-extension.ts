@@ -16,7 +16,7 @@ import {
   type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
 import { Cause, Effect, Exit, FiberSet, Option, Stream } from "effect";
-import { IncusContainer } from "incus-api";
+import { GuestPath, IncusContainer } from "incus-api";
 
 import { SessionContainer } from "../session/session-container.ts";
 
@@ -56,19 +56,29 @@ export const createIncusExtension = Effect.gen(function* () {
       }
     },
     readFile: async (path) => {
-      const data = await runInContainer((container) => container.files.readBytes(path));
+      const data = await runInContainer((container) =>
+        GuestPath.of(path).pipe(Effect.flatMap(container.files.readBytes)),
+      );
       return Buffer.from(data);
     },
   };
 
   const writeOperations: WriteOperations = {
     mkdir: async (dir) => {
-      await runInContainer((container) => container.files.mkdir(dir, { recursive: true }));
+      await runInContainer((container) =>
+        GuestPath.of(dir).pipe(
+          Effect.flatMap((path) => container.files.mkdir(path, { recursive: true })),
+        ),
+      );
     },
     writeFile: async (path, content) => {
       const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
       await runInContainer((container) =>
-        container.files.write(path, Stream.make(bytes), { createParents: true }),
+        GuestPath.of(path).pipe(
+          Effect.flatMap((path) =>
+            container.files.write(path, Stream.make(bytes), { createParents: true }),
+          ),
+        ),
       );
     },
   };

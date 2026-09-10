@@ -1,3 +1,4 @@
+import { GuestPath } from "incus-api";
 import { NodeStream } from "@effect/platform-node";
 import { GuildPremiumTier } from "discord.js";
 import { Effect, Ref, Stream } from "effect";
@@ -15,14 +16,12 @@ const getGuildUploadLimit = (premiumTier: GuildPremiumTier): bigint => {
   return 10_485_760n; // 10 MiB
 };
 
-const resolveGuestPath = (cwd: string, inputPath: string) => {
+const resolveGuestPath = (cwd: GuestPath.GuestPath, inputPath: string) => {
   const rawPath = inputPath.trim();
   if (rawPath.length === 0) {
     return Effect.fail(new AgentToolError({ message: "Path must not be empty." }));
   }
-  return Effect.succeed(
-    posix.isAbsolute(rawPath) ? posix.normalize(rawPath) : posix.resolve(cwd, rawPath),
-  );
+  return GuestPath.resolve(cwd, rawPath);
 };
 
 export const uploadFileTool = defineEffectTool({

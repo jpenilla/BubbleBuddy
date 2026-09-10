@@ -4,7 +4,7 @@ Effect-based Incus client for scoped container operations.
 
 ```typescript
 import { Effect, Stream } from "effect";
-import { IncusClient, IncusContainer } from "incus-api";
+import { GuestPath, IncusClient, IncusContainer } from "incus-api";
 
 const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
@@ -21,11 +21,12 @@ const program = Effect.scoped(
       profiles: ["default"],
     });
 
+    const path = yield* GuestPath.of("/tmp/hello.txt");
     yield* container.files.write(
-      "/tmp/hello.txt",
+      path,
       Stream.make(new TextEncoder().encode("hello")),
     );
-    const file = yield* container.files.readFile("/tmp/hello.txt");
+    const file = yield* container.files.readFile(path);
     const text = yield* file.bytes.pipe(Stream.decodeText(), Stream.runFold("", (a, b) => a + b));
     console.log(text);
 

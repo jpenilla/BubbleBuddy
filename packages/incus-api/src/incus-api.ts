@@ -1,3 +1,4 @@
+import type { GuestPath } from "./guest-path.ts";
 import {
   Cause,
   Context,
@@ -182,17 +183,17 @@ export interface Interface {
     readonly files: {
       readonly read: (
         name: string,
-        path: string,
+        path: GuestPath,
         options: ProjectOptions,
       ) => Effect.Effect<FileRead, ApiError, Scope.Scope>;
       readonly stat: (
         name: string,
-        path: string,
+        path: GuestPath,
         options: ProjectOptions,
       ) => Effect.Effect<FileInfo | null, ApiError>;
       readonly write: (
         name: string,
-        path: string,
+        path: GuestPath,
         body: Stream.Stream<Uint8Array, unknown> | undefined,
         headers: Record<string, string>,
         options: ProjectOptions,
@@ -489,7 +490,7 @@ const operationFromLocation = Effect.fnUntraced(function* (
 const instanceFileHead = Effect.fnUntraced(function* (
   client: HttpClient.HttpClient,
   name: string,
-  path: string,
+  path: GuestPath,
   options: ProjectOptions,
 ) {
   const response = yield* request(client, {
@@ -533,7 +534,7 @@ const request = Effect.fnUntraced(function* (
   });
 });
 
-const instanceFilePath = (name: string, path: string, project: string) => {
+const instanceFilePath = (name: string, path: GuestPath, project: string) => {
   const params = new URLSearchParams();
   params.set("path", path);
   params.set("project", project);
