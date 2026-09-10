@@ -1,36 +1,13 @@
-import { Deferred, Effect, Fiber, Layer } from "effect";
+import { Deferred, Effect, Fiber } from "effect";
 import { describe, expect, it } from "@effect/vitest";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientError from "effect/unstable/http/HttpClientError";
+import { assertInstanceOf } from "@effect/vitest/utils";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import { TestClock } from "effect/testing";
 
 import { IncusApi } from "../src/incus-api.ts";
-import { IncusTransport } from "../src/incus-transport.ts";
 import { errorFrom } from "./incus-fixtures.ts";
-
-type HttpHandler = (
-  request: HttpClientRequest.HttpClientRequest,
-) => Effect.Effect<HttpClientResponse.HttpClientResponse, HttpClientError.HttpClientError>;
-
-const httpClient = (handler: HttpHandler): HttpClient.HttpClient =>
-  HttpClient.makeWith<
-    HttpClientError.HttpClientError,
-    never,
-    HttpClientError.HttpClientError,
-    never
-  >(Effect.flatMap(handler), Effect.succeed);
-
-const layerWith = (handler: HttpHandler) =>
-  IncusApi.layer.pipe(
-    Layer.provide(
-      Layer.succeed(IncusTransport.Service, {
-        httpClient: httpClient(handler),
-        makeWebSocket: () => Effect.die(new Error("Unexpected websocket request")),
-      }),
-    ),
-  );
+import { type HttpHandler, layerWith } from "./http-fixtures.ts";
 
 const response = (request: HttpClientRequest.HttpClientRequest, metadata: unknown) =>
   HttpClientResponse.fromWeb(
@@ -103,27 +80,27 @@ describe("Incus operation waits", () => {
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>();
       const interrupted = yield* Deferred.make<void>();
-      const handler: HttpHandler = () =>
-        Deferred.succeed(started, undefined).pipe(
+      const handler: HttpHandler = (request) => {
+        expect(new URL(request.url, "http://incus").searchParams.get("timeout")).toBe("1");
+        return Deferred.succeed(started, undefined).pipe(
           Effect.andThen(Effect.never),
           Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
         );
+      };
       return yield* Effect.gen(function* () {
         const api = yield* IncusApi.Service;
         const fiber = yield* api.operations
           .wait("operation-stalled", { project: "default", timeoutSeconds: 1 })
-          .pipe(Effect.forkChild);
+          .pipe(Effect.flip, Effect.forkChild);
 
         yield* Deferred.await(started);
+        yield* TestClock.adjust("1 second");
+        expect(yield* Deferred.isDone(interrupted)).toBe(false);
         yield* TestClock.adjust("1 minute");
-        const exit = yield* Fiber.await(fiber);
-
-        const error = errorFrom(exit);
-        expect(error).toBeInstanceOf(IncusApi.TimeoutError);
-        if (error instanceof IncusApi.TimeoutError) {
-          expect(error.requestedTimeoutSeconds).toBe(1);
-          expect(error.path).toContain("operation-stalled");
-        }
+        const error = yield* Fiber.join(fiber);
+        assertInstanceOf(error, IncusApi.TimeoutError);
+        expect(error.requestedTimeoutSeconds).toBe(1);
+        expect(error.path).toContain("operation-stalled");
         yield* Deferred.await(interrupted);
       }).pipe(Effect.provide(layerWith(handler)));
     }),

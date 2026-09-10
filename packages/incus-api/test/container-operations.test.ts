@@ -1,9 +1,11 @@
 import { Effect, Ref } from "effect";
 import { describe, expect, it } from "@effect/vitest";
+import { assertInstanceOf } from "@effect/vitest/utils";
 
 import { IncusContainerOperations } from "../src/incus-container-operations.ts";
 import { IncusContainer } from "../src/incus-container.ts";
 import { IncusApi } from "../src/incus-api.ts";
+import { exec } from "../src/incus-exec-session.ts";
 import { apiFixture, errorFrom } from "./incus-fixtures.ts";
 
 const image: IncusContainer.ImageSource = {
@@ -28,6 +30,24 @@ const invalidWebSocketSecretsApi = (cancel: IncusApi.Interface["operations"]["ca
   });
 
 describe("Incus container operations", () => {
+  it.effect("rejects an invalid exec timeout before starting a remote operation", () =>
+    Effect.gen(function* () {
+      let started = false;
+      const api = apiFixture({
+        exec: () =>
+          Effect.sync(() => {
+            started = true;
+            return { id: "unexpected" };
+          }),
+      });
+      const error = yield* exec("container", "default", api, ["true"], {
+        timeoutSeconds: 0.5,
+      }).pipe(Effect.flip);
+      assertInstanceOf(error, IncusContainer.ExecInvalidOptionsError);
+      expect(started).toBe(false);
+    }),
+  );
+
   it.effect("deletes a container after start acquisition fails even when stop cleanup fails", () =>
     Effect.gen(function* () {
       const present = yield* Ref.make(false);

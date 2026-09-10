@@ -1,9 +1,11 @@
 import { GuestPath } from "../src/guest-path.ts";
 import { Context, Effect, Layer, Ref, Schema, Stream } from "effect";
 import { describe, expect, it } from "@effect/vitest";
+import { assertInstanceOf } from "@effect/vitest/utils";
 
 import { IncusFileOperations } from "../src/incus-file-operations.ts";
 import { IncusApi } from "../src/incus-api.ts";
+import { IncusContainer } from "../src/incus-container.ts";
 import { apiFixture, errorFrom } from "./incus-fixtures.ts";
 
 class StreamValue extends Context.Service<
@@ -17,6 +19,49 @@ class SourceFailure extends Schema.TaggedError<SourceFailure>()(
 ) {}
 
 describe("Incus file writes", () => {
+  it.effect("creates missing parents before uploading the file", () =>
+    Effect.gen(function* () {
+      const writes: unknown[] = [];
+      const api = apiFixture({
+        stat: (_name, path) =>
+          Effect.succeed(path === "/" || path === "/tmp" ? { type: "directory" } : null),
+        write: (_name, path, _body, headers) =>
+          Effect.sync(() => {
+            writes.push([path, headers["x-incus-type"]]);
+          }),
+      });
+      yield* IncusFileOperations.create(api, "container", "default").write(
+        yield* GuestPath.of("/tmp/a/b/message.txt"),
+        Stream.empty,
+        { createParents: true },
+      );
+      expect(writes).toEqual([
+        ["/tmp/a", "directory"],
+        ["/tmp/a/b", "directory"],
+        ["/tmp/a/b/message.txt", "file"],
+      ]);
+    }),
+  );
+
+  it.effect("does not upload through an obstructed parent", () =>
+    Effect.gen(function* () {
+      const writes: string[] = [];
+      const api = apiFixture({
+        stat: (_name, path) => Effect.succeed({ type: path === "/tmp/a" ? "file" : "directory" }),
+        write: (_name, path) =>
+          Effect.sync(() => {
+            writes.push(path);
+          }),
+      });
+      const error = yield* IncusFileOperations.create(api, "container", "default")
+        .write(yield* GuestPath.of("/tmp/a/message.txt"), Stream.empty, { createParents: true })
+        .pipe(Effect.flip);
+      assertInstanceOf(error, IncusContainer.MetadataError);
+      expect(error.metadata).toEqual({ path: "/tmp/a", fileType: "file" });
+      expect(writes).toEqual([]);
+    }),
+  );
+
   it.effect("consumes caller-provided streamed content with its required service", () =>
     Effect.gen(function* () {
       const received = yield* Ref.make<ReadonlyArray<Uint8Array>>([]);
