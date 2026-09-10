@@ -1,8 +1,9 @@
-import type { GuildTextBasedChannel, Message } from "discord.js";
+import { Routes, type GuildTextBasedChannel, type Message } from "discord.js";
 import { Effect, Option, Ref, Schema, Scope, ScopedRef, Semaphore, SynchronizedRef } from "effect";
 
 import { formatMessageForPrompt } from "../discord/prompt-formatting.ts";
 import { createDiscordOutputPump } from "../discord/session-output-pump.ts";
+import { tryDiscordJsPromise } from "../discord/utils.ts";
 import {
   createPiSession,
   type PiSessionHandle,
@@ -129,6 +130,22 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
     const activate = Effect.fn("ChannelSession.activate")(function* (
       activation: ActivateChannelSessionInput,
     ) {
+      const pi = yield* ScopedRef.get(piRef);
+      if (pi === undefined || !(pi.isStreaming() || pi.isRetrying() || pi.isCompacting())) {
+        yield* tryDiscordJsPromise((signal) =>
+          activation.channel.client.rest.post(Routes.channelTyping(activation.channel.id), {
+            signal,
+          }),
+        ).pipe(
+          Effect.timeout("3 seconds"),
+          Effect.ignore({
+            log: "Warn",
+            message: `Failed to send eager typing indicator for channel ${activation.channel.id}`,
+          }),
+          Effect.forkDetach({ startImmediately: true }),
+        );
+      }
+
       yield* lock.withPermit(
         Effect.gen(function* () {
           const pi = yield* getOrCreatePiSession(activation);

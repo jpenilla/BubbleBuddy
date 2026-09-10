@@ -1,9 +1,9 @@
-import { Events, Routes, type Client, type Message } from "discord.js";
+import { Events, type Client, type Message } from "discord.js";
 import { Effect, Layer } from "effect";
 
 import { ChannelSessions } from "../session/registry.ts";
 import { Discord } from "./client.ts";
-import { isGuildTextChannel, tryDiscordJsPromise } from "./utils.ts";
+import { isGuildTextChannel } from "./utils.ts";
 import { createPromptContext } from "./prompt-formatting.ts";
 
 export const ActivationLayer = Layer.effectDiscard(
@@ -35,17 +35,6 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
     if (!message.mentions.has(client.user.id)) {
       return;
     }
-
-    yield* tryDiscordJsPromise((signal) =>
-      message.channel.client.rest.post(Routes.channelTyping(message.channel.id), { signal }),
-    ).pipe(
-      Effect.timeout("3 seconds"),
-      Effect.ignore({
-        log: "Warn",
-        message: `Failed to send eager typing indicator for channel ${message.channel.id}`,
-      }),
-      Effect.forkDetach({ startImmediately: true }),
-    );
 
     const sessions = yield* ChannelSessions;
     const session = yield* sessions.get(message.channel.id);
