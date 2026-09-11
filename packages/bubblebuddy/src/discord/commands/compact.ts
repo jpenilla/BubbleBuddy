@@ -2,7 +2,6 @@ import { InteractionContextType, SlashCommandBuilder } from "discord.js";
 
 import { ChannelSessions } from "../../session/registry.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
-import { createPromptContext } from "../prompt-formatting.ts";
 import { createCommand, inGuildTextChannel } from "./command.ts";
 
 export const compactCommand = createCommand({
@@ -24,11 +23,6 @@ export const compactCommand = createCommand({
     yield* tryDiscordJsPromise(() => interaction.editReply("Compaction requested."));
     const result = yield* session.compact({
       channel: interaction.channel,
-      promptContext: createPromptContext(
-        interaction.client,
-        interaction.channel,
-        interaction.guild.name,
-      ),
       customInstructions,
     });
 

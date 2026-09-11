@@ -2,7 +2,6 @@ import { Clock, Effect, Layer, Schedule } from "effect";
 import { Schedules } from "../scheduling/schedules.ts";
 import { ChannelSessions } from "../session/registry.ts";
 import { Discord } from "./client.ts";
-import { createPromptContext } from "./prompt-formatting.ts";
 import { isGuildTextChannel, tryDiscordJsPromise } from "./utils.ts";
 
 export const ScheduledWakeupsLayer = Layer.effectDiscard(
@@ -25,7 +24,6 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
       const session = yield* sessions.get(channel.id);
       yield* session.activate({
         channel,
-        promptContext: createPromptContext(discord.client, channel, channel.guild.name),
         prompt: [
           "Scheduled wakeup (a previously saved instruction, not a new Discord message).",
           `Schedule: ${wakeup.id}`,

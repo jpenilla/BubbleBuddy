@@ -41,7 +41,6 @@ import { PiContext } from "./context.ts";
 import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
 import { channelHostSessionsDir, createChannelMountedWorkspace } from "../shared/workspace.ts";
 import { SessionContainer } from "../session/session-container.ts";
-import type { PromptTemplateContext } from "./system-prompt.ts";
 
 const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
@@ -74,7 +73,6 @@ export interface ActivatePiSessionInput {
 
 export interface CreatePiSessionInput {
   readonly channel: GuildTextBasedChannel;
-  readonly promptContext: PromptTemplateContext;
   readonly activeSession?: string;
   readonly output: DiscordOutputPump;
 }
@@ -187,7 +185,13 @@ export const createPiSession = (
         botProfile: resources.botProfile,
         discordContextTemplate: resources.discordContextTemplate,
         enableAgenticWorkspace: config.enableAgenticWorkspace,
-        promptContext: input.promptContext,
+        promptContext: {
+          botName: input.channel.client.user.username,
+          channelName: input.channel.name,
+          channelStatusText:
+            "topic" in input.channel ? input.channel.topic?.trim() || "none" : "none",
+          guildName: input.channel.guild.name,
+        },
       }),
     ];
 
