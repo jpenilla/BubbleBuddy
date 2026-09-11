@@ -46,8 +46,9 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
         (wakeup) =>
           dispatch(wakeup).pipe(
             Effect.ignore({ log: "Error", message: `Scheduled wakeup ${wakeup.id} failed` }),
+            Effect.forkScoped,
           ),
-        { concurrency: 3, discard: true },
+        { discard: true },
       );
     });
 
