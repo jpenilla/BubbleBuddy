@@ -30,6 +30,7 @@ import { DiscordToolContext } from "../discord/tool-context.ts";
 import { McpPiTools } from "../mcp/pi-tools.ts";
 import { McpClientFactory } from "../mcp/client-factory.ts";
 import { AppHome } from "../config/env.ts";
+import { Schedules } from "../scheduling/schedules.ts";
 import { FileConfig, type McpServerConfigEntry } from "../config/file.ts";
 import { LoadedResources } from "../resources.ts";
 import { createChannelWorkspaceResourceLoader } from "./workspace-resource-loader.ts";
@@ -40,7 +41,6 @@ import { PiContext } from "./context.ts";
 import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
 import { channelHostSessionsDir, createChannelMountedWorkspace } from "../shared/workspace.ts";
 import { SessionContainer } from "../session/session-container.ts";
-import type { PromptTemplateContext } from "./system-prompt.ts";
 
 const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
@@ -73,7 +73,6 @@ export interface ActivatePiSessionInput {
 
 export interface CreatePiSessionInput {
   readonly channel: GuildTextBasedChannel;
-  readonly promptContext: PromptTemplateContext;
   readonly activeSession?: string;
   readonly output: DiscordOutputPump;
 }
@@ -97,6 +96,7 @@ export class PiSessionOperationError extends Schema.TaggedError<PiSessionOperati
 ) {}
 
 export type PiSessionServices =
+  | Schedules.Service
   | FileConfig
   | FileSystem.FileSystem
   | HttpClient.HttpClient
@@ -185,7 +185,13 @@ export const createPiSession = (
         botProfile: resources.botProfile,
         discordContextTemplate: resources.discordContextTemplate,
         enableAgenticWorkspace: config.enableAgenticWorkspace,
-        promptContext: input.promptContext,
+        promptContext: {
+          botName: input.channel.client.user.username,
+          channelName: input.channel.name,
+          channelStatusText:
+            "topic" in input.channel ? input.channel.topic?.trim() || "none" : "none",
+          guildName: input.channel.guild.name,
+        },
       }),
     ];
 

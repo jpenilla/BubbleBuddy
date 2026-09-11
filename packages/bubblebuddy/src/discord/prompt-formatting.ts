@@ -1,34 +1,8 @@
-import {
-  type Client,
-  type Embed,
-  type GuildTextBasedChannel,
-  Message,
-  MessageFlags,
-  StickerFormatType,
-  type Sticker,
-} from "discord.js";
+import { type Embed, Message, MessageFlags, StickerFormatType, type Sticker } from "discord.js";
 
-import type { PromptTemplateContext } from "../pi/system-prompt.ts";
 import { sanitizeAttachmentFilename } from "../shared/workspace.ts";
 
 export const DISCORD_SAFE_MESSAGE_LIMIT = 1_900;
-
-export const createPromptContext = (
-  client: Client<true>,
-  channel: GuildTextBasedChannel,
-  guildName: string,
-): PromptTemplateContext => ({
-  botName: client.user.username,
-  channelName:
-    "name" in channel && typeof channel.name === "string" ? channel.name : "unknown-channel",
-  channelStatusText:
-    "topic" in channel && typeof channel.topic === "string"
-      ? channel.topic.trim().length > 0
-        ? channel.topic.trim()
-        : "none"
-      : "none",
-  guildName,
-});
 
 export const formatDiscordUserReference = (username: string, userId: string): string =>
   `@${username} mention=<@${userId}>`;

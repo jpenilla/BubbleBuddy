@@ -4,7 +4,7 @@ import { Effect, Layer } from "effect";
 import { ChannelSessions } from "../session/registry.ts";
 import { Discord } from "./client.ts";
 import { isGuildTextChannel } from "./utils.ts";
-import { createPromptContext } from "./prompt-formatting.ts";
+import { formatMessageForPrompt } from "./prompt-formatting.ts";
 
 export const ActivationLayer = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -40,7 +40,6 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
     const session = yield* sessions.get(message.channel.id);
     yield* session.activate({
       channel: message.channel,
-      originMessage: message,
-      promptContext: createPromptContext(client, message.channel, message.guild.name),
+      prompt: formatMessageForPrompt(message),
     });
   });

@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import { fetchMessageTool } from "./tools/fetch-message.ts";
+import { createScheduleTool, listSchedulesTool, cancelScheduleTool } from "./tools/schedules.ts";
 import { listCustomEmojisTool } from "./tools/list-custom-emojis.ts";
 import { listStickersTool } from "./tools/list-stickers.ts";
 import { reactTool } from "./tools/react.ts";
@@ -18,6 +19,9 @@ export const discordCoreTools = Effect.fn("discordCoreTools")(function* () {
     yield* reactTool,
     yield* replyTool,
     yield* fetchMessageTool,
+    yield* createScheduleTool,
+    yield* listSchedulesTool,
+    yield* cancelScheduleTool,
   ];
 });
 

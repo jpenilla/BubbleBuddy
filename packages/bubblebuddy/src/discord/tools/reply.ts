@@ -9,7 +9,6 @@ export const replyTool = defineEffectTool({
   name: "discord_reply",
   label: "Reply",
   description: "Reply to a message in the current channel, optionally ending the turn.",
-  promptSnippet: "Reply to a message in the current channel, optionally ending the turn",
   promptGuidelines: [
     "Ordinary assistant text is posted without replying. Use an explicit mention or discord_reply when a user should be notified.",
     "Call discord_reply with terminate=true as the only tool call when its content is the complete final response and no further work is needed.",

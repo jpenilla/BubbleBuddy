@@ -1,7 +1,6 @@
-import { Routes, type GuildTextBasedChannel, type Message } from "discord.js";
+import { Routes, type GuildTextBasedChannel } from "discord.js";
 import { Effect, Option, Ref, Schema, Scope, ScopedRef, Semaphore, SynchronizedRef } from "effect";
 
-import { formatMessageForPrompt } from "../discord/prompt-formatting.ts";
 import { createDiscordOutputPump } from "../discord/session-output-pump.ts";
 import { tryDiscordJsPromise } from "../discord/utils.ts";
 import {
@@ -11,21 +10,17 @@ import {
   type PiSessionServices,
   type SessionStats,
 } from "../pi/session.ts";
-import type { PromptTemplateContext } from "../pi/system-prompt.ts";
 import { ChannelStateRepository } from "./state.ts";
 
-interface ChannelSessionContext {
+export interface ActivateChannelSessionInput {
   readonly channel: GuildTextBasedChannel;
-  readonly promptContext: PromptTemplateContext;
+  readonly prompt: string;
 }
 
-export type ActivateChannelSessionInput = ChannelSessionContext & {
-  readonly originMessage: Message<true>;
-};
-
-export type CompactChannelSessionInput = ChannelSessionContext & {
+export interface CompactChannelSessionInput {
+  readonly channel: GuildTextBasedChannel;
   readonly customInstructions?: string;
-};
+}
 
 export type AbortResult = "aborted" | "idle";
 export type CompactResult = "done" | "no-session" | "rejected-busy" | "rejected-compacting";
@@ -55,7 +50,7 @@ export interface ChannelSession {
   ) => Effect.Effect<CompactResult, ChannelSessionError>;
   readonly discard: Effect.Effect<DiscardResult, ChannelSessionError>;
   readonly status: (
-    context: ChannelSessionContext,
+    channel: GuildTextBasedChannel,
   ) => Effect.Effect<ChannelStatus, ChannelSessionError>;
   readonly toggleShowThinking: Effect.Effect<boolean, ChannelSessionError>;
 }
@@ -87,7 +82,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
     }).pipe(Effect.withSpan("ChannelSession.clearActiveSession"));
 
     const getOrCreatePiSession = Effect.fn("ChannelSession.getOrCreatePiSession")(function* (
-      context: ChannelSessionContext,
+      channel: GuildTextBasedChannel,
     ) {
       const current = yield* ScopedRef.get(piRef);
       if (current !== undefined) return current;
@@ -97,10 +92,14 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
         piRef,
         Effect.gen(function* () {
           const output = yield* createDiscordOutputPump({
-            channel: context.channel,
+            channel,
             showThinking: SynchronizedRef.get(showThinkingRef),
           });
-          const pi = yield* createPiSession({ ...context, activeSession, output });
+          const pi = yield* createPiSession({
+            channel,
+            activeSession,
+            output,
+          });
           const activeSessionName = pi.getActiveSessionName();
           if (activeSessionName !== undefined && activeSessionName !== activeSession) {
             yield* repository.setActiveSession(input.channelId, activeSessionName);
@@ -148,10 +147,10 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
 
       yield* lock.withPermit(
         Effect.gen(function* () {
-          const pi = yield* getOrCreatePiSession(activation);
+          const pi = yield* getOrCreatePiSession(activation.channel);
           yield* pi
             .activate({
-              prompt: formatMessageForPrompt(activation.originMessage),
+              prompt: activation.prompt,
               retainChannelSession: input.retain,
             })
             .pipe(mapToChannelSessionError);
@@ -179,7 +178,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
             if (currentPi === undefined && activeSession === undefined)
               return "no-session" as const;
 
-            const session = yield* getOrCreatePiSession(compaction);
+            const session = yield* getOrCreatePiSession(compaction.channel);
             yield* session.requestCompaction(compaction.customInstructions).pipe(Effect.ignore);
             return "done" as const;
           }),
@@ -206,10 +205,10 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
         Effect.withSpan("ChannelSession.discard"),
       );
 
-    const status = Effect.fn("ChannelSession.status")(function* (context: ChannelSessionContext) {
+    const status = Effect.fn("ChannelSession.status")(function* (channel: GuildTextBasedChannel) {
       return yield* lock.withPermit(
         Effect.gen(function* () {
-          const pi = yield* getOrCreatePiSession(context);
+          const pi = yield* getOrCreatePiSession(channel);
           return {
             model: pi.getModelInfo(),
             showThinking: yield* SynchronizedRef.get(showThinkingRef),

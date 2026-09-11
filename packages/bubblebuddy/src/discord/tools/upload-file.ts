@@ -29,8 +29,6 @@ export const uploadFileTool = defineEffectTool({
   label: "Upload File",
   description:
     "Upload a file from the container into chat; paths may be absolute or relative to /workspace.",
-  promptSnippet:
-    "Upload a file from the container into chat; paths may be absolute or relative to /workspace",
   parameters: Type.Object({
     caption: Type.Optional(
       Type.String({ description: "Optional message text to send with the uploaded file" }),
