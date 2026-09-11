@@ -19,24 +19,6 @@ export const Details = Schema.Union([CreatedDetails, UpdatedDetails, CancelledDe
 );
 export type Details = typeof Details.Type;
 
-const describe = (wakeup: Schedules.Wakeup) => ({
-  ...wakeup,
-  nextRunAt: new Date(wakeup.nextRunAt).toISOString(),
-  recurrence: Schedules.Recurrence.match(wakeup.recurrence, {
-    once: (recurrence) => recurrence,
-    cron: (recurrence) => ({
-      ...recurrence,
-      expiresAt:
-        recurrence.expiresAt === null ? null : new Date(recurrence.expiresAt).toISOString(),
-    }),
-  }),
-});
-
-const result = <Details = undefined>(value: unknown, details?: Details) => ({
-  content: [{ type: "text" as const, text: JSON.stringify(value) }],
-  details,
-});
-
 const description = Type.String({
   minLength: 1,
   maxLength: 120,
@@ -84,7 +66,10 @@ export const create = defineEffectTool({
       const { channel } = yield* DiscordToolContext;
       const schedules = yield* Schedules.Service;
       const schedule = yield* schedules.create(channel.id, input);
-      return result(describe(schedule), CreatedDetails.make({ schedule }));
+      return {
+        content: [{ type: "text" as const, text: Schedules.formatText(schedule) }],
+        details: CreatedDetails.make({ schedule }),
+      };
     }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
 });
 
@@ -106,14 +91,14 @@ export const update = defineEffectTool({
       const { id, ...fields } = input;
       const updated = yield* schedules.update(channel.id, id, fields);
 
-      return result(
-        {
-          updated: describe(updated.after),
-        },
-        UpdatedDetails.make({ update: updated }),
-      );
+      return {
+        content: [{ type: "text" as const, text: Schedules.formatText(updated.after) }],
+        details: UpdatedDetails.make({ update: updated }),
+      };
     }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
 });
+
+const NOTE_TERMINATOR = "<<<END_NOTE>>>";
 
 export const list = defineEffectTool({
   name: "list_schedules",
@@ -125,7 +110,21 @@ export const list = defineEffectTool({
     Effect.gen(function* () {
       const { channel } = yield* DiscordToolContext;
       const schedules = yield* Schedules.Service;
-      return result((yield* schedules.list(channel.id)).map(describe));
+      const active = yield* schedules.list(channel.id);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text:
+              active.length === 0
+                ? "No active schedules."
+                : active
+                    .map((wakeup) => `${Schedules.formatText(wakeup)}\n${NOTE_TERMINATOR}`)
+                    .join("\n\n"),
+          },
+        ],
+        details: undefined,
+      };
     }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
 });
 
@@ -140,7 +139,10 @@ export const cancel = defineEffectTool({
       const { channel } = yield* DiscordToolContext;
       const schedules = yield* Schedules.Service;
       const schedule = yield* schedules.cancel(channel.id, input.id);
-      return result({ cancelled: describe(schedule) }, CancelledDetails.make({ schedule }));
+      return {
+        content: [{ type: "text" as const, text: Schedules.formatText(schedule) }],
+        details: CancelledDetails.make({ schedule }),
+      };
     }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
 });
 

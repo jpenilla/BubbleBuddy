@@ -70,7 +70,8 @@ export const make = (
       Effect.gen(function* () {
         const entry = group.entries.get(toolCallId);
         if (entry === undefined) {
-          return yield* Effect.die(new Error(`Grouped tool entry "${toolCallId}" is missing`));
+          yield* Effect.logWarning("Grouped tool entry is missing", { toolCallId });
+          return;
         }
         group.entries.set(toolCallId, { ...entry, phase: end.isError ? "error" : "success" });
         yield* renderGroup(group);

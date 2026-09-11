@@ -54,7 +54,6 @@ const identification = (label: string, value: string | undefined) =>
     ? []
     : [detail(label, inlineCode(boundIdentification(value)))];
 
-// At most 480 code units after escaping, leaving ample room for card markup.
 // Start events contain raw arguments, even when tool validation later fails.
 const boundIdentification = (value: string): string => truncate(collapseWhitespace(value), 240);
 

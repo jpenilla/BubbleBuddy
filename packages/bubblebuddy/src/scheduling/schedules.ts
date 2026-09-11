@@ -66,6 +66,21 @@ export const UpdateResult = Schema.Struct({
 });
 export interface UpdateResult extends Schema.Schema.Type<typeof UpdateResult> {}
 
+export const formatText = (wakeup: Wakeup): string =>
+  [
+    `Schedule: ${wakeup.id}`,
+    `Description: ${wakeup.description}`,
+    `Timing: ${Recurrence.match(wakeup.recurrence, {
+      once: () => "once",
+      cron: ({ expression, timezone, expiresAt }) =>
+        `cron ${expression} (${timezone})${expiresAt === null ? "" : `, ends ${new Date(expiresAt).toISOString()}`}`,
+    })}`,
+    `Scheduled for: ${new Date(wakeup.nextRunAt).toISOString()}`,
+    "",
+    "Note:",
+    wakeup.note,
+  ].join("\n");
+
 const Row = Schema.Struct({
   id: Schema.String,
   channel_id: Schema.String,
@@ -110,15 +125,15 @@ const parseTimestamp = Effect.fn("Schedules.parseTimestamp")(function* (value: s
   return timestamp;
 });
 
-const storeError = (operation: string) =>
-  Effect.mapError(
-    (cause: unknown) =>
-      new StoreError({
-        message: `Schedules store operation "${operation}" failed`,
-        operation,
-        cause,
-      }),
-  );
+const storeError = (operation: string, cause: unknown) =>
+  new StoreError({
+    message: `Schedules store operation "${operation}" failed`,
+    operation,
+    cause,
+  });
+
+const asStoreError = (operation: string) =>
+  Effect.mapError((cause: unknown) => storeError(operation, cause));
 
 const nextCron = Effect.fn("Schedules.nextCron")(function* (
   expression: string,
@@ -244,7 +259,7 @@ const makeSchedules = Effect.gen(function* () {
         ${storedRecurrence.cron},
         ${storedRecurrence.timezone}
       )
-    `.pipe(storeError("create"));
+    `.pipe(asStoreError("create"));
 
     return wakeup;
   });
@@ -253,7 +268,7 @@ const makeSchedules = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     return yield* sql`SELECT * FROM scheduled_wakeups WHERE channel_id = ${channelId}
       AND (expires_at IS NULL OR expires_at > ${now})
-      ORDER BY next_run_at, id`.pipe(Effect.flatMap(decodeRows), storeError("list"));
+      ORDER BY next_run_at, id`.pipe(Effect.flatMap(decodeRows), asStoreError("list"));
   });
 
   const cancel = Effect.fn("Schedules.cancel")(function* (channelId: string, id: string) {
@@ -262,7 +277,7 @@ const makeSchedules = Effect.gen(function* () {
       WHERE channel_id = ${channelId} AND id = ${id}
       AND (expires_at IS NULL OR expires_at > ${now}) RETURNING *`.pipe(
       Effect.flatMap(decodeRows),
-      storeError("cancel"),
+      asStoreError("cancel"),
     );
 
     if (rows[0] === undefined) {
@@ -341,13 +356,7 @@ const makeSchedules = Effect.gen(function* () {
       )
       .pipe(
         Effect.mapError((error) =>
-          error instanceof ValidationError
-            ? error
-            : new StoreError({
-                message: 'Schedules store operation "update" failed',
-                operation: "update",
-                cause: error,
-              }),
+          error instanceof ValidationError ? error : storeError("update", error),
         ),
       );
   });
@@ -389,7 +398,7 @@ const makeSchedules = Effect.gen(function* () {
           return due;
         }),
       )
-      .pipe(storeError("takeDue"));
+      .pipe(asStoreError("takeDue"));
   });
 
   return Service.of({ create, list, cancel, update, takeDue });
