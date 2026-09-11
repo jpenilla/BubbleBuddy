@@ -145,7 +145,7 @@ Ask BubbleBuddy to remind you about something or carry out a task later, once or
 
 Schedules stay in the channel where you create them and survive restarts and `/new`. You can ask what’s scheduled, change the timing or instructions, or cancel a schedule.
 
-If the bot is offline, it catches up when it returns. Repeating tasks run once rather than replaying every missed occurrence. You can give repeating tasks an end date. After that, they won’t start new work, but work already picked up may still finish.
+If the bot is offline, unexpired schedules catch up when it returns. Repeating tasks run once rather than replaying every missed occurrence. You can give repeating tasks an end date; once that time passes, no new work starts—including missed occurrences that weren’t picked up while the bot was offline. Work already started may still finish.
 
 Delivery is best effort, and failed tasks aren’t automatically retried. Don’t rely on BubbleBuddy for critical reminders.
 
