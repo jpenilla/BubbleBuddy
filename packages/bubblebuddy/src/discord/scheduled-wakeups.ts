@@ -22,19 +22,14 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
         return;
       }
       const session = yield* sessions.get(channel.id);
+      const now = yield* Clock.currentTimeMillis;
       yield* Effect.logInfo("Executing scheduled wakeup", {
         channelId: channel.id,
         scheduleId: wakeup.id,
       });
       yield* session.activate({
         channel,
-        prompt: [
-          `Scheduled wakeup: ${wakeup.id}`,
-          `Scheduled for: ${new Date(wakeup.nextRunAt).toISOString()}`,
-          "",
-          "Saved note:",
-          wakeup.note,
-        ].join("\n"),
+        prompt: `Current time: ${new Date(now).toISOString()}\n\n${Schedules.describe(wakeup)}`,
       });
     }, Effect.scoped);
 

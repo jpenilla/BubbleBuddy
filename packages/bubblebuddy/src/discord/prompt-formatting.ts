@@ -2,8 +2,6 @@ import { type Embed, Message, MessageFlags, StickerFormatType, type Sticker } fr
 
 import { sanitizeAttachmentFilename } from "../shared/workspace.ts";
 
-export const DISCORD_SAFE_MESSAGE_LIMIT = 1_900;
-
 export const formatDiscordUserReference = (username: string, userId: string): string =>
   `@${username} mention=<@${userId}>`;
 

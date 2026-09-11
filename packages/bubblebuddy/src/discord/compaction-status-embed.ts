@@ -1,6 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 
-import { truncateDiscordEmbedDescription } from "./response-formatting.ts";
+import { DISCORD_EMBED_DESCRIPTION_LIMIT } from "../shared/constants.ts";
+import { truncate } from "../shared/text.ts";
 import { EMBED_COLOR } from "./utils.ts";
 
 type CompactionReason = "manual" | "threshold" | "overflow";
@@ -53,4 +54,4 @@ const formatDescription = (status: CompactionStatus): string => {
 export const createCompactionStatusEmbed = (status: CompactionStatus): EmbedBuilder =>
   new EmbedBuilder()
     .setColor(phaseColor(status.phase))
-    .setDescription(truncateDiscordEmbedDescription(formatDescription(status)));
+    .setDescription(truncate(formatDescription(status), DISCORD_EMBED_DESCRIPTION_LIMIT));

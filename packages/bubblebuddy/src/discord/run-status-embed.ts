@@ -1,6 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 
-import { truncateDiscordEmbedDescription } from "./response-formatting.ts";
+import { DISCORD_EMBED_DESCRIPTION_LIMIT } from "../shared/constants.ts";
+import { truncate } from "../shared/text.ts";
 import { EMBED_COLOR } from "./utils.ts";
 
 export type RetryStatus =
@@ -17,13 +18,15 @@ export const createRunAbortedEmbed = (): EmbedBuilder =>
 export const createRunErrorEmbed = (errorMessage: string): EmbedBuilder =>
   new EmbedBuilder()
     .setColor(EMBED_COLOR.danger)
-    .setDescription(truncateDiscordEmbedDescription(`❌ **Run failed**\n${errorMessage}`));
+    .setDescription(
+      truncate(`❌ **Run failed**\n${errorMessage}`, DISCORD_EMBED_DESCRIPTION_LIMIT),
+    );
 
 export const createModelRequestErrorEmbed = (errorMessage: string): EmbedBuilder =>
   new EmbedBuilder()
     .setColor(EMBED_COLOR.danger)
     .setDescription(
-      truncateDiscordEmbedDescription(`❌ **Model request failed**\n${errorMessage}`),
+      truncate(`❌ **Model request failed**\n${errorMessage}`, DISCORD_EMBED_DESCRIPTION_LIMIT),
     );
 
 export const createResponseTruncatedEmbed = (): EmbedBuilder =>
@@ -45,10 +48,11 @@ export const createRetryStatusEmbed = (status: RetryStatus): EmbedBuilder => {
       return new EmbedBuilder()
         .setColor(EMBED_COLOR.danger)
         .setDescription(
-          truncateDiscordEmbedDescription(
+          truncate(
             `❌ **Retry failed after ${formatAttempts(status.attempt)}**${
               status.finalError ? `\n${status.finalError}` : ""
             }`,
+            DISCORD_EMBED_DESCRIPTION_LIMIT,
           ),
         );
     case "aborted":

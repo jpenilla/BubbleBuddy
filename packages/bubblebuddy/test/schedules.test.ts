@@ -24,7 +24,7 @@ const temporaryDirectory = Effect.gen(function* () {
 });
 
 it.layer(NodeServices.layer)("schedules", (it) => {
-  it.effect("rejects cron with a seconds field", () =>
+  it.effect("rejects cron that repeats more often than once a minute", () =>
     Effect.gen(function* () {
       const directory = yield* temporaryDirectory;
       yield* withSchedules(
@@ -33,8 +33,12 @@ it.layer(NodeServices.layer)("schedules", (it) => {
           const schedules = yield* Schedules.Service;
           const error = yield* schedules
             .create("123", {
+              description: "Reminder",
               note: "Reminder",
-              timing: { kind: "cron", expression: "* * * * * *", timezone: "UTC" },
+              timing: Schedules.CronTiming.make({
+                expression: "* * * * * *",
+                timezone: "UTC",
+              }),
             })
             .pipe(Effect.flip);
           expect(error).toBeInstanceOf(Schedules.ValidationError);
@@ -52,8 +56,9 @@ it.layer(NodeServices.layer)("schedules", (it) => {
         Effect.gen(function* () {
           const schedules = yield* Schedules.Service;
           const alarm = yield* schedules.create("123", {
+            description: "Check the oven",
             note: "Remind <@456> to check the oven.",
-            timing: { kind: "after", seconds: 60 },
+            timing: Schedules.AfterTiming.make({ seconds: 60 }),
           });
           yield* TestClock.adjust("59 seconds");
           expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([]);
@@ -89,8 +94,12 @@ it.layer(NodeServices.layer)("schedules", (it) => {
         Effect.gen(function* () {
           const schedules = yield* Schedules.Service;
           return yield* schedules.create("123", {
+            description: "Hourly weather",
             note: "Post the hourly weather report.",
-            timing: { kind: "cron", expression: "0 * * * *", timezone: "Asia/Kathmandu" },
+            timing: Schedules.CronTiming.make({
+              expression: "0 * * * *",
+              timezone: "Asia/Kathmandu",
+            }),
           });
         }),
       );
@@ -101,14 +110,15 @@ it.layer(NodeServices.layer)("schedules", (it) => {
         Effect.gen(function* () {
           const schedules = yield* Schedules.Service;
           const expected = {
+            description: "Hourly weather",
             id: schedule.id,
             channelId: "123",
             note: "Post the hourly weather report.",
-            recurrence: {
-              kind: "cron",
+            recurrence: Schedules.CronRecurrence.make({
               expression: "0 * * * *",
               timezone: "Asia/Kathmandu",
-            },
+              expiresAt: null,
+            }),
           };
           expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([
             { ...expected, nextRunAt: Date.parse("2026-01-15T00:15:00Z") },
@@ -133,18 +143,20 @@ it.layer(NodeServices.layer)("schedules", (it) => {
         Effect.gen(function* () {
           const schedules = yield* Schedules.Service;
           const obsolete = yield* schedules.create("123", {
+            description: "Obsolete reminder",
             note: "An obsolete reminder.",
-            timing: { kind: "at", timestamp: "2026-01-15T10:01:00Z" },
+            timing: Schedules.AtTiming.make({ timestamp: "2026-01-15T10:01:00Z" }),
           });
           const remaining = yield* schedules.create("123", {
+            description: "Reminder to keep",
             note: "The reminder to keep.",
-            timing: { kind: "at", timestamp: "2026-01-15T10:02:00Z" },
+            timing: Schedules.AtTiming.make({ timestamp: "2026-01-15T10:02:00Z" }),
           });
           expect((yield* schedules.list("123")).map((alarm) => alarm.id)).toEqual([
             obsolete.id,
             remaining.id,
           ]);
-          expect(yield* schedules.cancel("123", obsolete.id)).toBe(true);
+          expect(yield* schedules.cancel("123", obsolete.id)).toEqual(obsolete);
 
           yield* TestClock.adjust("3 minutes");
           expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([remaining]);

@@ -137,9 +137,17 @@ BubbleBuddy registers these slash commands:
 
 ## Scheduled wakeups
 
-Ask the bot to set an alarm or cron schedule with a note about what to do. Schedules belong to the channel and survive restarts and `/new`. Include enough detail in the note for a fresh session. You can ask the bot to list or cancel schedules.
+Ask BubbleBuddy to remind you about something or carry out a task later, once or on a recurring schedule.
 
-After a restart, the bot runs overdue alarms and wakes once for each cron schedule it missed. Delivery is best effort. The bot does not retry failed wakeups.
+- “Remind me to check the oven in 20 minutes.”
+- “Post a weekday morning briefing at 9 AM, New York time.”
+- “Remind us every Friday to submit timesheets, until the end of August.”
+
+Schedules stay in the channel where you create them and survive restarts and `/new`. You can ask what’s scheduled, change the timing or instructions, or cancel a schedule.
+
+If the bot is offline, unexpired schedules catch up when it returns. Repeating tasks run once rather than replaying every missed occurrence. You can give repeating tasks an end date; once that time passes, no new work starts—including missed occurrences that weren’t picked up while the bot was offline. Work already started may still finish.
+
+Delivery is best effort, and failed tasks aren’t automatically retried. Don’t rely on BubbleBuddy for critical reminders.
 
 ## Project status and safety notes
 
