@@ -16,12 +16,16 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
       );
       if (channel === null || !isGuildTextChannel(channel)) {
         yield* Effect.logWarning("Scheduled wakeup destination is unavailable", {
-          scheduleId: wakeup.id,
           channelId: wakeup.channelId,
+          scheduleId: wakeup.id,
         });
         return;
       }
       const session = yield* sessions.get(channel.id);
+      yield* Effect.logInfo("Executing scheduled wakeup", {
+        channelId: channel.id,
+        scheduleId: wakeup.id,
+      });
       yield* session.activate({
         channel,
         prompt: [
