@@ -132,8 +132,10 @@ const storeError = (operation: string, cause: unknown) =>
     cause,
   });
 
-const asStoreError = (operation: string) =>
-  Effect.mapError((cause: unknown) => storeError(operation, cause));
+const mapError = (operation: string) =>
+  Effect.mapError((cause: unknown) =>
+    cause instanceof ValidationError ? cause : storeError(operation, cause),
+  );
 
 const nextCron = Effect.fn("Schedules.nextCron")(function* (
   expression: string,
@@ -259,7 +261,7 @@ const makeSchedules = Effect.gen(function* () {
         ${storedRecurrence.cron},
         ${storedRecurrence.timezone}
       )
-    `.pipe(asStoreError("create"));
+    `.pipe(mapError("create"));
 
     return wakeup;
   });
@@ -268,7 +270,7 @@ const makeSchedules = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     return yield* sql`SELECT * FROM scheduled_wakeups WHERE channel_id = ${channelId}
       AND (expires_at IS NULL OR expires_at > ${now})
-      ORDER BY next_run_at, id`.pipe(Effect.flatMap(decodeRows), asStoreError("list"));
+      ORDER BY next_run_at, id`.pipe(Effect.flatMap(decodeRows), mapError("list"));
   });
 
   const cancel = Effect.fn("Schedules.cancel")(function* (channelId: string, id: string) {
@@ -277,7 +279,7 @@ const makeSchedules = Effect.gen(function* () {
       WHERE channel_id = ${channelId} AND id = ${id}
       AND (expires_at IS NULL OR expires_at > ${now}) RETURNING *`.pipe(
       Effect.flatMap(decodeRows),
-      asStoreError("cancel"),
+      mapError("cancel"),
     );
 
     if (rows[0] === undefined) {
@@ -354,11 +356,7 @@ const makeSchedules = Effect.gen(function* () {
           });
         }),
       )
-      .pipe(
-        Effect.mapError((error) =>
-          error instanceof ValidationError ? error : storeError("update", error),
-        ),
-      );
+      .pipe(mapError("update"));
   });
 
   const takeDue = Effect.fn("Schedules.takeDue")(function* (now: number) {
@@ -398,7 +396,7 @@ const makeSchedules = Effect.gen(function* () {
           return due;
         }),
       )
-      .pipe(asStoreError("takeDue"));
+      .pipe(mapError("takeDue"));
   });
 
   return Service.of({ create, list, cancel, update, takeDue });
@@ -409,7 +407,9 @@ export interface Interface {
     channelId: string,
     input: CreateInput,
   ) => Effect.Effect<Wakeup, ValidationError | StoreError>;
-  readonly list: (channelId: string) => Effect.Effect<ReadonlyArray<Wakeup>, StoreError>;
+  readonly list: (
+    channelId: string,
+  ) => Effect.Effect<ReadonlyArray<Wakeup>, ValidationError | StoreError>;
   readonly cancel: (
     channelId: string,
     id: string,
@@ -419,7 +419,9 @@ export interface Interface {
     id: string,
     input: UpdateInput,
   ) => Effect.Effect<UpdateResult, ValidationError | StoreError>;
-  readonly takeDue: (now: number) => Effect.Effect<ReadonlyArray<Wakeup>, StoreError>;
+  readonly takeDue: (
+    now: number,
+  ) => Effect.Effect<ReadonlyArray<Wakeup>, ValidationError | StoreError>;
 }
 
 export class Service extends Context.Service<Service, Interface>()(

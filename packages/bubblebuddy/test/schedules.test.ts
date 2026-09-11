@@ -24,7 +24,7 @@ const temporaryDirectory = Effect.gen(function* () {
 });
 
 it.layer(NodeServices.layer)("schedules", (it) => {
-  it.effect("rejects cron with a seconds field", () =>
+  it.effect("rejects cron that repeats more often than once a minute", () =>
     Effect.gen(function* () {
       const directory = yield* temporaryDirectory;
       yield* withSchedules(
