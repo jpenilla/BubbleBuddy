@@ -29,8 +29,7 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
       yield* session.activate({
         channel,
         prompt: [
-          "Scheduled wakeup (a previously saved instruction, not a new Discord message).",
-          `Schedule: ${wakeup.id}`,
+          `Scheduled wakeup: ${wakeup.id}`,
           `Scheduled for: ${new Date(wakeup.nextRunAt).toISOString()}`,
           "",
           "Saved note:",

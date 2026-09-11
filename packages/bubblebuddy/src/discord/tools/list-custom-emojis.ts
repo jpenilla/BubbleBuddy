@@ -10,7 +10,6 @@ export const listCustomEmojisTool = defineEffectTool({
   name: "discord_list_custom_emojis",
   label: "List Custom Emojis",
   description: "List custom emojis usable here.",
-  promptSnippet: "List custom emojis usable here",
   parameters: Type.Object({}),
   execute: () =>
     Effect.gen(function* () {

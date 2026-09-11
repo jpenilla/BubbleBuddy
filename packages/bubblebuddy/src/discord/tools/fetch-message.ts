@@ -10,7 +10,6 @@ export const fetchMessageTool = defineEffectTool({
   name: "discord_fetch_message",
   label: "Fetch Message",
   description: "Fetch a message in the current Discord channel.",
-  promptSnippet: "Fetch a message in the current Discord channel",
   promptGuidelines: [
     "When a message replies to or otherwise references a message ID you do not recognize, you may attempt to fetch it",
   ],

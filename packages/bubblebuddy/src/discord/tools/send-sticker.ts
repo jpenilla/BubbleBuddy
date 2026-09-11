@@ -10,7 +10,6 @@ export const sendStickerTool = defineEffectTool({
   name: "discord_send_sticker",
   label: "Send Sticker",
   description: "Send one sticker.",
-  promptSnippet: "Send one sticker",
   parameters: Type.Object({
     caption: Type.Optional(
       Type.String({ description: "Optional message text to send with the sticker" }),

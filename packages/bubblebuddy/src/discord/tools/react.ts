@@ -11,7 +11,6 @@ export const reactTool = defineEffectTool({
   name: "discord_react",
   label: "React",
   description: "React to a message in the current channel.",
-  promptSnippet: "React to a message in the current channel",
   parameters: Type.Object({
     emojis: Type.Array(
       Type.String({

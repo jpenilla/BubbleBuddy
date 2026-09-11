@@ -111,6 +111,8 @@ const makeSchedules = Effect.gen(function* () {
         nextRunAt = Date.parse(timing.timestamp);
         break;
       case "cron":
+        if (timing.expression.trim().split(/\s+/).length !== 5)
+          return yield* invalid("Cron must contain exactly five fields (minute-level precision).");
         nextRunAt = yield* nextCron(timing.expression, timing.timezone, now);
         break;
     }

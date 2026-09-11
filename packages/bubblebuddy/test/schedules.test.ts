@@ -24,6 +24,25 @@ const temporaryDirectory = Effect.gen(function* () {
 });
 
 it.layer(NodeServices.layer)("schedules", (it) => {
+  it.effect("rejects cron with a seconds field", () =>
+    Effect.gen(function* () {
+      const directory = yield* temporaryDirectory;
+      yield* withSchedules(
+        directory,
+        Effect.gen(function* () {
+          const schedules = yield* Schedules.Service;
+          const error = yield* schedules
+            .create("123", {
+              note: "Reminder",
+              timing: { kind: "cron", expression: "* * * * * *", timezone: "UTC" },
+            })
+            .pipe(Effect.flip);
+          expect(error).toBeInstanceOf(Schedules.ValidationError);
+        }),
+      );
+    }),
+  );
+
   it.effect("reopens an alarm after its deadline and consumes it only once", () =>
     Effect.gen(function* () {
       const directory = yield* temporaryDirectory;

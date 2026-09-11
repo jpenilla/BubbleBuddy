@@ -16,14 +16,12 @@ const result = (value: unknown) => ({
 export const createScheduleTool = defineEffectTool({
   name: "create_schedule",
   label: "Create schedule",
-  description:
-    "Wake yourself in this channel after a delay, at an absolute time, or on a cron schedule. Schedules survive new sessions and restarts. Delivery is best effort.",
-  promptGuidelines: [
-    "Save a self-contained note: future sessions may not have this conversation. Include user/message IDs if needed.",
-    "Cron accepts five fields (minutes) or six (including seconds). Always specify a timezone.",
-  ],
+  description: "Schedule a wakeup in this channel. Survives new sessions and restarts.",
   parameters: Type.Object({
-    note: Type.String({ minLength: 1 }),
+    note: Type.String({
+      minLength: 1,
+      description: "Instructions a fresh session can act on, including relevant user/message IDs.",
+    }),
     timing: Type.Union([
       Type.Object({ kind: Type.Literal("after"), seconds: Type.Number({ exclusiveMinimum: 0 }) }),
       Type.Object({
@@ -32,7 +30,7 @@ export const createScheduleTool = defineEffectTool({
       }),
       Type.Object({
         kind: Type.Literal("cron"),
-        expression: Type.String(),
+        expression: Type.String({ description: "Five-field cron (minute precision)" }),
         timezone: Type.String({ description: "Timezone, e.g. America/New_York or UTC" }),
       }),
     ]),
@@ -48,7 +46,7 @@ export const createScheduleTool = defineEffectTool({
 export const listSchedulesTool = defineEffectTool({
   name: "list_schedules",
   label: "List schedules",
-  description: "List pending alarms and recurring schedules in this channel.",
+  description: "List this channel's schedules.",
   parameters: Type.Object({}),
   execute: () =>
     Effect.gen(function* () {
@@ -61,7 +59,7 @@ export const listSchedulesTool = defineEffectTool({
 export const cancelScheduleTool = defineEffectTool({
   name: "cancel_schedule",
   label: "Cancel schedule",
-  description: "Cancel a schedule in this channel. Cannot retract a wakeup already dispatched.",
+  description: "Cancel a schedule in this channel. In-flight wakeups are unaffected.",
   parameters: Type.Object({ id: Type.String() }),
   execute: (_id, input) =>
     Effect.gen(function* () {

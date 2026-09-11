@@ -9,7 +9,6 @@ export const listStickersTool = defineEffectTool({
   name: "discord_list_stickers",
   label: "List Stickers",
   description: "List stickers usable here.",
-  promptSnippet: "List stickers usable here",
   parameters: Type.Object({}),
   execute: () =>
     Effect.gen(function* () {

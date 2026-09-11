@@ -74,7 +74,6 @@ export const saveAssetsTool = defineEffectTool({
   name: "discord_save_assets",
   label: "Save Discord Assets",
   description: "Save custom emojis and stickers into the container workspace.",
-  promptSnippet: "Save custom emojis and stickers into the container workspace",
   parameters: Type.Object({
     customEmojis: Type.Optional(
       Type.Array(

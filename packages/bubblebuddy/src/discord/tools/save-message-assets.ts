@@ -111,7 +111,6 @@ export const saveMessageAssetsTool = defineEffectTool({
   name: "discord_save_message_assets",
   label: "Save Message Assets",
   description: "Save message attachments and embed media into the container workspace.",
-  promptSnippet: "Save message attachments and embed media into the container workspace",
   parameters: Type.Object({
     messageId: Type.String({ description: "Message ID" }),
     attachments: Type.Optional(Indices),
