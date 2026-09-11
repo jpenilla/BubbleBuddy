@@ -132,6 +132,9 @@ const nextCron = Effect.fn("Schedules.nextCron")(function* (
   const cron = yield* Effect.fromResult(Cron.parse(expression, timezone)).pipe(
     Effect.mapError((error) => invalid(error.message)),
   );
+  if (cron.seconds.size !== 1) {
+    return yield* invalid("Cron must not repeat more often than once a minute.");
+  }
   return yield* Effect.try({
     try: () => Cron.next(cron, now).getTime(),
     catch: () => invalid("Cron expression has no calculable next occurrence."),
@@ -165,46 +168,40 @@ const decodeRows = Effect.fn("Schedules.decodeRows")(function* (rows: unknown) {
 });
 
 const resolveTiming = Effect.fn("Schedules.resolveTiming")(function* (timing: Timing, now: number) {
-  const nextRunAt = yield* Timing.match(timing, {
-    after: ({ seconds }) => {
-      if (seconds <= 0) {
-        return Effect.fail(invalid("Delay must be positive."));
-      }
-      return Effect.succeed(now + Math.ceil(seconds * 1000));
-    },
-    at: ({ timestamp }) => parseTimestamp(timestamp),
-    cron: ({ expression, timezone }) => {
-      if (expression.trim().split(/\s+/).length !== 5) {
-        return Effect.fail(
-          invalid("Cron must contain exactly five fields (minute-level precision)."),
-        );
-      }
-      return nextCron(expression, timezone, now);
-    },
+  const resolved = yield* Timing.match(timing, {
+    after: ({ seconds }) =>
+      seconds <= 0
+        ? Effect.fail(invalid("Delay must be positive."))
+        : Effect.succeed({ nextRunAt: now + Math.ceil(seconds * 1000), recurrence: Once.make({}) }),
+    at: ({ timestamp }) =>
+      parseTimestamp(timestamp).pipe(
+        Effect.map((nextRunAt) => ({ nextRunAt, recurrence: Once.make({}) })),
+      ),
+    cron: ({ expression, timezone, expiresAt }) =>
+      Effect.gen(function* () {
+        const nextRunAt = yield* nextCron(expression, timezone, now);
+        const expires = expiresAt === undefined ? null : yield* parseTimestamp(expiresAt);
+        if (expires !== null && expires <= nextRunAt) {
+          return yield* invalid("Expiration must be after the next occurrence.");
+        }
+        return {
+          nextRunAt,
+          recurrence: CronRecurrence.make({
+            expression: expression.trim(),
+            timezone,
+            expiresAt: expires,
+          }),
+        };
+      }),
   });
   if (
-    !Number.isSafeInteger(nextRunAt) ||
-    !Number.isFinite(new Date(nextRunAt).getTime()) ||
-    nextRunAt <= now
+    !Number.isSafeInteger(resolved.nextRunAt) ||
+    !Number.isFinite(new Date(resolved.nextRunAt).getTime()) ||
+    resolved.nextRunAt <= now
   ) {
     return yield* invalid("Schedule must resolve to a valid future time.");
   }
-  if (Timing.guards.cron(timing)) {
-    const expiresAt =
-      timing.expiresAt === undefined ? null : yield* parseTimestamp(timing.expiresAt);
-    if (expiresAt !== null && expiresAt <= nextRunAt) {
-      return yield* invalid("Expiration must be after the next occurrence.");
-    }
-    return {
-      nextRunAt,
-      recurrence: CronRecurrence.make({
-        expression: timing.expression,
-        timezone: timing.timezone,
-        expiresAt,
-      }),
-    };
-  }
-  return { nextRunAt, recurrence: Once.make({}) };
+  return resolved;
 });
 
 interface RecurrenceColumns {
@@ -388,15 +385,18 @@ const makeSchedules = Effect.gen(function* () {
             if (Recurrence.guards.once(wakeup.recurrence)) {
               yield* sql`DELETE FROM scheduled_wakeups WHERE id = ${wakeup.id}`;
             } else {
-              const next = yield* nextCron(
+              const nextRunAt = yield* nextCron(
                 wakeup.recurrence.expression,
                 wakeup.recurrence.timezone,
                 now,
               );
-              if (wakeup.recurrence.expiresAt !== null && next >= wakeup.recurrence.expiresAt) {
+              if (
+                wakeup.recurrence.expiresAt !== null &&
+                nextRunAt >= wakeup.recurrence.expiresAt
+              ) {
                 yield* sql`DELETE FROM scheduled_wakeups WHERE id = ${wakeup.id}`;
               } else {
-                yield* sql`UPDATE scheduled_wakeups SET next_run_at = ${next} WHERE id = ${wakeup.id}`;
+                yield* sql`UPDATE scheduled_wakeups SET next_run_at = ${nextRunAt} WHERE id = ${wakeup.id}`;
               }
             }
           }

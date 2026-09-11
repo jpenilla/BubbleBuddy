@@ -1,6 +1,7 @@
 import { ContainerBuilder, TextDisplayBuilder, time, TimestampStyles } from "discord.js";
 import { Effect, Option, Schema } from "effect";
 import { Schedules } from "../scheduling/schedules.ts";
+import { collapseWhitespace, truncate } from "../shared/text.ts";
 import { ScheduleTools } from "./tools/schedules.ts";
 import type { ToolOutput } from "./tool-output.ts";
 import { EMBED_COLOR } from "./utils.ts";
@@ -17,11 +18,14 @@ const code = (value: string): string => `\`${escapeInlineCode(value)}\``;
 const formatTimestamp = (milliseconds: number): string =>
   time(new Date(milliseconds), TimestampStyles.ShortDateMediumTime);
 
+// Generous versus a real cron expression, so a truncation almost never triggers.
+const CRON_EXPRESSION_LIMIT = 240;
+
 const formatTiming = (schedule: Schedules.Wakeup): string =>
   Schedules.Recurrence.match(schedule.recurrence, {
     once: () => `Once at ${formatTimestamp(schedule.nextRunAt)}`,
     cron: ({ expression, timezone, expiresAt }) =>
-      `Cron ${code(expression)} (${code(timezone)}); next ${formatTimestamp(schedule.nextRunAt)}; ${expiresAt === null ? "no end date" : `ends ${formatTimestamp(expiresAt)}`}`,
+      `Cron ${code(truncate(expression, CRON_EXPRESSION_LIMIT))} (${code(timezone)}); next ${formatTimestamp(schedule.nextRunAt)}; ${expiresAt === null ? "no end date" : `ends ${formatTimestamp(expiresAt)}`}`,
   });
 
 const detail = (label: string, value: string): TextDisplayBuilder =>
@@ -68,10 +72,7 @@ const identification = (label: string, value: string | undefined) =>
 
 // At most 480 code units after escaping, leaving ample room for card markup.
 // Start events contain raw arguments, even when tool validation later fails.
-const boundIdentification = (value: string): string => {
-  const normalized = value.replaceAll(/\s+/g, " ").trim();
-  return normalized.length <= 240 ? normalized : `${normalized.slice(0, 239)}…`;
-};
+const boundIdentification = (value: string): string => truncate(collapseWhitespace(value), 240);
 
 const existingIdentification = (args: unknown) =>
   identification("Schedule ID", Option.getOrUndefined(decodeExisting(args))?.id);

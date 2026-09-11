@@ -40,7 +40,7 @@ const result = <Details = undefined>(value: unknown, details?: Details) => ({
 const description = Type.String({
   minLength: 1,
   maxLength: 120,
-  description: "Short user-facing summary of the task and timing.",
+  description: "Short task summary.",
 });
 
 const note = Type.String({
@@ -61,7 +61,9 @@ const timing = Type.Union([
   }),
   Type.Object({
     kind: Type.Literal("cron"),
-    expression: Type.String({ description: "Five-field cron (minute precision)" }),
+    expression: Type.String({
+      description: "Cron expression. Must not repeat more often than once a minute.",
+    }),
     timezone: Type.String({ description: "Timezone, e.g. America/New_York or UTC" }),
     expiresAt: Type.Optional(expiresAt),
   }),
@@ -70,7 +72,8 @@ const timing = Type.Union([
 export const create = defineEffectTool({
   name: "create_schedule",
   label: "Create schedule",
-  description: "Schedule a wakeup in this channel. Survives new sessions and restarts.",
+  description:
+    "Schedule a wakeup in this channel. Survives new sessions and restarts. Displays a confirmation card in this channel.",
   parameters: Type.Object({
     description,
     note,
@@ -89,7 +92,7 @@ export const update = defineEffectTool({
   name: "update_schedule",
   label: "Update schedule",
   description:
-    "Update a schedule in this channel. Omitted fields stay unchanged. Supplied timing replaces the full timing configuration and recalculates from now.",
+    "Update a schedule in this channel. Omitted fields stay unchanged. Supplied timing replaces the full timing configuration and recalculates from now. Displays a confirmation card in this channel.",
   parameters: Type.Object({
     id: Type.String(),
     timing: Type.Optional(timing),
@@ -130,7 +133,8 @@ export const list = defineEffectTool({
 export const cancel = defineEffectTool({
   name: "cancel_schedule",
   label: "Cancel schedule",
-  description: "Cancel a schedule in this channel. In-flight wakeups are unaffected.",
+  description:
+    "Cancel a schedule in this channel. In-flight wakeups are unaffected. Displays a confirmation card in this channel.",
   parameters: Type.Object({ id: Type.String() }),
   execute: (_id, input) =>
     Effect.gen(function* () {
