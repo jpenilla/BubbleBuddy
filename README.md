@@ -16,6 +16,7 @@ BubbleBuddy is a fun Discord companion that lives in your servers. It gives Disc
 - Mention-based and ping-reply interaction support.
 - [Slash commands](#slash-command-reference) for managing channel sessions.
 - [MCP server support](#mcp-server-definitions).
+- Channel-scoped alarms and cron schedules with saved instructions.
 - Sandboxed agentic workspace. When enabled, the assistant can use tools to interact with an Incus container, giving it access to project files and coding capabilities without exposing host credentials or environment variables.
 
 ## Setup
@@ -133,6 +134,12 @@ BubbleBuddy registers these slash commands:
 - `/compact` — manually compact the current channel session.
 - `/status` — show current channel/session status.
 - `/thinking` — toggle thinking messages for the channel.
+
+## Scheduled wakeups
+
+Ask the bot to set an alarm or cron schedule with a note about what to do. Schedules belong to the channel and survive restarts and `/new`. Include enough detail in the note for a fresh session. You can ask the bot to list or cancel schedules.
+
+After a restart, the bot runs overdue alarms and wakes once for each cron schedule it missed. Delivery is best effort. The bot does not retry failed wakeups.
 
 ## Project status and safety notes
 

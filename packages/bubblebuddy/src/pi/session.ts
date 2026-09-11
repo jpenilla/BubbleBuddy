@@ -30,6 +30,7 @@ import { DiscordToolContext } from "../discord/tool-context.ts";
 import { McpPiTools } from "../mcp/pi-tools.ts";
 import { McpClientFactory } from "../mcp/client-factory.ts";
 import { AppHome } from "../config/env.ts";
+import { Schedules } from "../scheduling/schedules.ts";
 import { FileConfig, type McpServerConfigEntry } from "../config/file.ts";
 import { LoadedResources } from "../resources.ts";
 import { createChannelWorkspaceResourceLoader } from "./workspace-resource-loader.ts";
@@ -97,6 +98,7 @@ export class PiSessionOperationError extends Schema.TaggedError<PiSessionOperati
 ) {}
 
 export type PiSessionServices =
+  | Schedules.Service
   | FileConfig
   | FileSystem.FileSystem
   | HttpClient.HttpClient

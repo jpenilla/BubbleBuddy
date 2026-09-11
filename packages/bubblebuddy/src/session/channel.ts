@@ -1,7 +1,6 @@
-import { Routes, type GuildTextBasedChannel, type Message } from "discord.js";
+import { Routes, type GuildTextBasedChannel } from "discord.js";
 import { Effect, Option, Ref, Schema, Scope, ScopedRef, Semaphore, SynchronizedRef } from "effect";
 
-import { formatMessageForPrompt } from "../discord/prompt-formatting.ts";
 import { createDiscordOutputPump } from "../discord/session-output-pump.ts";
 import { tryDiscordJsPromise } from "../discord/utils.ts";
 import {
@@ -20,7 +19,7 @@ interface ChannelSessionContext {
 }
 
 export type ActivateChannelSessionInput = ChannelSessionContext & {
-  readonly originMessage: Message<true>;
+  readonly prompt: string;
 };
 
 export type CompactChannelSessionInput = ChannelSessionContext & {
@@ -151,7 +150,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
           const pi = yield* getOrCreatePiSession(activation);
           yield* pi
             .activate({
-              prompt: formatMessageForPrompt(activation.originMessage),
+              prompt: activation.prompt,
               retainChannelSession: input.retain,
             })
             .pipe(mapToChannelSessionError);

@@ -5,6 +5,7 @@ import { AppHome } from "../config/env.ts";
 import { FileConfig } from "../config/file.ts";
 import { PiContext } from "../pi/context.ts";
 import { LoadedResources } from "../resources.ts";
+import { Schedules } from "../scheduling/schedules.ts";
 import { createChannelSession, type ChannelSession, type ChannelSessionError } from "./channel.ts";
 import { ChannelStateRepository } from "./state.ts";
 
@@ -38,10 +39,11 @@ export class ChannelSessions extends Context.Service<
       channelId: string,
     ) => Effect.Effect<ChannelSession, ChannelSessionError, Scope.Scope>;
   }
->()("bubblebuddy/ChannelSessions") {
+>()("bubblebuddy/session/ChannelSessions") {
   static readonly layerNoDeps = Layer.effect(ChannelSessions, createChannelSessions);
   static readonly layer = ChannelSessions.layerNoDeps.pipe(
     Layer.provide(ChannelStateRepository.layer),
+    Layer.provide(Schedules.layer),
     Layer.provide(LoadedResources.layer),
     Layer.provide(PiContext.layer),
     Layer.provide(FileConfig.layer),
