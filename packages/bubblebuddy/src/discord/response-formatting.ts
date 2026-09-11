@@ -3,11 +3,6 @@ import { splitAiResponse } from "../shared/text-split.ts";
 export const DISCORD_SAFE_MESSAGE_LIMIT = 1_900;
 export const DISCORD_EMBED_DESCRIPTION_LIMIT = 4_096;
 
-export const truncateDiscordEmbedDescription = (description: string): string =>
-  description.length <= DISCORD_EMBED_DESCRIPTION_LIMIT
-    ? description
-    : `${description.slice(0, DISCORD_EMBED_DESCRIPTION_LIMIT - 1)}…`;
-
 const THINKING_PREFIX = "🧠 _Thinking..._\n\n";
 const THINKING_SUFFIX = "\n\n-# ──";
 
