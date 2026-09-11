@@ -67,7 +67,7 @@ export const create = defineEffectTool({
       const schedules = yield* Schedules.Service;
       const schedule = yield* schedules.create(channel.id, input);
       return {
-        content: [{ type: "text" as const, text: Schedules.formatText(schedule) }],
+        content: [{ type: "text" as const, text: Schedules.describe(schedule) }],
         details: CreatedDetails.make({ schedule }),
       };
     }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
@@ -92,7 +92,7 @@ export const update = defineEffectTool({
       const updated = yield* schedules.update(channel.id, id, fields);
 
       return {
-        content: [{ type: "text" as const, text: Schedules.formatText(updated.after) }],
+        content: [{ type: "text" as const, text: Schedules.describe(updated.after) }],
         details: UpdatedDetails.make({ update: updated }),
       };
     }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
@@ -119,7 +119,7 @@ export const list = defineEffectTool({
               active.length === 0
                 ? "No active schedules."
                 : active
-                    .map((wakeup) => `${Schedules.formatText(wakeup)}\n${NOTE_TERMINATOR}`)
+                    .map((wakeup) => `${Schedules.describe(wakeup)}\n${NOTE_TERMINATOR}`)
                     .join("\n\n"),
           },
         ],
@@ -140,7 +140,7 @@ export const cancel = defineEffectTool({
       const schedules = yield* Schedules.Service;
       const schedule = yield* schedules.cancel(channel.id, input.id);
       return {
-        content: [{ type: "text" as const, text: Schedules.formatText(schedule) }],
+        content: [{ type: "text" as const, text: Schedules.describe(schedule) }],
         details: CancelledDetails.make({ schedule }),
       };
     }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),

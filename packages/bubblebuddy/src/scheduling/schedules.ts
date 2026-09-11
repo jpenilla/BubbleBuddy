@@ -66,7 +66,7 @@ export const UpdateResult = Schema.Struct({
 });
 export interface UpdateResult extends Schema.Schema.Type<typeof UpdateResult> {}
 
-export const formatText = (wakeup: Wakeup): string =>
+export const describe = (wakeup: Wakeup): string =>
   [
     `Schedule: ${wakeup.id}`,
     `Description: ${wakeup.description}`,
