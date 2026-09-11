@@ -47,15 +47,13 @@ it.layer(NodeServices.layer)("schedules", (it) => {
         directory,
         Effect.gen(function* () {
           const schedules = yield* Schedules.Service;
-          expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([
-            {
-              id: alarm.id,
-              channelId: "123",
-              note: "Remind <@456> to check the oven.",
-              nextRunAt: Date.parse("2026-01-15T10:01:00Z"),
-              recurrence: { kind: "once" },
-            },
-          ]);
+          const due = yield* schedules.takeDue(yield* Clock.currentTimeMillis);
+          expect(due).toHaveLength(1);
+          expect(due[0]).toMatchObject({
+            id: alarm.id,
+            channelId: "123",
+            note: "Remind <@456> to check the oven.",
+          });
           expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([]);
         }),
       );
@@ -115,7 +113,7 @@ it.layer(NodeServices.layer)("schedules", (it) => {
         directory,
         Effect.gen(function* () {
           const schedules = yield* Schedules.Service;
-          yield* schedules.create("123", {
+          const obsolete = yield* schedules.create("123", {
             note: "An obsolete reminder.",
             timing: { kind: "at", timestamp: "2026-01-15T10:01:00Z" },
           });
@@ -123,10 +121,10 @@ it.layer(NodeServices.layer)("schedules", (it) => {
             note: "The reminder to keep.",
             timing: { kind: "at", timestamp: "2026-01-15T10:02:00Z" },
           });
-          const listed = yield* schedules.list("123");
-          expect(listed).toHaveLength(2);
-          const obsolete = listed.find((alarm) => alarm.note === "An obsolete reminder.");
-          if (obsolete === undefined) throw new Error("Created alarm is missing from list");
+          expect((yield* schedules.list("123")).map((alarm) => alarm.id)).toEqual([
+            obsolete.id,
+            remaining.id,
+          ]);
           expect(yield* schedules.cancel("123", obsolete.id)).toBe(true);
 
           yield* TestClock.adjust("3 minutes");

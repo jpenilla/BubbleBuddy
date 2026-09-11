@@ -42,7 +42,7 @@ export const createScheduleTool = defineEffectTool({
       const { channel } = yield* DiscordToolContext;
       const schedules = yield* Schedules.Service;
       return result(describe(yield* schedules.create(channel.id, input)));
-    }),
+    }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
 });
 
 export const listSchedulesTool = defineEffectTool({
@@ -55,7 +55,7 @@ export const listSchedulesTool = defineEffectTool({
       const { channel } = yield* DiscordToolContext;
       const schedules = yield* Schedules.Service;
       return result((yield* schedules.list(channel.id)).map(describe));
-    }),
+    }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
 });
 
 export const cancelScheduleTool = defineEffectTool({
@@ -68,5 +68,5 @@ export const cancelScheduleTool = defineEffectTool({
       const { channel } = yield* DiscordToolContext;
       const schedules = yield* Schedules.Service;
       return result({ cancelled: yield* schedules.cancel(channel.id, input.id) });
-    }),
+    }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
 });

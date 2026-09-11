@@ -39,13 +39,21 @@ export class ValidationError extends Schema.TaggedError<ValidationError>()("Vali
   message: Schema.String,
 }) {}
 export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
+  message: Schema.String,
   operation: Schema.String,
   cause: Schema.Defect(),
 }) {}
 
 const invalid = (message: string) => new ValidationError({ message });
 const storeError = (operation: string) =>
-  Effect.mapError((cause: unknown) => new StoreError({ operation, cause }));
+  Effect.mapError(
+    (cause: unknown) =>
+      new StoreError({
+        message: `Schedules store operation "${operation}" failed`,
+        operation,
+        cause,
+      }),
+  );
 
 const nextCron = Effect.fn("Schedules.nextCron")(function* (
   expression: string,
@@ -85,9 +93,7 @@ const decodeRows = Effect.fn("Schedules.decodeRows")(function* (rows: unknown) {
 const makeSchedules = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const create = Effect.fn("Schedules.create")(function* (channelId: string, input: CreateInput) {
-    const decoded = yield* Schema.decodeEffect(CreateInput)(input).pipe(
-      Effect.mapError(() => invalid("Invalid schedule input.")),
-    );
+    const decoded = yield* Schema.decodeEffect(CreateInput)(input).pipe(Effect.orDie);
     const note = decoded.note.trim();
     if (note.length === 0) return yield* invalid("A self-contained note is required.");
     const now = yield* Clock.currentTimeMillis;
