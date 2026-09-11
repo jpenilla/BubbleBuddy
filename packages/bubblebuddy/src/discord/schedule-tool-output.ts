@@ -7,22 +7,38 @@ import { ScheduleTools } from "./tools/schedules.ts";
 import type { ToolOutput } from "./tool-output.ts";
 import { EMBED_COLOR } from "./utils.ts";
 
-const decodeCreate = Schema.decodeUnknownOption(Schema.Struct({ description: Schema.String }));
-const decodeExisting = Schema.decodeUnknownOption(Schema.Struct({ id: Schema.String }));
-const decodeResult = Schema.decodeUnknownEffect(Schema.Struct({ details: ScheduleTools.Details }));
-
 const formatTimestamp = (milliseconds: number): string =>
   time(new Date(milliseconds), TimestampStyles.ShortDateMediumTime);
 
 // Generous versus a real cron expression, so a truncation almost never triggers.
 const CRON_EXPRESSION_LIMIT = 240;
 
-const formatTiming = (schedule: Schedules.Wakeup): string =>
+const recurrenceEmoji = (recurrence: Schedules.Recurrence): string =>
+  Schedules.Recurrence.match(recurrence, {
+    once: () => "🎯",
+    cron: () => "🔁",
+  });
+
+const formatTimingBody = (schedule: Schedules.Wakeup): string =>
   Schedules.Recurrence.match(schedule.recurrence, {
     once: () => `Once at ${formatTimestamp(schedule.nextRunAt)}`,
     cron: ({ expression, timezone, expiresAt }) =>
       `Cron ${inlineCode(truncate(expression, CRON_EXPRESSION_LIMIT))} (${inlineCode(timezone)}); next ${formatTimestamp(schedule.nextRunAt)}; ${expiresAt === null ? "no end date" : `ends ${formatTimestamp(expiresAt)}`}`,
   });
+
+const formatTiming = (schedule: Schedules.Wakeup): string =>
+  `${recurrenceEmoji(schedule.recurrence)} ${formatTimingBody(schedule)}`;
+
+// Prints `→` only when something differs, and drops the right marker unless the recurrence kind changed.
+const transitionTiming = (before: Schedules.Wakeup, after: Schedules.Wakeup): string => {
+  const beforeTiming = formatTiming(before);
+  const afterBody = formatTimingBody(after);
+  const afterTiming = `${recurrenceEmoji(after.recurrence)} ${afterBody}`;
+  if (beforeTiming === afterTiming) return beforeTiming;
+  return recurrenceEmoji(before.recurrence) === recurrenceEmoji(after.recurrence)
+    ? `${beforeTiming} → ${afterBody}`
+    : `${beforeTiming} → ${afterTiming}`;
+};
 
 const detail = (label: string, value: string): TextDisplayBuilder =>
   new TextDisplayBuilder().setContent(`**${label}**\n${value}`);
@@ -40,7 +56,7 @@ const updateDetails = (update: Schedules.UpdateResult): TextDisplayBuilder[] => 
     "Description",
     transition(inlineCode(update.before.description), inlineCode(update.after.description)),
   ),
-  detail("Timing", transition(formatTiming(update.before), formatTiming(update.after))),
+  detail("Timing", transitionTiming(update.before, update.after)),
   ...(update.before.note === update.after.note ? [] : [detail("Instructions", "Replaced")]),
 ];
 
@@ -49,13 +65,20 @@ const card = (title: string, color: number, details: TextDisplayBuilder[]) =>
     .setAccentColor(color)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(title), ...details);
 
-const identification = (label: string, value: string | undefined) =>
-  value === undefined || value === ""
-    ? []
-    : [detail(label, inlineCode(boundIdentification(value)))];
+const decodeCreate = Schema.decodeUnknownOption(Schema.Struct({ description: Schema.String }));
+const decodeExisting = Schema.decodeUnknownOption(Schema.Struct({ id: Schema.String }));
+const decodeResult = Schema.decodeUnknownEffect(Schema.Struct({ details: ScheduleTools.Details }));
 
-// Start events contain raw arguments, even when tool validation later fails.
-const boundIdentification = (value: string): string => truncate(collapseWhitespace(value), 240);
+// Start events contain raw arguments, even when tool validation later fails, so bound what we echo back.
+const IDENTIFICATION_LIMIT = 240;
+
+const identification = (
+  label: string,
+  value: string | undefined,
+): TextDisplayBuilder | undefined =>
+  value === undefined || value === ""
+    ? undefined
+    : detail(label, inlineCode(truncate(collapseWhitespace(value), IDENTIFICATION_LIMIT)));
 
 const existingIdentification = (args: unknown) =>
   identification("Schedule ID", Option.getOrUndefined(decodeExisting(args))?.id);
@@ -63,20 +86,21 @@ const existingIdentification = (args: unknown) =>
 const renderSuccess = (details: ScheduleTools.Details) =>
   ScheduleTools.Details.match(details, {
     Created: ({ schedule }) =>
-      card("✅ **Schedule created**", EMBED_COLOR.success, unchangedDetails(schedule)),
+      card("⏰ ✅ **Schedule created**", EMBED_COLOR.success, unchangedDetails(schedule)),
     Updated: ({ update }) =>
-      card("✅ **Schedule updated**", EMBED_COLOR.success, updateDetails(update)),
+      card("⏰ ✅ **Schedule updated**", EMBED_COLOR.success, updateDetails(update)),
     Cancelled: ({ schedule }) =>
-      card("✅ **Schedule cancelled**", EMBED_COLOR.success, unchangedDetails(schedule)),
+      card("⏰ ✅ **Schedule cancelled**", EMBED_COLOR.success, unchangedDetails(schedule)),
   });
 
 const formatter = (options: {
   readonly pendingTitle: string;
   readonly failedTitle: string;
-  readonly identify: (args: unknown) => TextDisplayBuilder[];
+  readonly identify: (args: unknown) => TextDisplayBuilder | undefined;
 }): ToolOutput.StandaloneFormatter => ({
   begin: (event) => {
-    const details = options.identify(event.args);
+    const identified = options.identify(event.args);
+    const details = identified === undefined ? [] : [identified];
     return {
       initial: card(options.pendingTitle, EMBED_COLOR.pending, details),
       complete: Effect.fn("ScheduleToolOutput.complete")(function* (end: ToolOutput.EndEvent) {
@@ -89,21 +113,21 @@ const formatter = (options: {
 });
 
 export const create = formatter({
-  pendingTitle: "⏳ **Creating schedule**",
-  failedTitle: "❌ **Could not create schedule**",
+  pendingTitle: "⏰ ⏳ **Creating schedule**",
+  failedTitle: "⏰ ❌ **Could not create schedule**",
   identify: (args) =>
     identification("Schedule", Option.getOrUndefined(decodeCreate(args))?.description),
 });
 
 export const update = formatter({
-  pendingTitle: "⏳ **Updating schedule**",
-  failedTitle: "❌ **Could not update schedule**",
+  pendingTitle: "⏰ ⏳ **Updating schedule**",
+  failedTitle: "⏰ ❌ **Could not update schedule**",
   identify: existingIdentification,
 });
 
 export const cancel = formatter({
-  pendingTitle: "⏳ **Cancelling schedule**",
-  failedTitle: "❌ **Could not cancel schedule**",
+  pendingTitle: "⏰ ⏳ **Cancelling schedule**",
+  failedTitle: "⏰ ❌ **Could not cancel schedule**",
   identify: existingIdentification,
 });
 
