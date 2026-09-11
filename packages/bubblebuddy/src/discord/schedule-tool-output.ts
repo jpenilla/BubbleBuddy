@@ -1,6 +1,7 @@
 import { ContainerBuilder, TextDisplayBuilder, time, TimestampStyles } from "discord.js";
 import { Effect, Option, Schema } from "effect";
 import { Schedules } from "../scheduling/schedules.ts";
+import { inlineCode } from "../shared/markdown.ts";
 import { collapseWhitespace, truncate } from "../shared/text.ts";
 import { ScheduleTools } from "./tools/schedules.ts";
 import type { ToolOutput } from "./tool-output.ts";
@@ -9,11 +10,6 @@ import { EMBED_COLOR } from "./utils.ts";
 const decodeCreate = Schema.decodeUnknownOption(Schema.Struct({ description: Schema.String }));
 const decodeExisting = Schema.decodeUnknownOption(Schema.Struct({ id: Schema.String }));
 const decodeResult = Schema.decodeUnknownEffect(Schema.Struct({ details: ScheduleTools.Details }));
-
-const escapeInlineCode = (value: string): string =>
-  value.replaceAll("\\", "\\\\").replaceAll("`", "\\`");
-
-const code = (value: string): string => `\`${escapeInlineCode(value)}\``;
 
 const formatTimestamp = (milliseconds: number): string =>
   time(new Date(milliseconds), TimestampStyles.ShortDateMediumTime);
@@ -25,42 +21,28 @@ const formatTiming = (schedule: Schedules.Wakeup): string =>
   Schedules.Recurrence.match(schedule.recurrence, {
     once: () => `Once at ${formatTimestamp(schedule.nextRunAt)}`,
     cron: ({ expression, timezone, expiresAt }) =>
-      `Cron ${code(truncate(expression, CRON_EXPRESSION_LIMIT))} (${code(timezone)}); next ${formatTimestamp(schedule.nextRunAt)}; ${expiresAt === null ? "no end date" : `ends ${formatTimestamp(expiresAt)}`}`,
+      `Cron ${inlineCode(truncate(expression, CRON_EXPRESSION_LIMIT))} (${inlineCode(timezone)}); next ${formatTimestamp(schedule.nextRunAt)}; ${expiresAt === null ? "no end date" : `ends ${formatTimestamp(expiresAt)}`}`,
   });
 
 const detail = (label: string, value: string): TextDisplayBuilder =>
   new TextDisplayBuilder().setContent(`**${label}**\n${value}`);
 
 const unchangedDetails = (schedule: Schedules.Wakeup): TextDisplayBuilder[] => [
-  detail("Description", code(schedule.description)),
+  detail("Description", inlineCode(schedule.description)),
   detail("Timing", formatTiming(schedule)),
 ];
 
-const updateDetails = (update: Schedules.UpdateResult): TextDisplayBuilder[] => {
-  const details: TextDisplayBuilder[] = [];
-  const replaced = new Set(update.replacedFields);
+const transition = (before: string, after: string): string =>
+  before === after ? after : `${before} → ${after}`;
 
-  if (replaced.has("description")) {
-    details.push(
-      detail(
-        "Description",
-        `${code(update.before.description)} → ${code(update.after.description)}`,
-      ),
-    );
-  } else {
-    details.push(detail("Description", code(update.after.description)));
-  }
-  if (replaced.has("timing")) {
-    details.push(
-      detail("Timing", `${formatTiming(update.before)} → ${formatTiming(update.after)}`),
-    );
-  }
-  if (replaced.has("note")) {
-    details.push(detail("Instructions", "Replaced"));
-  }
-
-  return details;
-};
+const updateDetails = (update: Schedules.UpdateResult): TextDisplayBuilder[] => [
+  detail(
+    "Description",
+    transition(inlineCode(update.before.description), inlineCode(update.after.description)),
+  ),
+  detail("Timing", transition(formatTiming(update.before), formatTiming(update.after))),
+  ...(update.before.note === update.after.note ? [] : [detail("Instructions", "Replaced")]),
+];
 
 const card = (title: string, color: number, details: TextDisplayBuilder[]) =>
   new ContainerBuilder()
@@ -68,7 +50,9 @@ const card = (title: string, color: number, details: TextDisplayBuilder[]) =>
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(title), ...details);
 
 const identification = (label: string, value: string | undefined) =>
-  value === undefined || value === "" ? [] : [detail(label, code(boundIdentification(value)))];
+  value === undefined || value === ""
+    ? []
+    : [detail(label, inlineCode(boundIdentification(value)))];
 
 // At most 480 code units after escaping, leaving ample room for card markup.
 // Start events contain raw arguments, even when tool validation later fails.

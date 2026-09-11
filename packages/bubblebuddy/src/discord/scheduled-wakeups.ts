@@ -22,6 +22,11 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
         return;
       }
       const session = yield* sessions.get(channel.id);
+      const timing = Schedules.Recurrence.match(wakeup.recurrence, {
+        once: () => "once",
+        cron: ({ expression, timezone, expiresAt }) =>
+          `cron ${expression} (${timezone})${expiresAt === null ? "" : `, ends ${new Date(expiresAt).toISOString()}`}`,
+      });
       yield* Effect.logInfo("Executing scheduled wakeup", {
         channelId: channel.id,
         scheduleId: wakeup.id,
@@ -30,9 +35,11 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
         channel,
         prompt: [
           `Scheduled wakeup: ${wakeup.id}`,
+          `Description: ${wakeup.description}`,
+          `Timing: ${timing}`,
           `Scheduled for: ${new Date(wakeup.nextRunAt).toISOString()}`,
           "",
-          "Saved note:",
+          "Note:",
           wakeup.note,
         ].join("\n"),
       });

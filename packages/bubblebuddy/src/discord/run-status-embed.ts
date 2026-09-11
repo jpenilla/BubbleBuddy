@@ -1,7 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 
+import { DISCORD_EMBED_DESCRIPTION_LIMIT } from "../shared/constants.ts";
 import { truncate } from "../shared/text.ts";
-import { DISCORD_EMBED_DESCRIPTION_LIMIT } from "./response-formatting.ts";
 import { EMBED_COLOR } from "./utils.ts";
 
 export type RetryStatus =

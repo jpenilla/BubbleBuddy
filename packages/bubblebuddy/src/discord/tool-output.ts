@@ -39,7 +39,7 @@ export interface Interface {
 
 interface Group {
   readonly message: Message<true>;
-  readonly entries: ToolStatusEntry[];
+  readonly entries: Map<string, ToolStatusEntry>;
 }
 
 const MAX_TOOLS_PER_GROUP = 8;
@@ -62,9 +62,19 @@ export const make = (
     const renderGroup = (group: Group) =>
       tryDiscordJsPromise(() =>
         group.message.edit({
-          components: [createToolStatusComponents(group.entries)],
+          components: [createToolStatusComponents(group.entries.values())],
         }),
       ).pipe(Effect.asVoid);
+
+    const completeGroupEntry = (group: Group, toolCallId: string, end: EndEvent) =>
+      Effect.gen(function* () {
+        const entry = group.entries.get(toolCallId);
+        if (entry === undefined) {
+          return yield* Effect.die(new Error(`Grouped tool entry "${toolCallId}" is missing`));
+        }
+        group.entries.set(toolCallId, { ...entry, phase: end.isError ? "error" : "success" });
+        yield* renderGroup(group);
+      });
 
     const startGrouped = Effect.fn("ToolOutput.startGrouped")(function* (event: StartEvent) {
       const entry: ToolStatusEntry = {
@@ -73,30 +83,25 @@ export const make = (
         toolName: event.toolName,
         description: formatToolDescription(event.toolName, event.args),
       };
-      let group = appendable;
-      const isNew = group === undefined || group.entries.length >= MAX_TOOLS_PER_GROUP;
-      if (group === undefined || group.entries.length >= MAX_TOOLS_PER_GROUP) {
-        const entries = [entry];
-        const message = yield* tryDiscordJsPromise(() =>
-          channel.send({
-            flags: MessageFlags.IsComponentsV2,
-            components: [createToolStatusComponents(entries)],
-          }),
-        );
-        group = { message, entries };
-        appendable = group;
-      } else {
-        group.entries.push(entry);
+      const previous = appendable;
+      if (previous !== undefined && previous.entries.size < MAX_TOOLS_PER_GROUP) {
+        const group = previous;
+        group.entries.set(entry.toolCallId, entry);
+        pending.set(event.toolCallId, (end) => completeGroupEntry(group, end.toolCallId, end));
+        yield* renderGroup(group);
+        return;
       }
-      const current = group;
-      const index = current.entries.length - 1;
-      pending.set(event.toolCallId, (end) =>
-        Effect.gen(function* () {
-          current.entries[index] = { ...entry, phase: end.isError ? "error" : "success" };
-          yield* renderGroup(current);
+
+      const entries = new Map([[entry.toolCallId, entry]]);
+      const message = yield* tryDiscordJsPromise(() =>
+        channel.send({
+          flags: MessageFlags.IsComponentsV2,
+          components: [createToolStatusComponents(entries.values())],
         }),
       );
-      if (!isNew) yield* renderGroup(current);
+      const created: Group = { message, entries };
+      appendable = created;
+      pending.set(event.toolCallId, (end) => completeGroupEntry(created, end.toolCallId, end));
     });
 
     const startStandalone = Effect.fn("ToolOutput.startStandalone")(function* (

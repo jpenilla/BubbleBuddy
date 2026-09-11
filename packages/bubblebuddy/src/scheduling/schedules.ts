@@ -60,13 +60,9 @@ export const Wakeup = Schema.Struct({
 });
 export interface Wakeup extends Schema.Schema.Type<typeof Wakeup> {}
 
-export const ReplacedField = Schema.Literals(["description", "timing", "note"]);
-export type ReplacedField = typeof ReplacedField.Type;
-
 export const UpdateResult = Schema.Struct({
   before: Wakeup,
   after: Wakeup,
-  replacedFields: Schema.Array(ReplacedField),
 });
 export interface UpdateResult extends Schema.Schema.Type<typeof UpdateResult> {}
 
@@ -143,28 +139,23 @@ const nextCron = Effect.fn("Schedules.nextCron")(function* (
 
 const decodeRows = Effect.fn("Schedules.decodeRows")(function* (rows: unknown) {
   const decoded = yield* Schema.decodeUnknownEffect(Schema.Array(Row))(rows);
-  return yield* Effect.forEach(decoded, (row) => {
-    if ((row.cron === null) !== (row.timezone === null)) {
-      return Effect.fail(invalid("Invalid persisted cron/timezone pair."));
-    }
-    return Effect.succeed(
-      Wakeup.make({
-        id: row.id,
-        channelId: row.channel_id,
-        description: row.description,
-        note: row.note,
-        nextRunAt: row.next_run_at,
-        recurrence:
-          row.cron !== null && row.timezone !== null
-            ? CronRecurrence.make({
-                expression: row.cron,
-                timezone: row.timezone,
-                expiresAt: row.expires_at,
-              })
-            : Once.make({}),
-      }),
-    );
-  });
+  return decoded.map((row) =>
+    Wakeup.make({
+      id: row.id,
+      channelId: row.channel_id,
+      description: row.description,
+      note: row.note,
+      nextRunAt: row.next_run_at,
+      recurrence:
+        row.cron !== null && row.timezone !== null
+          ? CronRecurrence.make({
+              expression: row.cron,
+              timezone: row.timezone,
+              expiresAt: row.expires_at,
+            })
+          : Once.make({}),
+    }),
+  );
 });
 
 const resolveTiming = Effect.fn("Schedules.resolveTiming")(function* (timing: Timing, now: number) {
@@ -304,11 +295,6 @@ const makeSchedules = Effect.gen(function* () {
         : yield* validateDescription(decoded.description);
     const note = decoded.note === undefined ? undefined : yield* validateNote(decoded.note);
 
-    const replacedFields: ReplacedField[] = [];
-    if (decoded.description !== undefined) replacedFields.push("description");
-    if (decoded.timing !== undefined) replacedFields.push("timing");
-    if (decoded.note !== undefined) replacedFields.push("note");
-
     return yield* sql
       .withTransaction(
         Effect.gen(function* () {
@@ -350,7 +336,6 @@ const makeSchedules = Effect.gen(function* () {
           return UpdateResult.make({
             before: current,
             after: updated,
-            replacedFields,
           });
         }),
       )

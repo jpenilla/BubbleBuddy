@@ -109,7 +109,6 @@ export const update = defineEffectTool({
       return result(
         {
           updated: describe(updated.after),
-          replacedFields: updated.replacedFields,
         },
         UpdatedDetails.make({ update: updated }),
       );

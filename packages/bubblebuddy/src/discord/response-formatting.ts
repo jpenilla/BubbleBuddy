@@ -1,7 +1,5 @@
+import { DISCORD_SAFE_MESSAGE_LIMIT } from "../shared/constants.ts";
 import { splitAiResponse } from "../shared/text-split.ts";
-
-export const DISCORD_SAFE_MESSAGE_LIMIT = 1_900;
-export const DISCORD_EMBED_DESCRIPTION_LIMIT = 4_096;
 
 const THINKING_PREFIX = "🧠 _Thinking..._\n\n";
 const THINKING_SUFFIX = "\n\n-# ──";
