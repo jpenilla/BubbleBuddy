@@ -3,12 +3,11 @@ import { ToolOutput } from "./tool-output.ts";
 
 const hidden = ToolOutput.Policy.Hidden();
 const grouped = ToolOutput.Policy.Grouped();
-const schedule = ToolOutput.Policy.Standalone({ formatter: ScheduleToolOutput.formatter });
 
 const policies: Readonly<Record<string, ToolOutput.Policy>> = {
-  create_schedule: schedule,
-  update_schedule: schedule,
-  cancel_schedule: schedule,
+  create_schedule: ToolOutput.standalonePolicy(ScheduleToolOutput.create),
+  update_schedule: ToolOutput.standalonePolicy(ScheduleToolOutput.update),
+  cancel_schedule: ToolOutput.standalonePolicy(ScheduleToolOutput.cancel),
   list_schedules: hidden,
   discord_list_custom_emojis: hidden,
   discord_list_stickers: hidden,

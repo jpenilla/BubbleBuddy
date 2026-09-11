@@ -47,7 +47,8 @@ const scheduleMetadata = Effect.gen(function* () {
     next_run_at INTEGER NOT NULL,
     cron TEXT,
     timezone TEXT,
-    CHECK ((cron IS NULL AND timezone IS NULL) OR (cron IS NOT NULL AND timezone IS NOT NULL))
+    CHECK ((cron IS NULL AND timezone IS NULL) OR (cron IS NOT NULL AND timezone IS NOT NULL)),
+    CHECK (expires_at IS NULL OR cron IS NOT NULL)
   )`;
   yield* sql`INSERT INTO scheduled_wakeups_metadata
     (id, channel_id, description, expires_at, note, next_run_at, cron, timezone)

@@ -111,13 +111,13 @@ it.layer(NodeServices.layer)("schedules", (it) => {
           const schedules = yield* Schedules.Service;
           const expected = {
             description: "Hourly weather",
-            expiresAt: null,
             id: schedule.id,
             channelId: "123",
             note: "Post the hourly weather report.",
-            recurrence: Schedules.CronTiming.make({
+            recurrence: Schedules.CronRecurrence.make({
               expression: "0 * * * *",
               timezone: "Asia/Kathmandu",
+              expiresAt: null,
             }),
           };
           expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([

@@ -22,7 +22,14 @@ export type Details = typeof Details.Type;
 const describe = (wakeup: Schedules.Wakeup) => ({
   ...wakeup,
   nextRunAt: new Date(wakeup.nextRunAt).toISOString(),
-  expiresAt: wakeup.expiresAt === null ? null : new Date(wakeup.expiresAt).toISOString(),
+  recurrence: Schedules.Recurrence.match(wakeup.recurrence, {
+    once: (recurrence) => recurrence,
+    cron: (recurrence) => ({
+      ...recurrence,
+      expiresAt:
+        recurrence.expiresAt === null ? null : new Date(recurrence.expiresAt).toISOString(),
+    }),
+  }),
 });
 
 const result = <Details = undefined>(value: unknown, details?: Details) => ({
@@ -33,8 +40,7 @@ const result = <Details = undefined>(value: unknown, details?: Details) => ({
 const description = Type.String({
   minLength: 1,
   maxLength: 120,
-  description:
-    "Concise user-facing summary of the schedule, including its purpose and meaningful timing or cadence. It should be understandable without reading the full note.",
+  description: "Short user-facing summary of the task and timing.",
 });
 
 const note = Type.String({
@@ -44,8 +50,7 @@ const note = Type.String({
 });
 
 const expiresAt = Type.String({
-  description:
-    "Exclusive expiration: ISO timestamp with explicit UTC offset, after the next occurrence. No wakeups dispatch at or after this time.",
+  description: "End date as an ISO timestamp with UTC offset. Omit to repeat indefinitely.",
 });
 
 const timing = Type.Union([
@@ -58,6 +63,7 @@ const timing = Type.Union([
     kind: Type.Literal("cron"),
     expression: Type.String({ description: "Five-field cron (minute precision)" }),
     timezone: Type.String({ description: "Timezone, e.g. America/New_York or UTC" }),
+    expiresAt: Type.Optional(expiresAt),
   }),
 ]);
 
@@ -67,7 +73,6 @@ export const create = defineEffectTool({
   description: "Schedule a wakeup in this channel. Survives new sessions and restarts.",
   parameters: Type.Object({
     description,
-    expiresAt: Type.Optional(expiresAt),
     note,
     timing,
   }),
@@ -84,13 +89,12 @@ export const update = defineEffectTool({
   name: "update_schedule",
   label: "Update schedule",
   description:
-    "Update a schedule in this channel. Provided fields replace their previous values; omitted fields stay unchanged. Timing recalculates the next occurrence from now (after is relative to now). Null expiration removes the limit. In-flight wakeups are unaffected. Provide at least one field to update. Update the description whenever another change would make its concise summary inaccurate.",
+    "Update a schedule in this channel. Omitted fields stay unchanged. Supplied timing replaces the full timing configuration and recalculates from now.",
   parameters: Type.Object({
     id: Type.String(),
     timing: Type.Optional(timing),
     description: Type.Optional(description),
     note: Type.Optional(note),
-    expiresAt: Type.Optional(Type.Union([expiresAt, Type.Null()])),
   }),
   execute: (_id, input) =>
     Effect.gen(function* () {
@@ -113,7 +117,7 @@ export const list = defineEffectTool({
   name: "list_schedules",
   label: "List schedules",
   description:
-    "List active schedules for this channel. Results are returned only to you and are not displayed to the user. If the user asks to see their schedules, summarize them in a reply. Notes contain the complete instructions and may be long; use descriptions for concise user-facing summaries.",
+    "List this channel’s active schedules. Results aren’t shown to the user; summarize them when asked.",
   parameters: Type.Object({}),
   execute: () =>
     Effect.gen(function* () {

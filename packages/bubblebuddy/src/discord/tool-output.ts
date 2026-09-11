@@ -27,6 +27,9 @@ export type Policy = Data.TaggedEnum<{
 }>;
 export const Policy = Data.taggedEnum<Policy>();
 
+export const standalonePolicy = (formatter: StandaloneFormatter) =>
+  Policy.Standalone({ formatter });
+
 export interface Interface {
   readonly start: (event: StartEvent) => Effect.Effect<void, unknown>;
   readonly complete: (event: EndEvent) => Effect.Effect<void, unknown>;

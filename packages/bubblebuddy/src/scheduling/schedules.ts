@@ -16,6 +16,7 @@ export const CronTiming = Schema.Struct({
   kind: Schema.tag("cron"),
   expression: Schema.String,
   timezone: Schema.String,
+  expiresAt: Schema.optionalKey(Schema.String),
 });
 
 export const Timing = Schema.Union([AfterTiming, AtTiming, CronTiming]).pipe(
@@ -25,13 +26,19 @@ export type Timing = typeof Timing.Type;
 
 export const Once = Schema.Struct({ kind: Schema.tag("once") });
 
-export const Recurrence = Schema.Union([Once, CronTiming]).pipe(Schema.toTaggedUnion("kind"));
+export const CronRecurrence = Schema.Struct({
+  kind: Schema.tag("cron"),
+  expression: CronTiming.fields.expression,
+  timezone: CronTiming.fields.timezone,
+  expiresAt: Schema.NullOr(Schema.Finite),
+});
+
+export const Recurrence = Schema.Union([Once, CronRecurrence]).pipe(Schema.toTaggedUnion("kind"));
 export type Recurrence = typeof Recurrence.Type;
 
 export const CreateInput = Schema.Struct({
   description: Schema.String,
-  expiresAt: Schema.optionalKey(Schema.String),
-  note: Schema.NonEmptyString,
+  note: Schema.String,
   timing: Timing,
 });
 export interface CreateInput extends Schema.Schema.Type<typeof CreateInput> {}
@@ -40,7 +47,6 @@ export const UpdateInput = Schema.Struct({
   timing: Schema.optionalKey(CreateInput.fields.timing),
   description: Schema.optionalKey(Schema.String),
   note: Schema.optionalKey(Schema.String),
-  expiresAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export interface UpdateInput extends Schema.Schema.Type<typeof UpdateInput> {}
 
@@ -48,14 +54,13 @@ export const Wakeup = Schema.Struct({
   id: Schema.String,
   channelId: Schema.String,
   description: Schema.String,
-  expiresAt: Schema.NullOr(Schema.Finite),
   note: Schema.String,
   nextRunAt: Schema.Finite,
   recurrence: Recurrence,
 });
 export interface Wakeup extends Schema.Schema.Type<typeof Wakeup> {}
 
-export const ReplacedField = Schema.Literals(["description", "timing", "note", "expiresAt"]);
+export const ReplacedField = Schema.Literals(["description", "timing", "note"]);
 export type ReplacedField = typeof ReplacedField.Type;
 
 export const UpdateResult = Schema.Struct({
@@ -86,6 +91,12 @@ export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
 }) {}
 
 const invalid = (message: string) => new ValidationError({ message });
+
+const validateNote = Effect.fn("Schedules.validateNote")(function* (value: string) {
+  const note = value.trim();
+  if (note.length === 0) return yield* invalid("A self-contained note is required.");
+  return note;
+});
 
 const validateDescription = Effect.fn("Schedules.validateDescription")(function* (value: string) {
   const description = value.replaceAll(/\s+/g, " ").trim();
@@ -138,12 +149,15 @@ const decodeRows = Effect.fn("Schedules.decodeRows")(function* (rows: unknown) {
         id: row.id,
         channelId: row.channel_id,
         description: row.description,
-        expiresAt: row.expires_at,
         note: row.note,
         nextRunAt: row.next_run_at,
         recurrence:
           row.cron !== null && row.timezone !== null
-            ? CronTiming.make({ expression: row.cron, timezone: row.timezone })
+            ? CronRecurrence.make({
+                expression: row.cron,
+                timezone: row.timezone,
+                expiresAt: row.expires_at,
+              })
             : Once.make({}),
       }),
     );
@@ -175,51 +189,58 @@ const resolveTiming = Effect.fn("Schedules.resolveTiming")(function* (timing: Ti
   ) {
     return yield* invalid("Schedule must resolve to a valid future time.");
   }
-  return {
-    nextRunAt,
-    recurrence: Timing.guards.cron(timing)
-      ? CronTiming.make({ expression: timing.expression, timezone: timing.timezone })
-      : Once.make({}),
-  };
+  if (Timing.guards.cron(timing)) {
+    const expiresAt =
+      timing.expiresAt === undefined ? null : yield* parseTimestamp(timing.expiresAt);
+    if (expiresAt !== null && expiresAt <= nextRunAt) {
+      return yield* invalid("Expiration must be after the next occurrence.");
+    }
+    return {
+      nextRunAt,
+      recurrence: CronRecurrence.make({
+        expression: timing.expression,
+        timezone: timing.timezone,
+        expiresAt,
+      }),
+    };
+  }
+  return { nextRunAt, recurrence: Once.make({}) };
 });
 
 interface RecurrenceColumns {
   readonly cron: string | null;
   readonly timezone: string | null;
+  readonly expiresAt: number | null;
 }
 
 const recurrenceColumns = (recurrence: Recurrence): RecurrenceColumns =>
   Recurrence.match(recurrence, {
-    once: (): RecurrenceColumns => ({ cron: null, timezone: null }),
-    cron: ({ expression, timezone }): RecurrenceColumns => ({ cron: expression, timezone }),
+    once: (): RecurrenceColumns => ({ cron: null, timezone: null, expiresAt: null }),
+    cron: ({ expression, timezone, expiresAt }): RecurrenceColumns => ({
+      cron: expression,
+      timezone,
+      expiresAt,
+    }),
   });
 
 const makeSchedules = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
   const create = Effect.fn("Schedules.create")(function* (channelId: string, input: CreateInput) {
-    const decoded = yield* Schema.decodeEffect(CreateInput)(input).pipe(Effect.orDie);
+    const decoded = yield* Schema.decodeEffect(CreateInput, { onExcessProperty: "error" })(
+      input,
+    ).pipe(Effect.mapError((error) => invalid(error.message)));
     const description = yield* validateDescription(decoded.description);
-    const expiresAt =
-      decoded.expiresAt === undefined ? null : yield* parseTimestamp(decoded.expiresAt);
-    const note = decoded.note.trim();
-
-    if (note.length === 0) {
-      return yield* invalid("A self-contained note is required.");
-    }
+    const note = yield* validateNote(decoded.note);
 
     const now = yield* Clock.currentTimeMillis;
     const timing = decoded.timing;
     const { nextRunAt, recurrence } = yield* resolveTiming(timing, now);
-    if (expiresAt !== null && expiresAt <= nextRunAt) {
-      return yield* invalid("Expiration must be after the first occurrence.");
-    }
 
     const wakeup = Wakeup.make({
       id: randomUUID(),
       channelId,
       description,
-      expiresAt,
       note,
       nextRunAt,
       recurrence,
@@ -231,7 +252,7 @@ const makeSchedules = Effect.gen(function* () {
         id, channel_id, description, expires_at, note, next_run_at, cron, timezone
       )
       VALUES (
-        ${wakeup.id}, ${channelId}, ${description}, ${expiresAt}, ${note}, ${nextRunAt},
+        ${wakeup.id}, ${channelId}, ${description}, ${storedRecurrence.expiresAt}, ${note}, ${nextRunAt},
         ${storedRecurrence.cron},
         ${storedRecurrence.timezone}
       )
@@ -268,12 +289,13 @@ const makeSchedules = Effect.gen(function* () {
     id: string,
     input: UpdateInput,
   ) {
-    const decoded = yield* Schema.decodeEffect(UpdateInput)(input).pipe(Effect.orDie);
+    const decoded = yield* Schema.decodeEffect(UpdateInput, { onExcessProperty: "error" })(
+      input,
+    ).pipe(Effect.mapError((error) => invalid(error.message)));
 
     if (
       decoded.description === undefined &&
       decoded.note === undefined &&
-      decoded.expiresAt === undefined &&
       decoded.timing === undefined
     ) {
       return yield* invalid("Provide at least one field to update.");
@@ -283,19 +305,12 @@ const makeSchedules = Effect.gen(function* () {
       decoded.description === undefined
         ? undefined
         : yield* validateDescription(decoded.description);
-    const note = decoded.note?.trim();
+    const note = decoded.note === undefined ? undefined : yield* validateNote(decoded.note);
 
-    if (note === "") {
-      return yield* invalid("A self-contained note is required.");
-    }
-
-    const expiration =
-      decoded.expiresAt == null ? decoded.expiresAt : yield* parseTimestamp(decoded.expiresAt);
     const replacedFields: ReplacedField[] = [];
     if (decoded.description !== undefined) replacedFields.push("description");
     if (decoded.timing !== undefined) replacedFields.push("timing");
     if (decoded.note !== undefined) replacedFields.push("note");
-    if (decoded.expiresAt !== undefined) replacedFields.push("expiresAt");
 
     return yield* sql
       .withTransaction(
@@ -316,20 +331,11 @@ const makeSchedules = Effect.gen(function* () {
             decoded.timing === undefined
               ? { nextRunAt: current.nextRunAt, recurrence: current.recurrence }
               : yield* resolveTiming(decoded.timing, now);
-          const expiresAt = expiration === undefined ? current.expiresAt : expiration;
-
-          if (expiresAt !== null && expiresAt <= Math.max(now, timing.nextRunAt)) {
-            return yield* invalid(
-              "Expiration must be in the future and after the next occurrence.",
-            );
-          }
-
           const updated = {
             ...current,
             ...timing,
             description: description ?? current.description,
             note: note ?? current.note,
-            expiresAt,
           };
           const storedRecurrence = recurrenceColumns(updated.recurrence);
 
@@ -337,7 +343,7 @@ const makeSchedules = Effect.gen(function* () {
             UPDATE scheduled_wakeups
             SET description = ${updated.description},
                 note = ${updated.note},
-                expires_at = ${updated.expiresAt},
+                expires_at = ${storedRecurrence.expiresAt},
                 next_run_at = ${updated.nextRunAt},
                 cron = ${storedRecurrence.cron},
                 timezone = ${storedRecurrence.timezone}
@@ -387,7 +393,7 @@ const makeSchedules = Effect.gen(function* () {
                 wakeup.recurrence.timezone,
                 now,
               );
-              if (wakeup.expiresAt !== null && next >= wakeup.expiresAt) {
+              if (wakeup.recurrence.expiresAt !== null && next >= wakeup.recurrence.expiresAt) {
                 yield* sql`DELETE FROM scheduled_wakeups WHERE id = ${wakeup.id}`;
               } else {
                 yield* sql`UPDATE scheduled_wakeups SET next_run_at = ${next} WHERE id = ${wakeup.id}`;
