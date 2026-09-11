@@ -239,8 +239,7 @@ const makeSchedules = Effect.gen(function* () {
     const note = yield* validateNote(decoded.note);
 
     const now = yield* Clock.currentTimeMillis;
-    const timing = decoded.timing;
-    const { nextRunAt, recurrence } = yield* resolveTiming(timing, now);
+    const { nextRunAt, recurrence } = yield* resolveTiming(decoded.timing, now);
 
     const wakeup = Wakeup.make({
       id: randomUUID(),
