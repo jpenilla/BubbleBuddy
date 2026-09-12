@@ -273,7 +273,7 @@ export const create = <R = never>(
     };
 
     const close = trySdkPromise("close", () => sdk.close()).pipe(
-      Effect.ignore({ log: "Warn", message: "Error closing MCP client" }),
+      Effect.ignore({ log: "Warn", message: "MCP client close failed" }),
     );
     yield* Effect.acquireRelease(
       trySdkPromise("connect", (signal) => sdk.connect(transport, { signal })).pipe(
@@ -295,7 +295,7 @@ export const create = <R = never>(
         request("listen", requestOptions, (withSignal) => sdk.listen(filter, withSignal)),
         (subscription) =>
           trySdkPromise("closeSubscription", () => subscription.close()).pipe(
-            Effect.ignore({ log: "Warn", message: "Error closing MCP subscription" }),
+            Effect.ignore({ log: "Warn", message: "MCP subscription close failed" }),
           ),
       ).pipe(
         Effect.map((subscription) => ({

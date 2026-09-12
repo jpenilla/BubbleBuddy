@@ -62,6 +62,7 @@ interface CreateChannelSessionInput {
 
 export const createChannelSession = (input: CreateChannelSessionInput) =>
   Effect.gen(function* () {
+    const attributes = { channelId: input.channelId };
     const repository = yield* ChannelStateRepository;
     const piServices = yield* Effect.context<PiSessionServices>();
     const lock = yield* Semaphore.make(1);
@@ -79,42 +80,46 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
     const clearActiveSession = Effect.gen(function* () {
       yield* repository.clearActiveSession(input.channelId).pipe(mapToChannelSessionError);
       yield* Ref.set(activeSessionRef, undefined);
-    }).pipe(Effect.withSpan("ChannelSession.clearActiveSession"));
+    }).pipe(
+      Effect.annotateLogs(attributes),
+      Effect.withSpan("ChannelSession.clearActiveSession", { attributes }),
+    );
 
-    const getOrCreatePiSession = Effect.fn("ChannelSession.getOrCreatePiSession")(function* (
-      channel: GuildTextBasedChannel,
-    ) {
-      const current = yield* ScopedRef.get(piRef);
-      if (current !== undefined) return current;
+    const getOrCreatePiSession = Effect.fn("ChannelSession.getOrCreatePiSession", { attributes })(
+      function* (channel: GuildTextBasedChannel) {
+        const current = yield* ScopedRef.get(piRef);
+        if (current !== undefined) return current;
 
-      const activeSession = yield* Ref.get(activeSessionRef);
-      yield* ScopedRef.set(
-        piRef,
-        Effect.gen(function* () {
-          const output = yield* createDiscordOutputPump({
-            channel,
-            showThinking: SynchronizedRef.get(showThinkingRef),
-          });
-          const pi = yield* createPiSession({
-            channel,
-            activeSession,
-            output,
-          });
-          const activeSessionName = pi.getActiveSessionName();
-          if (activeSessionName !== undefined && activeSessionName !== activeSession) {
-            yield* repository.setActiveSession(input.channelId, activeSessionName);
-            yield* Ref.set(activeSessionRef, activeSessionName);
-          }
-          return pi;
-        }),
-      ).pipe(Effect.provide(piServices), mapToChannelSessionError);
-      const pi = yield* ScopedRef.get(piRef);
-      if (pi === undefined) {
-        return yield* Effect.die(new Error("Pi session acquisition produced no session"));
-      }
+        const activeSession = yield* Ref.get(activeSessionRef);
+        yield* ScopedRef.set(
+          piRef,
+          Effect.gen(function* () {
+            const output = yield* createDiscordOutputPump({
+              channel,
+              showThinking: SynchronizedRef.get(showThinkingRef),
+            });
+            const pi = yield* createPiSession({
+              channel,
+              activeSession,
+              output,
+            });
+            const activeSessionName = pi.getActiveSessionName();
+            if (activeSessionName !== undefined && activeSessionName !== activeSession) {
+              yield* repository.setActiveSession(input.channelId, activeSessionName);
+              yield* Ref.set(activeSessionRef, activeSessionName);
+            }
+            return pi;
+          }),
+        ).pipe(Effect.provide(piServices), mapToChannelSessionError);
+        const pi = yield* ScopedRef.get(piRef);
+        if (pi === undefined) {
+          return yield* Effect.die(new Error("Pi session acquisition produced no session"));
+        }
 
-      return pi;
-    });
+        return pi;
+      },
+      Effect.annotateLogs(attributes),
+    );
 
     const abort = Effect.gen(function* () {
       const pi = yield* ScopedRef.get(piRef);
@@ -124,9 +129,12 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
 
       yield* pi.abort.pipe(mapToChannelSessionError);
       return "aborted" as const;
-    }).pipe(Effect.withSpan("ChannelSession.abort"));
+    }).pipe(
+      Effect.annotateLogs(attributes),
+      Effect.withSpan("ChannelSession.abort", { attributes }),
+    );
 
-    const activate = Effect.fn("ChannelSession.activate")(function* (
+    const activate = Effect.fn("ChannelSession.activate", { attributes })(function* (
       activation: ActivateChannelSessionInput,
     ) {
       const pi = yield* ScopedRef.get(piRef);
@@ -139,7 +147,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
           Effect.timeout("3 seconds"),
           Effect.ignore({
             log: "Warn",
-            message: `Failed to send eager typing indicator for channel ${activation.channel.id}`,
+            message: "Eager typing indicator send failed",
           }),
           Effect.forkDetach({ startImmediately: true }),
         );
@@ -156,9 +164,9 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
             .pipe(mapToChannelSessionError);
         }),
       );
-    });
+    }, Effect.annotateLogs(attributes));
 
-    const compact = Effect.fn("ChannelSession.compact")(function* (
+    const compact = Effect.fn("ChannelSession.compact", { attributes })(function* (
       compaction: CompactChannelSessionInput,
     ) {
       const pi = ScopedRef.getUnsafe(piRef);
@@ -184,7 +192,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
           }),
         )
         .pipe(Effect.map(Option.getOrElse(() => "rejected-busy" as const)));
-    });
+    }, Effect.annotateLogs(attributes));
 
     const discard = lock
       .withPermitsIfAvailable(1)(
@@ -202,10 +210,13 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
       )
       .pipe(
         Effect.map(Option.getOrElse(() => "rejected-busy" as const)),
-        Effect.withSpan("ChannelSession.discard"),
+        Effect.annotateLogs(attributes),
+        Effect.withSpan("ChannelSession.discard", { attributes }),
       );
 
-    const status = Effect.fn("ChannelSession.status")(function* (channel: GuildTextBasedChannel) {
+    const status = Effect.fn("ChannelSession.status", { attributes })(function* (
+      channel: GuildTextBasedChannel,
+    ) {
       return yield* lock.withPermit(
         Effect.gen(function* () {
           const pi = yield* getOrCreatePiSession(channel);
@@ -216,7 +227,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
           };
         }),
       );
-    });
+    }, Effect.annotateLogs(attributes));
 
     const toggleShowThinking = SynchronizedRef.updateAndGetEffect(showThinkingRef, (current) =>
       Effect.gen(function* () {
@@ -224,7 +235,10 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
         yield* repository.setShowThinking(input.channelId, next).pipe(mapToChannelSessionError);
         return next;
       }),
-    ).pipe(Effect.withSpan("ChannelSession.toggleShowThinking"));
+    ).pipe(
+      Effect.annotateLogs(attributes),
+      Effect.withSpan("ChannelSession.toggleShowThinking", { attributes }),
+    );
 
     return {
       abort,
@@ -234,4 +248,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
       status,
       toggleShowThinking,
     } satisfies ChannelSession;
-  });
+  }).pipe(
+    Effect.annotateLogs({ channelId: input.channelId }),
+    Effect.annotateSpans({ channelId: input.channelId }),
+  );

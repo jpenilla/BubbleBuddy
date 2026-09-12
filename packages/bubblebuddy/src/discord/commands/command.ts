@@ -4,9 +4,9 @@ import type {
   GuildTextBasedChannel,
   SharedSlashCommand,
 } from "discord.js";
-import { Cause, Effect } from "effect";
+import { Cause, Context, Effect, Tracer } from "effect";
 
-import type { DiscordEventListener } from "../client.ts";
+import type { DiscordEvents } from "../discord-events.ts";
 import { isGuildTextChannel, tryDiscordJsPromise } from "../utils.ts";
 
 type GuildTextChannelInteraction = ChatInputCommandInteraction<"raw" | "cached"> & {
@@ -24,32 +24,34 @@ export interface CommandDefinition<E, R> {
   readonly execute: (interaction: ChatInputCommandInteraction) => Effect.Effect<void, E, R>;
 }
 
-export interface CommandDispatcher extends DiscordEventListener<
+export interface CommandDispatcher extends DiscordEvents.Listener<
   "interactionCreate",
   Effect.Effect<void>
 > {}
 
 export const createCommand = <E, R>(definition: CommandDefinition<E, R>) =>
   Effect.gen(function* () {
-    const context = yield* Effect.context<R>();
+    // Inherit the invocation's parent span, not the construction-time span.
+    const context = Context.omit(Tracer.ParentSpan)(yield* Effect.context<R>());
     return {
       data: definition.data,
       execute: (interaction) =>
-        definition.execute(interaction).pipe(
+        Effect.suspend(() => definition.execute(interaction)).pipe(
           Effect.scoped,
-          Effect.provide(context),
           Effect.onError((cause) => {
             const interrupted = Cause.hasInterruptsOnly(cause);
             return Effect.gen(function* () {
-              yield* interrupted
-                ? Effect.logDebug("Slash command interrupted", {
-                    commandName: interaction.commandName,
-                    cause,
-                  })
-                : Effect.logWarning("Error handling slash command", {
-                    commandName: interaction.commandName,
-                    cause,
-                  });
+              yield* (
+                interrupted
+                  ? Effect.logDebug("Slash command interrupted", cause)
+                  : Effect.logError("Slash command failed", cause)
+              ).pipe(
+                Effect.annotateLogs({
+                  commandName: interaction.commandName,
+                  interactionId: interaction.id,
+                  channelId: interaction.channelId,
+                }),
+              );
               yield* tryDiscordJsPromise(async () => {
                 if (interaction.deferred) {
                   await interaction.editReply(
@@ -63,10 +65,15 @@ export const createCommand = <E, R>(definition: CommandDefinition<E, R>) =>
               }).pipe(Effect.timeout("3 seconds"), Effect.ignore());
             });
           }),
-          Effect.ignoreCause(),
           Effect.withSpan("Command.execute", {
-            attributes: { commandName: interaction.commandName },
+            attributes: {
+              commandName: interaction.commandName,
+              interactionId: interaction.id,
+              channelId: interaction.channelId,
+            },
           }),
+          Effect.ignoreCause(),
+          Effect.provide(context),
         ),
     } satisfies Command;
   });

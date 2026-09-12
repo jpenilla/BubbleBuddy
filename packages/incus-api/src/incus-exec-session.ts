@@ -1,4 +1,4 @@
-import { Cause, Effect, Fiber, Schema } from "effect";
+import { Effect, Fiber, Schema } from "effect";
 import * as Socket from "effect/unstable/socket/Socket";
 
 import { IncusApi } from "./incus-api.ts";
@@ -128,6 +128,7 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
   options?: IncusContainer.ExecOptions,
 ) {
   const timeoutSeconds = options?.timeoutSeconds;
+  yield* Effect.annotateCurrentSpan({ containerName: name, incusProject: project });
   if (timeoutSeconds !== undefined && (!Number.isInteger(timeoutSeconds) || timeoutSeconds <= 0)) {
     return yield* new IncusContainer.ExecInvalidOptionsError({
       message: `Invalid timeoutSeconds: ${timeoutSeconds}. Must be a positive integer.`,
@@ -146,13 +147,17 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
         (operation) =>
           confirmExecTermination(api, project, operation, lifecycle).pipe(
             Effect.catchCause((cause) =>
-              Effect.logWarning("Incus exec termination was not confirmed", {
-                operation: operation.id,
-                cause: Cause.pretty(cause),
-              }),
+              Effect.logWarning("Incus exec termination was not confirmed", cause).pipe(
+                Effect.annotateLogs({
+                  containerName: name,
+                  incusProject: project,
+                  incusOperationId: operation.id,
+                }),
+              ),
             ),
           ),
       );
+      yield* Effect.annotateCurrentSpan("incusOperationId", operation.id);
       const secrets = yield* decodeExecWebSocketSecrets(operation);
       const connect = Effect.fnUntraced(function* (secret: string) {
         const socket = yield* api.operations.makeWebSocket(operation.id, secret, {

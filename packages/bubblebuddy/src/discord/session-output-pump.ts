@@ -1,6 +1,6 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { type GuildTextBasedChannel, type Message } from "discord.js";
-import { Deferred, Effect, Scope } from "effect";
+import { Cause, Deferred, Effect, Scope } from "effect";
 
 import { createTypingIndicator } from "../discord/typing-indicator.ts";
 
@@ -64,10 +64,16 @@ export const createDiscordOutputPump = (
     const outputWorker = yield* createPriorityDrainableWorker(
       (operation: Effect.Effect<void, unknown>) =>
         operation.pipe(
-          Effect.ignore({
-            log: "Warn",
-            message: `Discord output action failed for channel ${input.channel.id}`,
+          Effect.onError((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.logDebug("Discord output action interrupted", cause)
+              : Effect.logError("Discord output action failed", cause),
+          ),
+          Effect.withSpan("DiscordOutputPump.process", {
+            root: true,
+            attributes: { channelId: input.channel.id },
           }),
+          Effect.ignoreCause(),
         ),
     );
     const channel = input.channel;
@@ -204,12 +210,19 @@ export const createDiscordOutputPump = (
     const onCompactionEnd = (event: SessionEvent<"compaction_end">) =>
       Effect.gen(function* () {
         if (event.errorMessage !== undefined) {
-          yield* Effect.logWarning("Compaction failed", {
-            channelId: input.channel.id,
-            reason: event.reason,
-            willRetry: event.willRetry,
-            errorMessage: event.errorMessage,
-          });
+          yield* (
+            event.aborted
+              ? Effect.logDebug("Compaction interrupted")
+              : event.willRetry
+                ? Effect.logWarning("Compaction failed; retrying")
+                : Effect.logError("Compaction failed")
+          ).pipe(
+            Effect.annotateLogs({
+              reason: event.reason,
+              willRetry: event.willRetry,
+              errorMessage: event.errorMessage,
+            }),
+          );
         }
         if (event.aborted) {
           yield* sendCompactionStatus({ phase: "aborted", reason: event.reason });
@@ -347,7 +360,7 @@ export const createDiscordOutputPump = (
         Effect.timeout("3 seconds"),
         Effect.ignore({
           log: "Warn",
-          message: `Timed out waiting for output queue to drain for channel ${input.channel.id}`,
+          message: "Timed out waiting for Discord output queue to drain",
         }),
       ),
     );
@@ -357,4 +370,4 @@ export const createDiscordOutputPump = (
       reportUnexpectedError,
       executeOrdered,
     };
-  });
+  }).pipe(Effect.annotateLogs({ channelId: input.channel.id }));

@@ -115,7 +115,9 @@ const writeDefaultConfigFile = (path: string) =>
       .pipe(
         Effect.mapError((cause) => new ConfigError({ message: `Failed to create ${path}`, cause })),
       );
-    yield* Effect.logInfo(`Created ${path} with default values.`);
+    yield* Effect.logInfo("Created configuration with default values").pipe(
+      Effect.annotateLogs({ configPath: path }),
+    );
   });
 
 const readConfigFile = (path: string) =>

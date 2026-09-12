@@ -19,6 +19,7 @@ import { Cause, Effect, Exit, FiberSet, Option, Stream } from "effect";
 import { GuestPath, IncusContainer } from "incus-api";
 
 import { SessionContainer } from "../session/session-container.ts";
+import { AgentToolError } from "./effect-tool.ts";
 
 const shQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
@@ -26,14 +27,16 @@ export const createIncusExtension = Effect.gen(function* () {
   const sessionContainer = yield* SessionContainer.Service;
   const runPromise = yield* FiberSet.makeRuntimePromise();
 
-  const runInContainer = <A, E>(
+  const withContainer = <A, E>(
     effect: (container: IncusContainer.Container) => Effect.Effect<A, E>,
-  ): Promise<A> => runPromise(Effect.flatMap(sessionContainer.get, effect));
+  ) => Effect.flatMap(sessionContainer.get, effect);
 
   const readOperations: ReadOperations = {
     access: async (path) => {
-      const result = await runInContainer((container) =>
-        container.exec(["/bin/sh", "-lc", `test -r ${shQuote(path)}`]),
+      const result = await runPromise(
+        withContainer((container) =>
+          container.exec(["/bin/sh", "-lc", `test -r ${shQuote(path)}`]),
+        ).pipe(Effect.withSpan("IncusExtension.read.access", { root: true })),
       );
       if (result.exitCode !== 0) {
         throw new Error(`File not readable: ${path}`);
@@ -42,13 +45,18 @@ export const createIncusExtension = Effect.gen(function* () {
     detectImageMimeType: async (path) => {
       try {
         const chunks: Uint8Array[] = [];
-        await runInContainer((container) =>
-          container.exec(["/bin/sh", "-lc", `head -c ${IMAGE_TYPE_SNIFF_BYTES} ${shQuote(path)}`], {
-            onStdout: (chunk) =>
-              Effect.sync(() => {
-                chunks.push(chunk.slice());
-              }),
-          }),
+        await runPromise(
+          withContainer((container) =>
+            container.exec(
+              ["/bin/sh", "-lc", `head -c ${IMAGE_TYPE_SNIFF_BYTES} ${shQuote(path)}`],
+              {
+                onStdout: (chunk) =>
+                  Effect.sync(() => {
+                    chunks.push(chunk.slice());
+                  }),
+              },
+            ),
+          ).pipe(Effect.withSpan("IncusExtension.read.detectImageMimeType", { root: true })),
         );
         return detectSupportedImageMimeType(Buffer.concat(chunks));
       } catch {
@@ -56,8 +64,10 @@ export const createIncusExtension = Effect.gen(function* () {
       }
     },
     readFile: async (path) => {
-      const data = await runInContainer((container) =>
-        GuestPath.of(path).pipe(Effect.flatMap(container.files.readBytes)),
+      const data = await runPromise(
+        withContainer((container) =>
+          GuestPath.of(path).pipe(Effect.flatMap(container.files.readBytes)),
+        ).pipe(Effect.withSpan("IncusExtension.read.readFile", { root: true })),
       );
       return Buffer.from(data);
     },
@@ -65,28 +75,38 @@ export const createIncusExtension = Effect.gen(function* () {
 
   const writeOperations: WriteOperations = {
     mkdir: async (dir) => {
-      await runInContainer((container) =>
-        GuestPath.of(dir).pipe(
-          Effect.flatMap((path) => container.files.mkdir(path, { recursive: true })),
-        ),
+      await runPromise(
+        withContainer((container) =>
+          GuestPath.of(dir).pipe(
+            Effect.flatMap((path) => container.files.mkdir(path, { recursive: true })),
+          ),
+        ).pipe(Effect.withSpan("IncusExtension.write.mkdir", { root: true })),
       );
     },
     writeFile: async (path, content) => {
       const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
-      await runInContainer((container) =>
-        GuestPath.of(path).pipe(
-          Effect.flatMap((path) =>
-            container.files.write(path, Stream.make(bytes), { createParents: true }),
+      await runPromise(
+        withContainer((container) =>
+          GuestPath.of(path).pipe(
+            Effect.flatMap((path) =>
+              container.files.write(path, Stream.make(bytes), { createParents: true }),
+            ),
           ),
-        ),
+        ).pipe(Effect.withSpan("IncusExtension.write.writeFile", { root: true })),
       );
     },
   };
 
   const editOperations: EditOperations = {
     access: async (path) => {
-      const result = await runInContainer((container) =>
-        container.exec(["/bin/sh", "-lc", `test -r ${shQuote(path)} && test -w ${shQuote(path)}`]),
+      const result = await runPromise(
+        withContainer((container) =>
+          container.exec([
+            "/bin/sh",
+            "-lc",
+            `test -r ${shQuote(path)} && test -w ${shQuote(path)}`,
+          ]),
+        ).pipe(Effect.withSpan("IncusExtension.edit.access", { root: true })),
       );
       if (result.exitCode !== 0) {
         throw new Error(`File not readable and writable: ${path}`);
@@ -101,14 +121,35 @@ export const createIncusExtension = Effect.gen(function* () {
       const timeoutSec = execOptions.timeout;
       const timeoutSeconds = timeoutSec !== undefined && timeoutSec > 0 ? timeoutSec : undefined;
       const exit = await runPromise(
-        Effect.flatMap(sessionContainer.get, (container) =>
+        withContainer((container) =>
           container.exec(["/bin/bash", "-c", command], {
             cwd,
             timeoutSeconds,
             onStdout: (chunk) => Effect.sync(() => execOptions.onData(Buffer.from(chunk))),
             onStderr: (chunk) => Effect.sync(() => execOptions.onData(Buffer.from(chunk))),
           }),
-        ).pipe(Effect.exit),
+        ).pipe(
+          Effect.catchCause((cause) => {
+            if (execOptions.signal?.aborted || Cause.hasInterruptsOnly(cause)) {
+              return Effect.interrupt;
+            }
+            const error = Cause.findErrorOption(cause);
+            if (Option.isSome(error) && error.value instanceof IncusContainer.ExecTimeoutError) {
+              return Effect.fail(new AgentToolError({ message: `timeout:${timeoutSec}` }));
+            }
+            return Effect.logError("Sandbox bash command failed", cause).pipe(
+              Effect.annotateLogs({ toolName: "bash" }),
+              Effect.andThen(
+                Effect.fail(new AgentToolError({ message: "Sandbox internal error" })),
+              ),
+            );
+          }),
+          Effect.withSpan("IncusExtension.bash.exec", {
+            root: true,
+            attributes: { toolName: "bash" },
+          }),
+          Effect.exit,
+        ),
         { signal: execOptions.signal },
       );
 
@@ -119,13 +160,7 @@ export const createIncusExtension = Effect.gen(function* () {
         throw new Error("aborted");
       }
 
-      const error = Cause.findErrorOption(exit.cause);
-      if (Option.isSome(error) && error.value instanceof IncusContainer.ExecTimeoutError) {
-        throw new Error(`timeout:${timeoutSec}`);
-      }
-
-      await runPromise(Effect.logError(`Sandbox bash command failed: ${Cause.pretty(exit.cause)}`));
-      throw new Error("Sandbox internal error");
+      throw Cause.squash(exit.cause);
     },
   };
 

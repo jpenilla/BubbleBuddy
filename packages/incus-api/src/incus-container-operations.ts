@@ -16,39 +16,42 @@ export const create = (
   exists: (name) => api.instances.exists(name, { project }),
 });
 
-const acquire = (
+const acquire = Effect.fn("IncusContainer.acquire")(function* (
   project: string,
   api: IncusApi.Interface,
   options: IncusContainer.CreateOptions,
-): Effect.Effect<IncusContainer.Container, IncusApi.ApiError> =>
-  Effect.gen(function* () {
-    const name = options.name ?? `incus-api-${crypto.randomUUID().slice(0, 8)}`;
-    const container = createContainer(project, api, name);
+) {
+  const name = options.name ?? `incus-api-${crypto.randomUUID().slice(0, 8)}`;
+  const attributes = { containerName: name, incusProject: project };
+  yield* Effect.annotateCurrentSpan(attributes);
+  const container = createContainer(project, api, name);
 
-    const operation = yield* api.instances.create(
-      {
-        name,
-        type: "container",
-        ephemeral: true,
-        ...(options.profiles === undefined ? {} : { profiles: [...options.profiles] }),
-        config: containerConfig(options.limits),
-        devices: devices(options),
-        source: source(options.image),
-        start: true,
-      },
-      { project },
-    );
-    yield* api.operations
-      .wait(operation.id, { project })
-      .pipe(
-        Effect.onError(() =>
-          cleanup(api, container).pipe(
-            Effect.ignore({ log: "Warn", message: "Incus container cleanup failed" }),
-          ),
+  const operation = yield* api.instances.create(
+    {
+      name,
+      type: "container",
+      ephemeral: true,
+      ...(options.profiles === undefined ? {} : { profiles: [...options.profiles] }),
+      config: containerConfig(options.limits),
+      devices: devices(options),
+      source: source(options.image),
+      start: true,
+    },
+    { project },
+  );
+  yield* Effect.annotateCurrentSpan("incusOperationId", operation.id);
+  yield* api.operations
+    .wait(operation.id, { project })
+    .pipe(
+      Effect.onError(() =>
+        cleanup(api, container).pipe(
+          Effect.ignore({ log: "Warn", message: "Incus container cleanup failed" }),
+          Effect.annotateLogs(attributes),
         ),
-      );
-    return container;
-  });
+      ),
+    );
+  return container;
+});
 
 const release = (
   api: IncusApi.Interface,
@@ -56,14 +59,19 @@ const release = (
   exit: Exit.Exit<unknown, unknown>,
 ): Effect.Effect<void, never> =>
   cleanup(api, container).pipe(
-    Effect.catchCause((cause: Cause.Cause<IncusApi.ApiError>) =>
-      Effect.logWarning(
-        exit._tag === "Success"
-          ? "Incus container cleanup failed after successful scope exit"
-          : "Incus container cleanup failed after failed/interrupted scope exit",
-        { container: container.name, project: container.project, cause: Cause.pretty(cause) },
+    Effect.onError((cause) =>
+      Effect.logError("Incus container cleanup failed", cause).pipe(
+        Effect.annotateLogs({
+          containerName: container.name,
+          incusProject: container.project,
+          scopeExit: exit._tag,
+        }),
       ),
     ),
+    Effect.withSpan("IncusContainer.release", {
+      attributes: { containerName: container.name, incusProject: container.project },
+    }),
+    Effect.ignoreCause(),
   );
 
 const cleanup = (
@@ -72,11 +80,13 @@ const cleanup = (
 ): Effect.Effect<void, IncusApi.ApiError> =>
   stop(api, container.project, container.name, { force: true }).pipe(
     Effect.catchCause((cause: Cause.Cause<IncusApi.ApiError>) =>
-      Effect.logWarning("Incus container stop failed during cleanup; attempting delete", {
-        container: container.name,
-        project: container.project,
-        cause: Cause.pretty(cause),
-      }).pipe(Effect.andThen(deleteContainer(api, container.project, container.name))),
+      Effect.logWarning(
+        "Incus container stop failed during cleanup; attempting delete",
+        cause,
+      ).pipe(
+        Effect.annotateLogs({ containerName: container.name, incusProject: container.project }),
+        Effect.andThen(deleteContainer(api, container.project, container.name)),
+      ),
     ),
   );
 
@@ -86,6 +96,7 @@ const stop = Effect.fn("IncusContainer.stop")(function* (
   name: string,
   options: { readonly force?: boolean; readonly timeoutSeconds?: number } = {},
 ) {
+  yield* Effect.annotateCurrentSpan({ containerName: name, incusProject: project });
   const operation = yield* api.instances.setState(
     name,
     {
@@ -95,6 +106,7 @@ const stop = Effect.fn("IncusContainer.stop")(function* (
     },
     { project },
   );
+  yield* Effect.annotateCurrentSpan("incusOperationId", operation.id);
   yield* api.operations.wait(operation.id, {
     project,
     timeoutSeconds: options.timeoutSeconds,
@@ -106,7 +118,9 @@ const deleteContainer = Effect.fn("IncusContainer.delete")(function* (
   project: string,
   name: string,
 ) {
+  yield* Effect.annotateCurrentSpan({ containerName: name, incusProject: project });
   const operation = yield* api.instances.delete(name, { project });
+  yield* Effect.annotateCurrentSpan("incusOperationId", operation.id);
   yield* api.operations.wait(operation.id, { project });
 });
 
@@ -117,10 +131,9 @@ const createContainer = (
 ): IncusContainer.Container => ({
   name,
   project,
-  exec: Effect.fn("IncusContainer.exec")(function* (
-    command: readonly string[],
-    options?: IncusContainer.ExecOptions,
-  ) {
+  exec: Effect.fn("IncusContainer.exec", {
+    attributes: { containerName: name, incusProject: project },
+  })(function* (command: readonly string[], options?: IncusContainer.ExecOptions) {
     return yield* IncusExecSession.exec(name, project, api, command, options);
   }),
   files: IncusFileOperations.create(api, name, project),
