@@ -56,6 +56,9 @@ export const create = defineEffectTool({
   label: "Create schedule",
   description:
     "Schedule a wakeup in this channel. Survives new sessions and restarts. Displays a confirmation card in this channel. For recurring schedules, ask for the user's time zone when it isn't clear.",
+  promptGuidelines: [
+    "Each cron occurrence triggers a separate wakeup automatically. Do not use sleep or time-checking loops to wait for subsequent occurrences.",
+  ],
   parameters: Type.Object({
     description,
     note,
