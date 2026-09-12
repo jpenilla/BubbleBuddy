@@ -1,4 +1,4 @@
-import { Cause, Effect, Fiber, Schema, Scope } from "effect";
+import { Cause, Effect, Fiber, Schema } from "effect";
 import * as Socket from "effect/unstable/socket/Socket";
 
 import { IncusApi } from "./incus-api.ts";
@@ -14,7 +14,7 @@ const ExecWebSocketSecrets = Schema.Struct({
 type ExecWebSocketSecrets = typeof ExecWebSocketSecrets.Type;
 
 interface ExecLifecycle {
-  control: Socket.Writer | undefined;
+  controlConnected: boolean;
   terminal: boolean;
 }
 
@@ -104,25 +104,24 @@ const waitExecResult = Effect.fn("IncusExecSession.waitExecResult")(function* (
   return { exitCode: metadata.return };
 });
 
-const shutdownExec = Effect.fn("IncusExecSession.shutdownExec")(function* (
+const confirmExecTermination = Effect.fn("IncusExecSession.confirmExecTermination")(function* (
   api: IncusApi.Interface,
   project: string,
   operation: IncusApi.OperationRef,
   lifecycle: ExecLifecycle,
 ) {
-  if (lifecycle.terminal || !lifecycle.control) return;
+  if (lifecycle.terminal || !lifecycle.controlConnected) return;
 
-  yield* lifecycle.control
-    .write(JSON.stringify({ command: "signal", signal: 15 }))
-    .pipe(
-      Effect.timeout("250 millis"),
-      Effect.ignore({ log: "Warn", message: "Failed to send SIGTERM to Incus exec" }),
-    );
-  // Bounded by the wait endpoint's own timeout. Anything still running when the socket scope
-  // closes is killed by Incus when the control websocket goes away.
-  yield* api.operations
+  // Socket finalizers have already closed the control connection, triggering Incus SIGKILL.
+  // Confirm the exec operation ended, not that every descendant was killed.
+  const result = yield* api.operations
     .wait(operation.id, { project, timeoutSeconds: 2, failureMode: "return" })
-    .pipe(Effect.ignore);
+    .pipe(Effect.timeout("3 seconds"), Effect.interruptible);
+  if (IncusApi.OperationWaitResult.$is("Running")(result)) {
+    yield* Effect.logWarning("Incus exec termination was not confirmed", {
+      operation: operation.id,
+    });
+  }
 });
 
 export const exec = Effect.fn("IncusExecSession.exec")(function* (
@@ -141,16 +140,16 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
 
   return yield* Effect.scoped(
     Effect.gen(function* () {
-      const lifecycle: ExecLifecycle = { control: undefined, terminal: false };
-      const socketScope = yield* Effect.acquireRelease(Scope.make(), Scope.close);
+      const lifecycle: ExecLifecycle = { controlConnected: false, terminal: false };
       const operation = yield* api.instances.exec(
         name,
         execPayload(command, options),
         { project },
         (operation) =>
-          shutdownExec(api, project, operation, lifecycle).pipe(
+          confirmExecTermination(api, project, operation, lifecycle).pipe(
             Effect.catchCause((cause) =>
-              Effect.logWarning("Incus exec shutdown failed", {
+              Effect.logWarning("Incus exec termination was not confirmed", {
+                operation: operation.id,
                 cause: Cause.pretty(cause),
               }),
             ),
@@ -161,12 +160,12 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
         const socket = yield* api.operations.makeWebSocket(operation.id, secret, {
           openTimeout: 5000,
         });
-        const reader = yield* Scope.provide(socket.reader, socketScope);
+        const reader = yield* socket.reader;
         return { socket, reader };
       });
 
-      const control = yield* connect(secrets.control);
-      lifecycle.control = yield* Scope.provide(control.socket.writer, socketScope);
+      yield* connect(secrets.control);
+      lifecycle.controlConnected = true;
       const { stdin, stdout, stderr } = yield* Effect.all(
         {
           stdin: connect(secrets["0"]),
@@ -175,7 +174,7 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
         },
         { concurrency: "unbounded" },
       );
-      const writer = yield* Scope.provide(stdin.socket.writer, socketScope);
+      const writer = yield* stdin.socket.writer;
 
       // Stdin is not exposed by this API, so send the stream barrier immediately: Incus treats
       // a text frame as end-of-input, which lets commands that wait for EOF, such as `cat`,
