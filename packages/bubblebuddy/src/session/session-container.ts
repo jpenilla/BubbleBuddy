@@ -53,7 +53,7 @@ export const layer = (options: Options) =>
                   incusProject: container.project,
                 };
                 yield* Effect.annotateCurrentSpan(attributes);
-                yield* Effect.logInfo("Incus container started").pipe(
+                yield* Effect.logInfo("Started Incus container").pipe(
                   Effect.annotateLogs(attributes),
                 );
                 yield* Effect.addFinalizer(() =>
