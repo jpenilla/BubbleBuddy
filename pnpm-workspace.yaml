@@ -14,7 +14,7 @@ catalog:
   "@effect/platform-node": 4.0.0-rc.112
   "@effect/sql-sqlite-node": 4.0.0-rc.112
   "@effect/tsgo": 0.45.0
-  "@effect/vitest": 4.0.0-rc.112
+  "@effect/vitest": 4.0.0-rc.114
   typescript: ^7.0.2
   "@types/node": ^26.4.1
   oxfmt: ^0.67.0
