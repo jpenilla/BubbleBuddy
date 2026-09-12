@@ -31,7 +31,7 @@ const resolveServer = Effect.fn("McpClientFactory.resolveServer")(function* (
     HTTP: ({ url, bearerTokenEnv }) =>
       Effect.gen(function* () {
         const envName = bearerTokenEnv ?? (yield* defaultBearerTokenEnv(name));
-        const bearerToken = yield* Config.option(Config.redacted(envName));
+        const bearerToken = yield* Config.option(Config.Redacted(envName));
         return ResolvedServer.HTTP({ url, bearerToken });
       }),
     Stdio: ({ command, args, env }) => Effect.succeed(ResolvedServer.Stdio({ command, args, env })),

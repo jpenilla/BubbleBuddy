@@ -36,7 +36,6 @@ export interface ConnectionOptions {
 
 export interface WebSocketOptions {
   readonly openTimeout?: Duration.Input;
-  readonly closeCodeIsError?: (code: number) => boolean;
 }
 
 export interface Interface {

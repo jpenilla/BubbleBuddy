@@ -20,17 +20,17 @@ index 4b516598edb18a19abc76092b03a8f5caa511fd5..fb679663871cff80093f47647fbc2b29
  export function detectSupportedImageMimeType(buffer) {
      if (startsWith(buffer, [0xff, 0xd8, 0xff])) {
 diff --git a/package.json b/package.json
-index 58d9dd64d57ce37477fd0376904513a3d470e109..052db008cd61297a27c3527827acffa7c78fd095 100644
+index 572af1e947bf8b827389ecafae428a13b4957fa9..77b512e73e8b21cbf77f116a3d6503bb8fae0d52 100644
 --- a/package.json
 +++ b/package.json
 @@ -22,6 +22,10 @@
  		"./client": {
- 			"types": "./dist/client/index.d.ts",
- 			"import": "./dist/client/index.js"
-+		},
+ 			"source": "./src/client/index.ts"
+ 		},
 +		"./utils/mime": {
 +			"types": "./dist/utils/mime.d.ts",
 +			"import": "./dist/utils/mime.js"
++		},
+ 		"./experimental/plugin": {
+ 			"source": "./src/experimental/plugin.ts"
  		}
- 	},
- 	"files": [
