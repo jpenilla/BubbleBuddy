@@ -37,6 +37,7 @@ export const layer = (options: Options) =>
             yield* ScopedRef.set(
               containerRef,
               Effect.gen(function* () {
+                yield* Effect.logInfo("Starting Incus container");
                 const container = yield* incus.project("default").containers.scoped({
                   image: {
                     type: "remote",
@@ -56,7 +57,7 @@ export const layer = (options: Options) =>
                   Effect.annotateLogs(attributes),
                 );
                 yield* Effect.addFinalizer(() =>
-                  Effect.logInfo("Releasing Incus container").pipe(Effect.annotateLogs(attributes)),
+                  Effect.logInfo("Closing Incus container").pipe(Effect.annotateLogs(attributes)),
                 );
                 return container;
               }).pipe(
