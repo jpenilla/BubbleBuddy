@@ -42,23 +42,27 @@ export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
       parameters: tool.parameters,
       execute: async (toolCallId, input, signal, onUpdate, ctx) => {
         const exit = await Effect.runPromiseExitWith(context)(
-          tool.execute(toolCallId, input, onUpdate, ctx).pipe(
+          Effect.suspend(() => tool.execute(toolCallId, input, onUpdate, ctx)).pipe(
             Effect.scoped,
-            Effect.tapError((error) =>
-              Effect.logDebug("Tool failed", { toolName: tool.name, toolCallId, error }),
-            ),
-            Effect.catchDefect((defect) =>
-              Effect.logError("Tool defect", { toolName: tool.name, toolCallId, defect }).pipe(
-                Effect.andThen(
-                  Effect.fail(
-                    new AgentToolError({ message: "This tool encountered an internal error." }),
-                  ),
-                ),
-              ),
+            Effect.onError((cause) =>
+              (Cause.hasDies(cause)
+                ? Effect.logError("Tool defect", cause)
+                : Effect.logDebug(
+                    Cause.hasInterruptsOnly(cause) ? "Tool interrupted" : "Tool failed",
+                    cause,
+                  )
+              ).pipe(Effect.annotateLogs({ toolName: tool.name, toolCallId })),
             ),
             Effect.withSpan("EffectTool.execute", {
+              // The captured runtime belongs to tool construction, not this invocation.
+              root: true,
               attributes: { toolName: tool.name, toolCallId },
             }),
+            Effect.catchDefect(() =>
+              Effect.fail(
+                new AgentToolError({ message: "This tool encountered an internal error." }),
+              ),
+            ),
           ),
           { signal },
         );

@@ -10,15 +10,17 @@ export const create = (
   project: string,
 ): IncusContainer.FileOperations => {
   const projectOptions = { project };
+  const attributes = { containerName: name, incusProject: project };
 
-  const read: IncusContainer.FileOperations["read"] = Effect.fn("IncusContainer.read")(function* (
-    path: GuestPath.GuestPath,
-  ) {
+  const read: IncusContainer.FileOperations["read"] = Effect.fn("IncusContainer.files.read", {
+    attributes,
+  })(function* (path: GuestPath.GuestPath) {
     return yield* api.instances.files.read(name, path, projectOptions);
   });
 
   const readFile: IncusContainer.Container["files"]["readFile"] = Effect.fn(
-    "IncusContainer.readFile",
+    "IncusContainer.files.readFile",
+    { attributes },
   )(function* (path: GuestPath.GuestPath) {
     const response = yield* read(path);
     const reject = (entry: IncusApi.FileRead) =>
@@ -36,53 +38,59 @@ export const create = (
     });
   });
 
-  const write: IncusContainer.Container["files"]["write"] = Effect.fn("IncusContainer.writeFile")(
-    function* <E, R>(
-      path: GuestPath.GuestPath,
-      content: Stream.Stream<Uint8Array, E, R>,
-      options?: IncusContainer.FileWriteOptions,
-    ) {
-      const context = yield* Effect.context<R>();
-      const sourceError = yield* Ref.make(Option.none<E>());
-      const body: Stream.Stream<Uint8Array, E, never> = content.pipe(
-        Stream.tapError((error) => Ref.set(sourceError, Option.some(error))),
-        Stream.provideContext(context),
-      );
-      if (options?.createParents) {
-        yield* ensureParentDirectories(api, name, project, path, {
-          uid: options.uid,
-          gid: options.gid,
-        });
-      }
-      yield* api.instances.files
-        .write(name, path, body, fileHeaders("file", options), projectOptions)
-        .pipe(
-          Effect.catch((error) =>
-            Ref.get(sourceError).pipe(
-              Effect.flatMap((source): Effect.Effect<never, E | IncusApi.ApiError> =>
-                Option.isSome(source) ? Effect.fail(source.value) : Effect.fail(error),
-              ),
+  const write: IncusContainer.Container["files"]["write"] = Effect.fn(
+    "IncusContainer.files.write",
+    {
+      attributes,
+    },
+  )(function* <E, R>(
+    path: GuestPath.GuestPath,
+    content: Stream.Stream<Uint8Array, E, R>,
+    options?: IncusContainer.FileWriteOptions,
+  ) {
+    const context = yield* Effect.context<R>();
+    const sourceError = yield* Ref.make(Option.none<E>());
+    const body: Stream.Stream<Uint8Array, E, never> = content.pipe(
+      Stream.tapError((error) => Ref.set(sourceError, Option.some(error))),
+      Stream.provideContext(context),
+    );
+    if (options?.createParents) {
+      yield* ensureParentDirectories(api, name, project, path, {
+        uid: options.uid,
+        gid: options.gid,
+      });
+    }
+    yield* api.instances.files
+      .write(name, path, body, fileHeaders("file", options), projectOptions)
+      .pipe(
+        Effect.catch((error) =>
+          Ref.get(sourceError).pipe(
+            Effect.flatMap((source): Effect.Effect<never, E | IncusApi.ApiError> =>
+              Option.isSome(source) ? Effect.fail(source.value) : Effect.fail(error),
             ),
           ),
-        );
-    },
-  );
+        ),
+      );
+  });
 
-  const mkdir: IncusContainer.Container["files"]["mkdir"] = Effect.fn("IncusContainer.mkdir")(
-    function* (path: GuestPath.GuestPath, options?: { readonly recursive?: boolean }) {
-      if (options?.recursive) {
-        yield* createDirectories(api, name, project, path);
-      } else {
-        yield* api.instances.files.write(
-          name,
-          path,
-          undefined,
-          fileHeaders("directory"),
-          projectOptions,
-        );
-      }
+  const mkdir: IncusContainer.Container["files"]["mkdir"] = Effect.fn(
+    "IncusContainer.files.mkdir",
+    {
+      attributes,
     },
-  );
+  )(function* (path: GuestPath.GuestPath, options?: { readonly recursive?: boolean }) {
+    if (options?.recursive) {
+      yield* createDirectories(api, name, project, path);
+    } else {
+      yield* api.instances.files.write(
+        name,
+        path,
+        undefined,
+        fileHeaders("directory"),
+        projectOptions,
+      );
+    }
+  });
 
   return {
     read,
@@ -93,14 +101,14 @@ export const create = (
           Effect.flatMap((file) => file.bytes.pipe(Stream.runCollect)),
           Effect.map(concatBytes),
         ),
-      ).pipe(Effect.withSpan("IncusContainer.files.readBytes")),
+      ).pipe(Effect.withSpan("IncusContainer.files.readBytes", { attributes })),
     readText: (path) =>
       Effect.scoped(
         readFile(path).pipe(
           Effect.flatMap((file) => file.bytes.pipe(Stream.decodeText(), Stream.runCollect)),
           Effect.map((chunks) => Array.from(chunks).join("")),
         ),
-      ).pipe(Effect.withSpan("IncusContainer.files.readText")),
+      ).pipe(Effect.withSpan("IncusContainer.files.readText", { attributes })),
     write,
     mkdir,
   };

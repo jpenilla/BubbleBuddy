@@ -23,7 +23,9 @@ const createPiContext = Effect.gen(function* () {
     );
   }
 
-  yield* Effect.logInfo(`Using model: ${model.provider}/${model.id}`);
+  yield* Effect.logInfo("Using model").pipe(
+    Effect.annotateLogs({ modelProvider: model.provider, modelId: model.id }),
+  );
 
   return PiContext.of({
     agentDir,

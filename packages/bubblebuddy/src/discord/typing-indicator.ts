@@ -1,5 +1,5 @@
 import { Routes, type GuildTextBasedChannel } from "discord.js";
-import { Clock, Data, Deferred, Effect, Queue, Scope } from "effect";
+import { Cause, Clock, Data, Deferred, Effect, Queue, Scope } from "effect";
 
 import { tryDiscordJsPromise } from "./utils.ts";
 
@@ -36,11 +36,17 @@ export const createTypingIndicator = (
       input.channel.client.rest.post(Routes.channelTyping(input.channel.id), { signal }),
     ).pipe(
       Effect.timeout(SEND_TYPING_TIMEOUT_MS),
-      Effect.withSpan("TypingIndicator.sendTyping"),
-      Effect.ignore({
-        log: "Warn",
-        message: `Failed to send typing indicator for channel ${input.channel.id}`,
+      Effect.onError((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.void
+          : Effect.logWarning("Typing indicator send failed", cause),
+      ),
+      Effect.annotateLogs({ channelId: input.channel.id }),
+      Effect.withSpan("TypingIndicator.sendTyping", {
+        root: true,
+        attributes: { channelId: input.channel.id },
       }),
+      Effect.ignore(),
     );
 
     const run = Effect.gen(function* () {

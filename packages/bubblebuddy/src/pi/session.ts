@@ -11,6 +11,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { GuildTextBasedChannel } from "discord.js";
 import {
+  Cause,
   Context,
   Effect,
   Exit,
@@ -151,9 +152,9 @@ export const createPiSession = (
           }).pipe(
             Effect.tapError((error) =>
               Effect.logWarning(
-                `Failed to resume session for channel ${input.channel.id}. Starting a new session.`,
+                "Persisted session resume failed; starting a new session",
                 error,
-              ),
+              ).pipe(Effect.annotateLogs({ channelId: input.channel.id })),
             ),
             Effect.orElseSucceed(() => SessionManager.create(WORKSPACE_CWD, sessionsDir)),
           );
@@ -334,20 +335,39 @@ export const createPiSession = (
             return;
           }
 
+          // The prompt outlives this activation, so it gets its own trace and a link
+          // back to the span that triggered it.
+          const triggerSpan = yield* Effect.currentSpan.pipe(Effect.orDie);
+
           yield* FiberHandle.run(
             activationFiber,
             Effect.scoped(
               activation.retainChannelSession.pipe(
                 Effect.andThen(
                   Effect.tryPromise({
-                    try: () =>
-                      session.prompt(activation.prompt).catch((error) => {
-                        output.reportUnexpectedError(error);
-                      }),
+                    try: () => session.prompt(activation.prompt),
                     catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
-                  }),
+                  }).pipe(
+                    Effect.tapError((error) =>
+                      Effect.sync(() => output.reportUnexpectedError(error.cause)),
+                    ),
+                  ),
                 ),
-                Effect.ignoreCause({ log: "Warn", message: "Session activation failed" }),
+                Effect.onError((cause) =>
+                  Cause.hasInterruptsOnly(cause)
+                    ? Effect.logDebug("Session activation interrupted", cause)
+                    : Effect.logError("Session activation failed", cause),
+                ),
+                Effect.withSpan("PiSession.prompt", {
+                  root: true,
+                  attributes: {
+                    channelId: input.channel.id,
+                    modelId: piContext.model.id,
+                    modelProvider: piContext.model.provider,
+                  },
+                }),
+                Effect.linkSpans(triggerSpan),
+                Effect.ignoreCause(),
               ),
             ),
           );
@@ -394,6 +414,7 @@ const loadMcpServerTools = Effect.fn("PiSession.loadMcpServerTools")(function* (
   name: string,
   server: McpServerConfigEntry,
 ) {
+  yield* Effect.annotateCurrentSpan("mcpServerName", name);
   const serverScope = yield* Scope.fork(yield* Scope.Scope);
 
   return yield* Effect.gen(function* () {
@@ -404,10 +425,10 @@ const loadMcpServerTools = Effect.fn("PiSession.loadMcpServerTools")(function* (
     Effect.timeout("10 seconds"),
     Effect.onExit((exit) => (Exit.isFailure(exit) ? Scope.close(serverScope, exit) : Effect.void)),
     Effect.catch((cause) =>
-      Effect.logWarning(
-        `Failed to load tools from MCP server "${name}"; skipping server`,
-        cause,
-      ).pipe(Effect.as([])),
+      Effect.logWarning("MCP tool loading failed; skipping server", cause).pipe(
+        Effect.annotateLogs({ mcpServerName: name }),
+        Effect.as([]),
+      ),
     ),
   );
 });

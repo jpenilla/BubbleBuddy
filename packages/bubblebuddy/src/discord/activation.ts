@@ -2,20 +2,22 @@ import { Events, type Client, type Message } from "discord.js";
 import { Effect, Layer } from "effect";
 
 import { ChannelSessions } from "../session/registry.ts";
-import { Discord } from "./client.ts";
+import { DiscordEvents } from "./discord-events.ts";
+import { DiscordClient } from "./discord-client.ts";
 import { isGuildTextChannel } from "./utils.ts";
 import { formatMessageForPrompt } from "./prompt-formatting.ts";
 
 export const ActivationLayer = Layer.effectDiscard(
   Effect.gen(function* () {
-    const discord = yield* Discord;
-    yield* discord.events.forkOn(Events.MessageCreate, (message) =>
+    const client = yield* DiscordClient.Service;
+    const events = yield* DiscordEvents.Service;
+    yield* events.forkOn(Events.MessageCreate, (message) =>
       Effect.gen(function* () {
         if (!message.inGuild()) {
           return;
         }
 
-        return yield* Effect.scoped(handleGuildMessage(discord.client, message));
+        return yield* Effect.scoped(handleGuildMessage(client, message));
       }),
     );
   }),

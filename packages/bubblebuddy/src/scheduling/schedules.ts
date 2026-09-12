@@ -92,10 +92,13 @@ const Row = Schema.Struct({
   timezone: Schema.NullOr(Schema.String),
 });
 
-export class ValidationError extends Schema.TaggedError<ValidationError>()("ValidationError", {
-  message: Schema.String,
-}) {}
-export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
+export class ValidationError extends Schema.TaggedError<ValidationError>()(
+  "Schedules.ValidationError",
+  {
+    message: Schema.String,
+  },
+) {}
+export class StoreError extends Schema.TaggedError<StoreError>()("Schedules.StoreError", {
   message: Schema.String,
   operation: Schema.String,
   cause: Schema.Defect(),

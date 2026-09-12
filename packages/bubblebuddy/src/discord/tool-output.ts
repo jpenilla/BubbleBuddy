@@ -70,7 +70,9 @@ export const make = (
       Effect.gen(function* () {
         const entry = group.entries.get(toolCallId);
         if (entry === undefined) {
-          yield* Effect.logWarning("Grouped tool entry is missing", { toolCallId });
+          yield* Effect.logWarning("Grouped tool entry is missing").pipe(
+            Effect.annotateLogs({ toolCallId }),
+          );
           return;
         }
         group.entries.set(toolCallId, { ...entry, phase: end.isError ? "error" : "success" });

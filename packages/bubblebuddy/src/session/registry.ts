@@ -26,6 +26,7 @@ const createChannelSessions = Effect.gen(function* () {
   });
 
   const get = Effect.fn("ChannelSessions.get")(function* (channelId: string) {
+    yield* Effect.annotateCurrentSpan("channelId", channelId);
     return yield* RcMap.get(sessions, channelId);
   });
 

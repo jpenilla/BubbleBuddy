@@ -1,7 +1,8 @@
 import { Events } from "discord.js";
 import { Effect, Layer } from "effect";
 
-import { Discord } from "../client.ts";
+import { DiscordEvents } from "../discord-events.ts";
+import { DiscordClient } from "../discord-client.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
 import { abortCommand } from "./abort.ts";
 import { createCommandDispatcher } from "./command.ts";
@@ -12,8 +13,8 @@ import { thinkingCommand } from "./thinking.ts";
 
 export const SlashCommandsLayer = Layer.effectDiscard(
   Effect.gen(function* () {
-    yield* Effect.logInfo("Registering Discord slash commands.");
-    const discord = yield* Discord;
+    const client = yield* DiscordClient.Service;
+    const events = yield* DiscordEvents.Service;
     const commands = yield* Effect.all([
       abortCommand,
       compactCommand,
@@ -22,9 +23,9 @@ export const SlashCommandsLayer = Layer.effectDiscard(
       thinkingCommand,
     ]);
     yield* tryDiscordJsPromise(() =>
-      discord.client.application.commands.set(commands.map((command) => command.data.toJSON())),
+      client.application.commands.set(commands.map((command) => command.data.toJSON())),
     );
-    yield* discord.events.forkOn(Events.InteractionCreate, createCommandDispatcher(commands));
-    yield* Effect.logInfo("Discord slash commands registered.");
+    yield* events.forkOn(Events.InteractionCreate, createCommandDispatcher(commands));
+    yield* Effect.logInfo("Discord slash commands registered");
   }),
 );

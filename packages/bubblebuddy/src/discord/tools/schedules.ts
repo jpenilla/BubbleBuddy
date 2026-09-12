@@ -73,7 +73,7 @@ export const create = defineEffectTool({
         content: [{ type: "text" as const, text: Schedules.describe(schedule) }],
         details: CreatedDetails.make({ schedule }),
       };
-    }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
+    }).pipe(Effect.catchTag("Schedules.StoreError", (error) => Effect.die(error))),
 });
 
 export const update = defineEffectTool({
@@ -98,7 +98,7 @@ export const update = defineEffectTool({
         content: [{ type: "text" as const, text: Schedules.describe(updated.after) }],
         details: UpdatedDetails.make({ update: updated }),
       };
-    }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
+    }).pipe(Effect.catchTag("Schedules.StoreError", (error) => Effect.die(error))),
 });
 
 const NOTE_TERMINATOR = "<<<END_NOTE>>>";
@@ -128,7 +128,7 @@ export const list = defineEffectTool({
         ],
         details: undefined,
       };
-    }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
+    }).pipe(Effect.catchTag("Schedules.StoreError", (error) => Effect.die(error))),
 });
 
 export const cancel = defineEffectTool({
@@ -146,7 +146,7 @@ export const cancel = defineEffectTool({
         content: [{ type: "text" as const, text: Schedules.describe(schedule) }],
         details: CancelledDetails.make({ schedule }),
       };
-    }).pipe(Effect.catchTag("StoreError", (error) => Effect.die(error))),
+    }).pipe(Effect.catchTag("Schedules.StoreError", (error) => Effect.die(error))),
 });
 
 export * as ScheduleTools from "./schedules.ts";
