@@ -55,7 +55,7 @@ export const create = defineEffectTool({
   name: "create_schedule",
   label: "Create schedule",
   description:
-    "Schedule a wakeup in this channel. Survives new sessions and restarts. Displays a confirmation card in this channel. If time zone is ambiguous, ask the user.",
+    "Schedule a wakeup in this channel. Survives new sessions and restarts. Displays a confirmation card in this channel. For recurring schedules, ask for the user's time zone when it isn't clear.",
   parameters: Type.Object({
     description,
     note,
@@ -77,7 +77,7 @@ export const update = defineEffectTool({
   name: "update_schedule",
   label: "Update schedule",
   description:
-    "Update a schedule in this channel. Omitted fields stay unchanged. Supplied timing replaces the full timing configuration and recalculates from now. Displays a confirmation card in this channel.",
+    "Update a schedule in this channel. Omitted fields stay unchanged. Supplied timing replaces the full timing configuration and recalculates from now. Displays a confirmation card in this channel. For recurring schedules, ask for the user's time zone when it isn't clear.",
   parameters: Type.Object({
     id: Type.String(),
     timing: Type.Optional(timing),
