@@ -58,7 +58,7 @@ const writeAsset = Effect.fn("writeAsset")(function* (
       ),
       Effect.ensuring(
         container
-          .exec(["/bin/rm", "-f", "--", temporaryPath], { timeoutSeconds: 2 })
+          .exec(["/bin/rm", "-f", "--", temporaryPath])
           .pipe(Effect.timeout("3 seconds"), Effect.ignore),
       ),
     );
