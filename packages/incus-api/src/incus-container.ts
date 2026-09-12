@@ -91,12 +91,15 @@ export interface FileWriteOptions {
   readonly createParents?: boolean;
 }
 
+/** Receives one binary output frame; failures abort the exec as `ExecCallbackError`. */
+export type OutputCallback = (chunk: Uint8Array) => Effect.Effect<void, unknown>;
+
 export interface ExecOptions {
   readonly cwd?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly timeoutSeconds?: number;
-  readonly onStdout?: (chunk: Uint8Array) => Effect.Effect<void, unknown>;
-  readonly onStderr?: (chunk: Uint8Array) => Effect.Effect<void, unknown>;
+  readonly onStdout?: OutputCallback;
+  readonly onStderr?: OutputCallback;
 }
 
 export interface ExecResult {

@@ -45,13 +45,13 @@ const decodeExecWebSocketSecrets = (
 
 const consumeOutput = Effect.fn("IncusExecSession.consumeOutput")(function* (
   reader: Socket.Reader,
-  callback: IncusContainer.ExecOptions["onStdout"],
+  callback: IncusContainer.OutputCallback | undefined,
 ) {
   while (true) {
     const batch = yield* reader.pull;
     for (const frame of batch) {
-      // Incus ends each output stream with an empty text message (its stream barrier), then
-      // drops the socket without a close frame, so the barrier is the only end-of-stream signal.
+      // Incus ends each output stream with a text frame (its write barrier) and then drops the
+      // socket, so the barrier is the only end-of-stream signal.
       if (typeof frame === "string") return;
       if (callback) {
         yield* callback(frame).pipe(
@@ -74,12 +74,10 @@ const waitExecResult = Effect.fn("IncusExecSession.waitExecResult")(function* (
     timeoutSeconds,
     failureMode: "return",
   });
-  yield* Effect.uninterruptible(
-    Effect.sync(() => {
-      if (!IncusApi.OperationWaitResult.$is("Running")(result)) lifecycle.terminal = true;
-    }),
-  );
-  if (IncusApi.OperationWaitResult.$is("Running")(result)) {
+  // Terminal state is recorded before any failure path below so teardown can skip termination.
+  if (!IncusApi.OperationWaitResult.$is("Running")(result)) {
+    lifecycle.terminal = true;
+  } else {
     if (timeoutSeconds !== undefined) {
       return yield* new IncusContainer.ExecTimeoutError({ timeoutSeconds });
     }
@@ -118,6 +116,7 @@ const confirmExecTermination = Effect.fn("IncusExecSession.confirmExecTerminatio
   // matching Pi's bash tool. This confirms the operation ended and is bounded locally only.
   yield* api.operations
     .wait(operation.id, { project, failureMode: "return" })
+    // Make the locally bounded wait interruptible; teardown runs uninterruptible by default.
     .pipe(Effect.timeout("3 seconds"), Effect.interruptible, Effect.asVoid);
 });
 
@@ -138,6 +137,8 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
   return yield* Effect.scoped(
     Effect.gen(function* () {
       const lifecycle: ExecLifecycle = { controlConnected: false, terminal: false };
+      // Registered before the sockets, so teardown closes them first and that control close is
+      // what makes Incus kill the command.
       const operation = yield* api.instances.exec(
         name,
         execPayload(command, options),
