@@ -33,21 +33,21 @@ const formatDescription = (status: CompactionStatus): string => {
   switch (status.phase) {
     case "start":
       if (status.reason === "manual") {
-        return "🗜️ ⏳ **Compacting context**";
+        return "⏳ 🗜️ **Compacting context**";
       }
       return status.reason === "overflow"
-        ? "🗜️ ⏳ **Context overflow detected; auto-compacting**"
-        : "🗜️ ⏳ **Auto-compacting context**";
+        ? "⏳ 🗜️ **Context overflow detected; auto-compacting**"
+        : "⏳ 🗜️ **Auto-compacting context**";
     case "success":
       return status.tokensBefore === undefined
-        ? "🗜️ ✅ **Compaction completed**"
-        : `🗜️ ✅ **Compaction completed**\nCompacted from ${status.tokensBefore.toLocaleString()} tokens.`;
+        ? "✅ 🗜️ **Compaction completed**"
+        : `✅ 🗜️ **Compaction completed**\nCompacted from ${status.tokensBefore.toLocaleString()} tokens.`;
     case "error": {
       const detail = formatErrorDetail(status.errorMessage);
-      return `🗜️ ❌ **Compaction failed**${detail === undefined ? "" : `\n${detail}`}`;
+      return `❌ 🗜️ **Compaction failed**${detail === undefined ? "" : `\n${detail}`}`;
     }
     case "aborted":
-      return "🗜️ ❌ **Compaction cancelled**";
+      return "❌ 🗜️ **Compaction cancelled**";
   }
 };
 

@@ -86,11 +86,11 @@ const existingIdentification = (args: unknown) =>
 const renderSuccess = (details: ScheduleTools.Details) =>
   ScheduleTools.Details.match(details, {
     Created: ({ schedule }) =>
-      card("⏰ ✅ **Schedule created**", EMBED_COLOR.success, unchangedDetails(schedule)),
+      card("✅ ⏰ **Schedule created**", EMBED_COLOR.success, unchangedDetails(schedule)),
     Updated: ({ update }) =>
-      card("⏰ ✅ **Schedule updated**", EMBED_COLOR.success, updateDetails(update)),
+      card("✅ ⏰ **Schedule updated**", EMBED_COLOR.success, updateDetails(update)),
     Cancelled: ({ schedule }) =>
-      card("⏰ ✅ **Schedule cancelled**", EMBED_COLOR.success, unchangedDetails(schedule)),
+      card("✅ ⏰ **Schedule cancelled**", EMBED_COLOR.success, unchangedDetails(schedule)),
   });
 
 const formatter = (options: {
@@ -113,21 +113,21 @@ const formatter = (options: {
 });
 
 export const create = formatter({
-  pendingTitle: "⏰ ⏳ **Creating schedule**",
-  failedTitle: "⏰ ❌ **Could not create schedule**",
+  pendingTitle: "⏳ ⏰ **Creating schedule**",
+  failedTitle: "❌ ⏰ **Could not create schedule**",
   identify: (args) =>
     identification("Schedule", Option.getOrUndefined(decodeCreate(args))?.description),
 });
 
 export const update = formatter({
-  pendingTitle: "⏰ ⏳ **Updating schedule**",
-  failedTitle: "⏰ ❌ **Could not update schedule**",
+  pendingTitle: "⏳ ⏰ **Updating schedule**",
+  failedTitle: "❌ ⏰ **Could not update schedule**",
   identify: existingIdentification,
 });
 
 export const cancel = formatter({
-  pendingTitle: "⏰ ⏳ **Cancelling schedule**",
-  failedTitle: "⏰ ❌ **Could not cancel schedule**",
+  pendingTitle: "⏳ ⏰ **Cancelling schedule**",
+  failedTitle: "❌ ⏰ **Could not cancel schedule**",
   identify: existingIdentification,
 });
 
