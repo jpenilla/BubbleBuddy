@@ -40,7 +40,7 @@ export const layer = (options: Options) =>
               const container = yield* incus.project("default").containers.scoped({
                 image: {
                   type: "remote",
-                  alias: "debian/12",
+                  alias: "debian/13",
                   server: "https://images.linuxcontainers.org",
                 },
                 profiles: ["default"],

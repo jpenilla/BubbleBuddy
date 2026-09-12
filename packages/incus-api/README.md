@@ -10,7 +10,7 @@ const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
 const image: IncusContainer.ImageSource = {
   type: "remote",
-  alias: "debian/12",
+  alias: "debian/13",
 };
 
 const program = Effect.scoped(

@@ -10,7 +10,7 @@ import { apiFixture, errorFrom } from "./incus-fixtures.ts";
 
 const image: IncusContainer.ImageSource = {
   type: "remote",
-  alias: "debian/12",
+  alias: "debian/13",
   server: "https://images.linuxcontainers.org",
 };
 

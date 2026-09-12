@@ -12,7 +12,7 @@ const describeIntegration = process.env.INCUS_API_INTEGRATION === "1" ? describe
 
 const integrationImage: IncusContainer.ImageSource = {
   type: "remote",
-  alias: "debian/12",
+  alias: "debian/13",
   server: "https://images.linuxcontainers.org",
 };
 
