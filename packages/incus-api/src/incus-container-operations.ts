@@ -90,39 +90,43 @@ const cleanup = (
     ),
   );
 
-const stop = Effect.fn("IncusContainer.stop")(function* (
-  api: IncusApi.Interface,
-  project: string,
-  name: string,
-  options: { readonly force?: boolean; readonly timeoutSeconds?: number } = {},
-) {
-  yield* Effect.annotateCurrentSpan({ containerName: name, incusProject: project });
-  const operation = yield* api.instances.setState(
-    name,
-    {
-      action: "stop",
-      timeout: options.timeoutSeconds ?? (options.force ? 0 : 30),
-      ...(options.force === undefined ? {} : { force: options.force }),
-    },
-    { project },
-  );
-  yield* Effect.annotateCurrentSpan("incusOperationId", operation.id);
-  yield* api.operations.wait(operation.id, {
-    project,
-    timeoutSeconds: options.timeoutSeconds,
-  });
-});
+const stop = Effect.fnUntraced(
+  function* (
+    api: IncusApi.Interface,
+    project: string,
+    name: string,
+    options: { readonly force?: boolean; readonly timeoutSeconds?: number } = {},
+  ) {
+    const operation = yield* api.instances.setState(
+      name,
+      {
+        action: "stop",
+        timeout: options.timeoutSeconds ?? (options.force ? 0 : 30),
+        ...(options.force === undefined ? {} : { force: options.force }),
+      },
+      { project },
+    );
+    yield* Effect.annotateCurrentSpan("incusOperationId", operation.id);
+    yield* api.operations.wait(operation.id, {
+      project,
+      timeoutSeconds: options.timeoutSeconds,
+    });
+  },
+  Effect.withSpan("IncusContainer.stop", (_api, project, name) => ({
+    attributes: { containerName: name, incusProject: project },
+  })),
+);
 
-const deleteContainer = Effect.fn("IncusContainer.delete")(function* (
-  api: IncusApi.Interface,
-  project: string,
-  name: string,
-) {
-  yield* Effect.annotateCurrentSpan({ containerName: name, incusProject: project });
-  const operation = yield* api.instances.delete(name, { project });
-  yield* Effect.annotateCurrentSpan("incusOperationId", operation.id);
-  yield* api.operations.wait(operation.id, { project });
-});
+const deleteContainer = Effect.fnUntraced(
+  function* (api: IncusApi.Interface, project: string, name: string) {
+    const operation = yield* api.instances.delete(name, { project });
+    yield* Effect.annotateCurrentSpan("incusOperationId", operation.id);
+    yield* api.operations.wait(operation.id, { project });
+  },
+  Effect.withSpan("IncusContainer.delete", (_api, project, name) => ({
+    attributes: { containerName: name, incusProject: project },
+  })),
+);
 
 const createContainer = (
   project: string,

@@ -120,107 +120,114 @@ const confirmExecTermination = Effect.fn("IncusExecSession.confirmExecTerminatio
     .pipe(Effect.timeout("3 seconds"), Effect.interruptible, Effect.asVoid);
 });
 
-export const exec = Effect.fn("IncusExecSession.exec")(function* (
-  name: string,
-  project: string,
-  api: IncusApi.Interface,
-  command: readonly string[],
-  options?: IncusContainer.ExecOptions,
-) {
-  const timeoutSeconds = options?.timeoutSeconds;
-  yield* Effect.annotateCurrentSpan({ containerName: name, incusProject: project });
-  if (timeoutSeconds !== undefined && (!Number.isInteger(timeoutSeconds) || timeoutSeconds <= 0)) {
-    return yield* new IncusContainer.ExecInvalidOptionsError({
-      message: `Invalid timeoutSeconds: ${timeoutSeconds}. Must be a positive integer.`,
-    });
-  }
+export const exec = Effect.fnUntraced(
+  function* (
+    name: string,
+    project: string,
+    api: IncusApi.Interface,
+    command: readonly string[],
+    options?: IncusContainer.ExecOptions,
+  ) {
+    const timeoutSeconds = options?.timeoutSeconds;
+    if (
+      timeoutSeconds !== undefined &&
+      (!Number.isInteger(timeoutSeconds) || timeoutSeconds <= 0)
+    ) {
+      return yield* new IncusContainer.ExecInvalidOptionsError({
+        message: `Invalid timeoutSeconds: ${timeoutSeconds}. Must be a positive integer.`,
+      });
+    }
 
-  return yield* Effect.scoped(
-    Effect.gen(function* () {
-      const lifecycle: ExecLifecycle = { controlConnected: false, terminal: false };
-      // Registered before the sockets, so teardown closes them first and that control close is
-      // what makes Incus kill the command.
-      const operation = yield* api.instances.exec(
-        name,
-        execPayload(command, options),
-        { project },
-        (operation) =>
-          confirmExecTermination(api, project, operation, lifecycle).pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning("Incus exec termination was not confirmed", cause).pipe(
-                Effect.annotateLogs({
-                  containerName: name,
-                  incusProject: project,
-                  incusOperationId: operation.id,
-                }),
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const lifecycle: ExecLifecycle = { controlConnected: false, terminal: false };
+        // Registered before the sockets, so teardown closes them first and that control close is
+        // what makes Incus kill the command.
+        const operation = yield* api.instances.exec(
+          name,
+          execPayload(command, options),
+          { project },
+          (operation) =>
+            confirmExecTermination(api, project, operation, lifecycle).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("Incus exec termination was not confirmed", cause).pipe(
+                  Effect.annotateLogs({
+                    containerName: name,
+                    incusProject: project,
+                    incusOperationId: operation.id,
+                  }),
+                ),
               ),
             ),
-          ),
-      );
-      yield* Effect.annotateCurrentSpan("incusOperationId", operation.id);
-      const secrets = yield* decodeExecWebSocketSecrets(operation);
-      const connect = Effect.fnUntraced(function* (secret: string) {
-        const socket = yield* api.operations.makeWebSocket(operation.id, secret, {
-          openTimeout: 5000,
+        );
+        yield* Effect.annotateCurrentSpan("incusOperationId", operation.id);
+        const secrets = yield* decodeExecWebSocketSecrets(operation);
+        const connect = Effect.fnUntraced(function* (secret: string) {
+          const socket = yield* api.operations.makeWebSocket(operation.id, secret, {
+            openTimeout: 5000,
+          });
+          const reader = yield* socket.reader;
+          return { socket, reader };
         });
-        const reader = yield* socket.reader;
-        return { socket, reader };
-      });
 
-      yield* connect(secrets.control);
-      lifecycle.controlConnected = true;
-      const { stdin, stdout, stderr } = yield* Effect.all(
-        {
-          stdin: connect(secrets["0"]),
-          stdout: connect(secrets["1"]),
-          stderr: connect(secrets["2"]),
-        },
-        { concurrency: "unbounded" },
-      );
-      const writer = yield* stdin.socket.writer;
+        yield* connect(secrets.control);
+        lifecycle.controlConnected = true;
+        const { stdin, stdout, stderr } = yield* Effect.all(
+          {
+            stdin: connect(secrets["0"]),
+            stdout: connect(secrets["1"]),
+            stderr: connect(secrets["2"]),
+          },
+          { concurrency: "unbounded" },
+        );
+        const writer = yield* stdin.socket.writer;
 
-      // Stdin is not exposed by this API, so send the stream barrier immediately: Incus treats
-      // a text frame as end-of-input, which lets commands that wait for EOF, such as `cat`,
-      // exit instead of hanging forever.
-      yield* writer.write("");
-      const output = yield* Effect.all(
-        [
-          consumeOutput(stdout.reader, options?.onStdout),
-          consumeOutput(stderr.reader, options?.onStderr),
-        ],
-        { concurrency: "unbounded", discard: true },
-      ).pipe(Effect.forkScoped);
-      // Propagate output failures while still waiting for the command's exit code.
-      const outputFailure = Fiber.join(output).pipe(Effect.andThen(Effect.never));
-      const result = yield* Effect.raceFirst(
-        waitExecResult(api, operation.id, project, timeoutSeconds, lifecycle),
-        outputFailure,
-      );
-      yield* Fiber.join(output).pipe(
-        Effect.timeoutOrElse({
-          duration: "5 seconds",
-          orElse: () =>
-            Effect.fail(
-              new IncusContainer.ExecTransportError({
-                message: "Timed out waiting for exec output callbacks to drain",
-              }),
-            ),
-        }),
-      );
-      return result;
-    }),
-  ).pipe(
-    Effect.catchIf(
-      (error): error is Socket.SocketError => error instanceof Socket.SocketError,
-      (error) =>
-        Effect.fail(
-          new IncusContainer.ExecTransportError({
-            message: `Websocket error: ${error.message}`,
-            cause: error,
+        // Stdin is not exposed by this API, so send the stream barrier immediately: Incus treats
+        // a text frame as end-of-input, which lets commands that wait for EOF, such as `cat`,
+        // exit instead of hanging forever.
+        yield* writer.write("");
+        const output = yield* Effect.all(
+          [
+            consumeOutput(stdout.reader, options?.onStdout),
+            consumeOutput(stderr.reader, options?.onStderr),
+          ],
+          { concurrency: "unbounded", discard: true },
+        ).pipe(Effect.forkScoped);
+        // Propagate output failures while still waiting for the command's exit code.
+        const outputFailure = Fiber.join(output).pipe(Effect.andThen(Effect.never));
+        const result = yield* Effect.raceFirst(
+          waitExecResult(api, operation.id, project, timeoutSeconds, lifecycle),
+          outputFailure,
+        );
+        yield* Fiber.join(output).pipe(
+          Effect.timeoutOrElse({
+            duration: "5 seconds",
+            orElse: () =>
+              Effect.fail(
+                new IncusContainer.ExecTransportError({
+                  message: "Timed out waiting for exec output callbacks to drain",
+                }),
+              ),
           }),
-        ),
-    ),
-  );
-});
+        );
+        return result;
+      }),
+    ).pipe(
+      Effect.catchIf(
+        (error): error is Socket.SocketError => error instanceof Socket.SocketError,
+        (error) =>
+          Effect.fail(
+            new IncusContainer.ExecTransportError({
+              message: `Websocket error: ${error.message}`,
+              cause: error,
+            }),
+          ),
+      ),
+    );
+  },
+  Effect.withSpan("IncusExecSession.exec", (name, project) => ({
+    attributes: { containerName: name, incusProject: project },
+  })),
+);
 
 export * as IncusExecSession from "./incus-exec-session.ts";
