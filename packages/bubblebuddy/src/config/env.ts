@@ -8,8 +8,8 @@ export type EnvConfigShape = {
 };
 
 export const EnvConfigSchema = Config.all({
-  appHome: Config.string("BUBBLEBUDDY_HOME").pipe(Config.option),
-  discordToken: Config.redacted("DISCORD_TOKEN"),
+  appHome: Config.String("BUBBLEBUDDY_HOME").pipe(Config.option),
+  discordToken: Config.Redacted("DISCORD_TOKEN"),
 });
 
 export class EnvConfig extends Context.Service<EnvConfig, EnvConfigShape>()(

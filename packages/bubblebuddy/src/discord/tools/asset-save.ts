@@ -1,7 +1,6 @@
 import { GuestPath } from "incus-api";
-import Mime from "@effect/platform-node/Mime";
-import { Effect, Schema } from "effect";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { Effect, Option, Schema } from "effect";
+import { HttpClient, HttpClientResponse, Mime } from "effect/unstable/http";
 import { posix } from "node:path";
 
 import { SessionContainer } from "../../session/session-container.ts";
@@ -87,12 +86,12 @@ export const downloadAssetByContentType = Effect.fn("downloadAssetByContentType"
   }
   const normalized = contentType.split(";", 1)[0]!.trim().toLowerCase();
   const extension = Mime.getExtension(normalized);
-  if (extension === null) {
+  if (Option.isNone(extension)) {
     return yield* new AssetSaveError({
       message: `Asset has an unknown Content-Type: ${normalized}.`,
     });
   }
-  const filename = `${filenameStem}.${extension}`;
+  const filename = `${filenameStem}.${extension.value}`;
   return yield* writeAsset(response, directory, filename);
 });
 
