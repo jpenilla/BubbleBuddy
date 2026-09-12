@@ -50,6 +50,8 @@ const consumeOutput = Effect.fn("IncusExecSession.consumeOutput")(function* (
   while (true) {
     const batch = yield* reader.pull;
     for (const frame of batch) {
+      // Incus ends each output stream with an empty text message (its stream barrier), then
+      // drops the socket without a close frame, so the barrier is the only end-of-stream signal.
       if (typeof frame === "string") return;
       if (callback) {
         yield* callback(frame).pipe(
@@ -116,9 +118,11 @@ const shutdownExec = Effect.fn("IncusExecSession.shutdownExec")(function* (
       Effect.timeout("250 millis"),
       Effect.ignore({ log: "Warn", message: "Failed to send SIGTERM to Incus exec" }),
     );
+  // Bounded by the wait endpoint's own timeout. Anything still running when the socket scope
+  // closes is killed by Incus when the control websocket goes away.
   yield* api.operations
     .wait(operation.id, { project, timeoutSeconds: 2, failureMode: "return" })
-    .pipe(Effect.timeout("2 seconds"), Effect.ignore);
+    .pipe(Effect.ignore);
 });
 
 export const exec = Effect.fn("IncusExecSession.exec")(function* (
@@ -173,6 +177,9 @@ export const exec = Effect.fn("IncusExecSession.exec")(function* (
       );
       const writer = yield* Scope.provide(stdin.socket.writer, socketScope);
 
+      // Stdin is not exposed by this API, so send the stream barrier immediately: Incus treats
+      // a text frame as end-of-input, which lets commands that wait for EOF, such as `cat`,
+      // exit instead of hanging forever.
       yield* writer.write("");
       const output = yield* Effect.all(
         [
