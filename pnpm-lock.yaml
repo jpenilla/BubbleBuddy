@@ -16,8 +16,8 @@ catalogs:
       specifier: ^0.84.4
       version: 0.84.4
     '@effect/platform-node':
-      specifier: 4.0.0-rc.112
-      version: 4.0.0-rc.112
+      specifier: 4.0.0-rc.114
+      version: 4.0.0-rc.114
     '@effect/sql-sqlite-node':
       specifier: 4.0.0-rc.112
       version: 4.0.0-rc.112
@@ -82,7 +82,7 @@ importers:
         version: 0.84.4(patch_hash=2d0a11736bb5a0cbd2ee166fbe887c5558ece5f899d379a081ac808ed303c6bc)(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1(@opentelemetry/api@1.9.0))
+        version: 4.0.0-rc.114(effect@4.0.0-rc.112)(redis@6.2.1(@opentelemetry/api@1.9.0))
       '@effect/sql-sqlite-node':
         specifier: 'catalog:'
         version: 4.0.0-rc.112(effect@4.0.0-rc.112)
@@ -128,7 +128,7 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1(@opentelemetry/api@1.9.0))
+        version: 4.0.0-rc.114(effect@4.0.0-rc.112)(redis@6.2.1(@opentelemetry/api@1.9.0))
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
@@ -325,17 +325,17 @@ packages:
     resolution: {integrity: sha512-nPUnwDkLtupPXnZQYrCwPFcuTydCDqTY6ZbFqhsL4S4kVq0AT418kPa/6uXwtaCD+MjBNBltb7ScTYX65yeE1w==}
     engines: {node: '>=22.19.0'}
 
-  '@effect/platform-node-shared@4.0.0-rc.112':
-    resolution: {integrity: sha512-ttjz0xKamFN7vL8pNDYVwddJLjZvqKePc05djlz2VcdaKbLsnYbtMnL1rbOfHgEnIUSHGh7FkjaN4DM1Ov81sQ==}
+  '@effect/platform-node-shared@4.0.0-rc.114':
+    resolution: {integrity: sha512-YVoL71bJpa8HmAZl63nvVgOI4UBg61Z+6U0qnNN2ZlUktxG7eu26Y/puRxEtMxivxEUHR5vKJsuqQ3PRK4fLQA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.112
+      effect: ^4.0.0-rc.114
 
-  '@effect/platform-node@4.0.0-rc.112':
-    resolution: {integrity: sha512-/BMAcdNGQQskLmI0Zoa95KfTZkr9HV9N4NSxaSrusG6GeW6Ulp9KvZ+Rlaiw8lnOt43CXjFLdfll5/k5rxL4hQ==}
+  '@effect/platform-node@4.0.0-rc.114':
+    resolution: {integrity: sha512-eqPvK8XswUw+FVe7CVqiyYUz4NHPz/1DiNsXi8GwIrsMOLT2wLteaAUID4grjDX7XWK1ONUVy4gS9IwBvp+EjA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.112
+      effect: ^4.0.0-rc.114
       redis: '>=5.0.0 <7.0.0'
 
   '@effect/sql-sqlite-node@4.0.0-rc.112':
@@ -1672,11 +1672,6 @@ packages:
     resolution: {integrity: sha512-Lbgzdk0h4juoQ9fCKXW4by0UJqj+nOOrI9MJ1sSj4nI8aI2eo1qmvQEie4VD1glsS250n15LsWsYtCugiStS5A==}
     engines: {node: '>=18'}
 
-  mime@4.1.0:
-    resolution: {integrity: sha512-X5ju04+cAzsojXKes0B/S4tcYtFAJ6tTMuSPBEn9CPGlrWr8Fiw7qYeLT0XyH80HSoAoqWCaz+MWKh22P7G1cw==}
-    engines: {node: '>=16'}
-    hasBin: true
-
   minimatch@10.2.5:
     resolution: {integrity: sha512-MULkVLfKGYDFYejP07QOurDLLQpcjk7Fw+7jXS2R2czRQzR56yHRveU5NDJEOviH+hETZKSkIk5c+T23GjFUMg==}
     engines: {node: 18 || 20 || >=22}
@@ -1973,8 +1968,8 @@ packages:
     resolution: {integrity: sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA==}
     engines: {node: '>=18.17'}
 
-  undici@8.10.1:
-    resolution: {integrity: sha512-YQ3WlbqjYMmNpdvDH64jAgLjxuAR9+649calDWhbshYaeQGO2bR4nI94ORJmwI3J9YhoKQnpyGOK+0zlWS5N5Q==}
+  undici@8.10.2:
+    resolution: {integrity: sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==}
     engines: {node: '>=22.19.0'}
 
   undici@8.9.0:
@@ -2471,7 +2466,7 @@ snapshots:
       get-east-asian-width: 1.6.0
       marked: 18.0.5
 
-  '@effect/platform-node-shared@4.0.0-rc.112(effect@4.0.0-rc.112)':
+  '@effect/platform-node-shared@4.0.0-rc.114(effect@4.0.0-rc.112)':
     dependencies:
       '@types/ws': 8.18.1
       effect: 4.0.0-rc.112
@@ -2480,13 +2475,12 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1(@opentelemetry/api@1.9.0))':
+  '@effect/platform-node@4.0.0-rc.114(effect@4.0.0-rc.112)(redis@6.2.1(@opentelemetry/api@1.9.0))':
     dependencies:
-      '@effect/platform-node-shared': 4.0.0-rc.112(effect@4.0.0-rc.112)
+      '@effect/platform-node-shared': 4.0.0-rc.114(effect@4.0.0-rc.112)
       effect: 4.0.0-rc.112
-      mime: 4.1.0
       redis: 6.2.1(@opentelemetry/api@1.9.0)
-      undici: 8.10.1
+      undici: 8.10.2
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -3591,8 +3585,6 @@ snapshots:
       mime-db: 1.54.0
     optional: true
 
-  mime@4.1.0: {}
-
   minimatch@10.2.5:
     dependencies:
       brace-expansion: 5.0.9
@@ -3974,7 +3966,7 @@ snapshots:
 
   undici@6.28.0: {}
 
-  undici@8.10.1: {}
+  undici@8.10.2: {}
 
   undici@8.9.0: {}
 
