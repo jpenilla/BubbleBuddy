@@ -11,7 +11,7 @@ export const replyTool = defineEffectTool({
   description: "Reply to a message in the current channel, optionally ending the turn.",
   promptGuidelines: [
     "Ordinary assistant text is posted without replying. Use an explicit mention or discord_reply when a user should be notified.",
-    "Call discord_reply with terminate=true as the only tool call when its content is the complete final response and no further work is needed.",
+    "When discord_reply delivers the complete final response, set terminate=true. For multiple final replies, use a batch containing only discord_reply calls, all with terminate=true. Finish other work first.",
   ],
   parameters: Type.Object({
     messageId: Type.String({ description: "ID of the message to reply to" }),
@@ -21,7 +21,10 @@ export const replyTool = defineEffectTool({
         "Notify the author through the reply itself; explicit content mentions are unaffected",
     }),
     terminate: Type.Optional(
-      Type.Boolean({ description: "End the turn after sending this reply" }),
+      Type.Boolean({
+        description:
+          "End the turn after this reply succeeds. Requires every tool call in the same batch to be discord_reply with terminate=true.",
+      }),
     ),
   }),
   execute: (_toolCallId, params) =>
