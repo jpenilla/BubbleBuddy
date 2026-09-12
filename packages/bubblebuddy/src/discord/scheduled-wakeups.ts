@@ -10,10 +10,9 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
     const sessions = yield* ChannelSessions;
     const client = yield* DiscordClient.Service;
 
-    const dispatch = Effect.fn("ScheduledWakeups.dispatch")(
+    const dispatch = Effect.fnUntraced(
       function* (wakeup: Schedules.Wakeup) {
         const attributes = { channelId: wakeup.channelId, scheduleId: wakeup.id };
-        yield* Effect.annotateCurrentSpan(attributes);
         const channel = yield* tryDiscordJsPromise(() => client.channels.fetch(wakeup.channelId));
         if (channel === null || !isGuildTextChannel(channel)) {
           yield* Effect.logWarning("Scheduled wakeup destination is unavailable").pipe(
@@ -39,6 +38,10 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
             ).pipe(Effect.annotateLogs({ channelId: wakeup.channelId, scheduleId: wakeup.id })),
           ),
         ),
+      Effect.withSpan("ScheduledWakeups.dispatch", (wakeup) => ({
+        root: true,
+        attributes: { channelId: wakeup.channelId, scheduleId: wakeup.id },
+      })),
     );
 
     const runPass = Effect.gen(function* () {

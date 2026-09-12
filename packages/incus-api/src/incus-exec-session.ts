@@ -138,6 +138,9 @@ export const exec = Effect.fnUntraced(
       });
     }
 
+    // The release runs with the acquisition-time context; reparent confirmation to this span.
+    const execSpan = yield* Effect.currentSpan.pipe(Effect.orDie);
+
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const lifecycle: ExecLifecycle = { controlConnected: false, terminal: false };
@@ -149,6 +152,7 @@ export const exec = Effect.fnUntraced(
           { project },
           (operation) =>
             confirmExecTermination(api, project, operation, lifecycle).pipe(
+              Effect.withParentSpan(execSpan),
               Effect.catchCause((cause) =>
                 Effect.logWarning("Incus exec termination was not confirmed", cause).pipe(
                   Effect.annotateLogs({

@@ -25,10 +25,12 @@ const createChannelSessions = Effect.gen(function* () {
     idleTimeToLive: config.channelIdleTimeoutMs,
   });
 
-  const get = Effect.fn("ChannelSessions.get")(function* (channelId: string) {
-    yield* Effect.annotateCurrentSpan("channelId", channelId);
-    return yield* RcMap.get(sessions, channelId);
-  });
+  const get = Effect.fnUntraced(
+    function* (channelId: string) {
+      return yield* RcMap.get(sessions, channelId);
+    },
+    Effect.withSpan("ChannelSessions.get", (channelId) => ({ attributes: { channelId } })),
+  );
 
   return ChannelSessions.of({ get });
 });

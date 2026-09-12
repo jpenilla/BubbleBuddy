@@ -1,5 +1,16 @@
 import { Routes, type GuildTextBasedChannel } from "discord.js";
-import { Effect, Option, Ref, Schema, Scope, ScopedRef, Semaphore, SynchronizedRef } from "effect";
+import {
+  Context,
+  Effect,
+  Option,
+  Ref,
+  Schema,
+  Scope,
+  ScopedRef,
+  Semaphore,
+  SynchronizedRef,
+  Tracer,
+} from "effect";
 
 import { createDiscordOutputPump } from "../discord/session-output-pump.ts";
 import { tryDiscordJsPromise } from "../discord/utils.ts";
@@ -64,7 +75,8 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
   Effect.gen(function* () {
     const attributes = { channelId: input.channelId };
     const repository = yield* ChannelStateRepository;
-    const piServices = yield* Effect.context<PiSessionServices>();
+    // Re-provided at Pi session creation, so drop ParentSpan to keep the invocation's parent.
+    const piServices = Context.omit(Tracer.ParentSpan)(yield* Effect.context<PiSessionServices>());
     const lock = yield* Semaphore.make(1);
     const mapToChannelSessionError = Effect.mapError(
       (cause) => new ChannelSessionError({ channelId: input.channelId, cause }),
@@ -249,6 +261,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
       toggleShowThinking,
     } satisfies ChannelSession;
   }).pipe(
+    // Construction-scoped only; the returned operations carry their own attributes.
     Effect.annotateLogs({ channelId: input.channelId }),
     Effect.annotateSpans({ channelId: input.channelId }),
   );

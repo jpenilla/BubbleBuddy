@@ -68,7 +68,9 @@ const release = (
         }),
       ),
     ),
+    // Finalizers run with the acquisition-time context, so root to avoid a stale parent.
     Effect.withSpan("IncusContainer.release", {
+      root: true,
       attributes: { containerName: container.name, incusProject: container.project },
     }),
     Effect.ignoreCause(),

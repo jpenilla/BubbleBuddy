@@ -1,5 +1,5 @@
 import { GuestPath } from "../src/guest-path.ts";
-import { Context, Effect, Layer, Ref, Schema, Stream } from "effect";
+import { Context, Effect, Ref, Schema, Stream } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 import { assertInstanceOf } from "@effect/vitest/utils";
 
@@ -92,11 +92,9 @@ describe("Incus file writes", () => {
       yield* IncusFileOperations.create(api, "container", "default")
         .write(yield* GuestPath.of("/tmp/message.txt"), source)
         .pipe(
-          Effect.provide(
-            Layer.succeed(StreamValue, {
-              chunks: [new Uint8Array([0, 1, 2]), new Uint8Array([127, 128, 255])],
-            }),
-          ),
+          Effect.provideService(StreamValue, {
+            chunks: [new Uint8Array([0, 1, 2]), new Uint8Array([127, 128, 255])],
+          }),
         );
 
       expect(Uint8Array.from((yield* Ref.get(received)).flatMap((chunk) => [...chunk]))).toEqual(

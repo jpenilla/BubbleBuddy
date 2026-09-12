@@ -292,7 +292,16 @@ export const createPiSession = (
     const prepareForClose = () =>
       abort.pipe(
         Effect.timeout(SHUTDOWN_ABORT_TIMEOUT),
-        Effect.ignore({ log: "Warn", message: "Session abort for shutdown failed" }),
+        Effect.onError((cause) =>
+          Effect.logWarning("Session abort for shutdown failed", cause).pipe(
+            Effect.annotateLogs({ channelId: input.channel.id }),
+          ),
+        ),
+        Effect.withSpan("PiSession.prepareForClose", {
+          root: true,
+          attributes: { channelId: input.channel.id },
+        }),
+        Effect.ignoreCause(),
       );
 
     const handleSessionEvent = (event: AgentSessionEvent): void => {
@@ -366,7 +375,7 @@ export const createPiSession = (
                     modelProvider: piContext.model.provider,
                   },
                 }),
-                Effect.linkSpans(triggerSpan),
+                Effect.linkSpans(triggerSpan, { relationship: "triggered_by" }),
                 Effect.ignoreCause(),
               ),
             ),
@@ -410,28 +419,31 @@ export const createPiSession = (
     };
   });
 
-const loadMcpServerTools = Effect.fn("PiSession.loadMcpServerTools")(function* (
-  name: string,
-  server: McpServerConfigEntry,
-) {
-  yield* Effect.annotateCurrentSpan("mcpServerName", name);
-  const serverScope = yield* Scope.fork(yield* Scope.Scope);
+const loadMcpServerTools = Effect.fnUntraced(
+  function* (name: string, server: McpServerConfigEntry) {
+    const serverScope = yield* Scope.fork(yield* Scope.Scope);
 
-  return yield* Effect.gen(function* () {
-    const client = yield* McpClientFactory.createClient(name, server);
-    return yield* McpPiTools.createPiTools(client, name);
-  }).pipe(
-    Scope.provide(serverScope),
-    Effect.timeout("10 seconds"),
-    Effect.onExit((exit) => (Exit.isFailure(exit) ? Scope.close(serverScope, exit) : Effect.void)),
-    Effect.catch((cause) =>
-      Effect.logWarning("MCP tool loading failed; skipping server", cause).pipe(
-        Effect.annotateLogs({ mcpServerName: name }),
-        Effect.as([]),
+    return yield* Effect.gen(function* () {
+      const client = yield* McpClientFactory.createClient(name, server);
+      return yield* McpPiTools.createPiTools(client, name);
+    }).pipe(
+      Scope.provide(serverScope),
+      Effect.timeout("10 seconds"),
+      Effect.onExit((exit) =>
+        Exit.isFailure(exit) ? Scope.close(serverScope, exit) : Effect.void,
       ),
-    ),
-  );
-});
+      Effect.catch((cause) =>
+        Effect.logWarning("MCP tool loading failed; skipping server", cause).pipe(
+          Effect.annotateLogs({ mcpServerName: name }),
+          Effect.as([]),
+        ),
+      ),
+    );
+  },
+  Effect.withSpan("PiSession.loadMcpServerTools", (name) => ({
+    attributes: { mcpServerName: name },
+  })),
+);
 
 const ensureUniqueToolNames = Effect.fnUntraced(function* (tools: readonly ToolDefinition[]) {
   const counts = new Map<string, number>();

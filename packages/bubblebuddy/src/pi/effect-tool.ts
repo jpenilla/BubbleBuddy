@@ -47,10 +47,7 @@ export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
             Effect.onError((cause) =>
               (Cause.hasDies(cause)
                 ? Effect.logError("Tool defect", cause)
-                : Effect.logDebug(
-                    Cause.hasInterruptsOnly(cause) ? "Tool interrupted" : "Tool failed",
-                    cause,
-                  )
+                : Effect.logDebug("Tool failed", cause)
               ).pipe(Effect.annotateLogs({ toolName: tool.name, toolCallId })),
             ),
             Effect.withSpan("EffectTool.execute", {
