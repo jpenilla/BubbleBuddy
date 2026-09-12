@@ -110,18 +110,15 @@ const confirmExecTermination = Effect.fn("IncusExecSession.confirmExecTerminatio
   operation: IncusApi.OperationRef,
   lifecycle: ExecLifecycle,
 ) {
+  // No control connection means Incus never started the command and ends the operation itself
+  // after its required-websocket wait, so there is nothing to cancel.
   if (lifecycle.terminal || !lifecycle.controlConnected) return;
 
-  // Socket finalizers have already closed the control connection, triggering Incus SIGKILL.
-  // Confirm the exec operation ended, not that every descendant was killed.
-  const result = yield* api.operations
-    .wait(operation.id, { project, timeoutSeconds: 2, failureMode: "return" })
-    .pipe(Effect.timeout("3 seconds"), Effect.interruptible);
-  if (IncusApi.OperationWaitResult.$is("Running")(result)) {
-    yield* Effect.logWarning("Incus exec termination was not confirmed", {
-      operation: operation.id,
-    });
-  }
+  // Closing the control socket makes Incus hard-kill the command (no SIGTERM, no descendants),
+  // matching Pi's bash tool. This confirms the operation ended and is bounded locally only.
+  yield* api.operations
+    .wait(operation.id, { project, failureMode: "return" })
+    .pipe(Effect.timeout("3 seconds"), Effect.interruptible, Effect.asVoid);
 });
 
 export const exec = Effect.fn("IncusExecSession.exec")(function* (

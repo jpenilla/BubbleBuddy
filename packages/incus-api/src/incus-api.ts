@@ -356,6 +356,8 @@ export const layer: Layer.Layer<Service, never, IncusTransport.Service> = Layer.
             }
             return result;
           });
+          // A server budget is a domain deadline: wait for it plus headroom so the server's own
+          // result wins over a client timeout. Teardown caps use their own bound instead.
           if (options.timeoutSeconds === undefined) return yield* wait;
           const requestedTimeoutSeconds = options.timeoutSeconds;
           const clientTimeoutSeconds = requestedTimeoutSeconds + OperationWaitGraceSeconds;
