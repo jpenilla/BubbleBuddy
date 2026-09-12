@@ -55,7 +55,7 @@ export const create = defineEffectTool({
   name: "create_schedule",
   label: "Create schedule",
   description:
-    "Schedule a wakeup in this channel. Survives new sessions and restarts. Displays a confirmation card in this channel.",
+    "Schedule a wakeup in this channel. Survives new sessions and restarts. Displays a confirmation card in this channel. If time zone is ambiguous, ask the user.",
   parameters: Type.Object({
     description,
     note,
