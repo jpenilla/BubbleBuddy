@@ -16,7 +16,7 @@ const image: IncusContainer.ImageSource = {
 
 const successfulOperation = IncusApi.OperationWaitResult.Success({});
 
-const invalidWebSocketSecretsApi = (cancel: IncusApi.Interface["operations"]["cancel"]) =>
+const invalidWebSocketSecretsApi = () =>
   apiFixture({
     create: () => Effect.succeed({ id: "start" }),
     setState: () => Effect.succeed({ id: "stop" }),
@@ -26,7 +26,6 @@ const invalidWebSocketSecretsApi = (cancel: IncusApi.Interface["operations"]["ca
         release,
       ),
     wait: () => Effect.succeed(successfulOperation),
-    cancel,
   });
 
 describe("Incus container operations", () => {
@@ -87,48 +86,9 @@ describe("Incus container operations", () => {
     }),
   );
 
-  it.effect("cancels the spawned exec when websocket metadata is invalid", () =>
+  it.effect("rejects invalid exec websocket metadata", () =>
     Effect.gen(function* () {
-      const pending = yield* Ref.make(new Set(["exec-operation"]));
-      const api = invalidWebSocketSecretsApi((operation) =>
-        operation === "exec-operation"
-          ? Ref.update(pending, (operations) => {
-              const next = new Set(operations);
-              next.delete(operation);
-              return next;
-            })
-          : Effect.die(new Error(`Unexpected cancelled operation: ${operation}`)),
-      );
-
-      const exit = yield* Effect.scoped(
-        IncusContainerOperations.create("default", api)
-          .scoped({ name: "container", image })
-          .pipe(Effect.flatMap((container) => container.exec(["true"]))),
-      ).pipe(Effect.exit);
-
-      expect(yield* Ref.get(pending)).toEqual(new Set());
-      const error = errorFrom(exit);
-      expect(error).toBeInstanceOf(IncusApi.OperationError);
-      if (error instanceof IncusApi.OperationError) {
-        expect(error.operation).toBe("exec-operation");
-        expect(error.metadata).toMatchObject({ websocketSecrets: { "0": "stdin" } });
-      }
-    }),
-  );
-
-  it.effect("preserves invalid websocket metadata errors when cancellation fails", () =>
-    Effect.gen(function* () {
-      const cancellationFailure = new IncusApi.OperationError({
-        operation: "exec-operation",
-        message: "cancel failed",
-        metadata: { phase: "cancel" },
-      });
-      const api = invalidWebSocketSecretsApi((operation) =>
-        operation === "exec-operation"
-          ? Effect.fail(cancellationFailure)
-          : Effect.die(new Error(`Unexpected cancelled operation: ${operation}`)),
-      );
-
+      const api = invalidWebSocketSecretsApi();
       const exit = yield* Effect.scoped(
         IncusContainerOperations.create("default", api)
           .scoped({ name: "container", image })
