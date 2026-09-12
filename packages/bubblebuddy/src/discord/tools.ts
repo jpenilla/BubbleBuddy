@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { currentDateTimeTool } from "./tools/current-date-time.ts";
 import { fetchMessageTool } from "./tools/fetch-message.ts";
 import { ScheduleTools } from "./tools/schedules.ts";
 import { listCustomEmojisTool } from "./tools/list-custom-emojis.ts";
@@ -13,6 +14,7 @@ import { uploadFileTool } from "./tools/upload-file.ts";
 
 export const discordCoreTools = Effect.fn("discordCoreTools")(function* () {
   return [
+    yield* currentDateTimeTool,
     yield* listCustomEmojisTool,
     yield* listStickersTool,
     yield* sendStickerTool,
