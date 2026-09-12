@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Clock, Context, Cron, Effect, Layer, Schema } from "effect";
+import { Clock, Context, Cron, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
 export const AfterTiming = Schema.Struct({
@@ -202,11 +202,7 @@ const resolveTiming = Effect.fn("Schedules.resolveTiming")(function* (timing: Ti
         };
       }),
   });
-  if (
-    !Number.isSafeInteger(resolved.nextRunAt) ||
-    !Number.isFinite(new Date(resolved.nextRunAt).getTime()) ||
-    resolved.nextRunAt <= now
-  ) {
+  if (Option.isNone(DateTime.make(resolved.nextRunAt)) || resolved.nextRunAt <= now) {
     return yield* invalid("Schedule must resolve to a valid future time.");
   }
   return resolved;

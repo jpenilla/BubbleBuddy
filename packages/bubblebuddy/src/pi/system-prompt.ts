@@ -2,6 +2,7 @@ import {
   formatSkillsForPrompt,
   type BuildSystemPromptOptions,
 } from "@earendil-works/pi-coding-agent";
+import { DateTime } from "effect";
 
 export interface PromptTemplateContext {
   readonly botName: string;
@@ -62,14 +63,6 @@ const formatContextFilesSection = ({
   return `# Project Context\n\nProject-specific instructions and guidelines:\n\n${sections.join("\n\n")}`;
 };
 
-const currentDate = (): string => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
 export const renderPromptTemplate = (template: string, context: PromptTemplateContext): string =>
   template.replaceAll(PLACEHOLDER_PATTERN, (_, key: keyof PromptTemplateContext) => context[key]);
 
@@ -88,7 +81,7 @@ export const composeSystemPrompt = ({
     systemPromptOptions.skills?.length
       ? normalizeSection(formatSkillsForPrompt(systemPromptOptions.skills))
       : undefined,
-    `Current date: ${currentDate()}`,
+    `Current date: ${DateTime.formatIsoDateUtc(DateTime.nowUnsafe())}`,
     includeWorkingDirectory
       ? `Current working directory: ${systemPromptOptions.cwd.replaceAll("\\", "/")}`
       : undefined,
