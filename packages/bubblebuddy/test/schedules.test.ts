@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
-import { Clock, Effect, FileSystem, Layer } from "effect";
+import { Deferred, Effect, FileSystem, Layer, Stream } from "effect";
 import { TestClock } from "effect/testing";
 
 import { AppHome } from "../src/config/env.ts";
@@ -22,6 +22,22 @@ const temporaryDirectory = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   return yield* fs.makeTempDirectoryScoped({ prefix: "bb-schedules-" });
 });
+
+// Consumes the feed's first wakeup into a `Deferred`, so tests can assert that nothing
+// fired before a deadline instead of blocking on the stream.
+const consumeFirstWakeup = (schedules: Schedules.Interface) =>
+  Effect.gen(function* () {
+    const fired = yield* Deferred.make<ReadonlyArray<Schedules.Wakeup>>();
+    yield* schedules.due.pipe(
+      Stream.take(1),
+      Stream.runCollect,
+      Effect.onExit((exit) => Deferred.done(fired, exit).pipe(Effect.asVoid)),
+      Effect.forkScoped,
+    );
+    // Let the idle feed park before scheduling work, so a change notification has to wake it.
+    yield* TestClock.adjust("0 seconds");
+    return fired;
+  });
 
 it.layer(NodeServices.layer)("schedules", (it) => {
   it.effect("rejects cron that repeats more often than once a minute", () =>
@@ -61,7 +77,7 @@ it.layer(NodeServices.layer)("schedules", (it) => {
             timing: Schedules.AfterTiming.make({ seconds: 60 }),
           });
           yield* TestClock.adjust("59 seconds");
-          expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([]);
+          expect(yield* schedules.list("123")).toEqual([alarm]);
           return alarm;
         }),
       );
@@ -71,14 +87,52 @@ it.layer(NodeServices.layer)("schedules", (it) => {
         directory,
         Effect.gen(function* () {
           const schedules = yield* Schedules.Service;
-          const due = yield* schedules.takeDue(yield* Clock.currentTimeMillis);
+          const due = yield* schedules.due.pipe(Stream.take(1), Stream.runCollect);
           expect(due).toHaveLength(1);
           expect(due[0]).toMatchObject({
             id: alarm.id,
             channelId: "123",
             note: "Remind <@456> to check the oven.",
           });
-          expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([]);
+          expect(yield* schedules.list("123")).toEqual([]);
+        }),
+      );
+    }),
+  );
+
+  it.effect("emits every wakeup that came due in one batch", () =>
+    Effect.gen(function* () {
+      const directory = yield* temporaryDirectory;
+      yield* TestClock.setTime(Date.parse("2026-01-15T10:00:00Z"));
+      const [first, second] = yield* withSchedules(
+        directory,
+        Effect.gen(function* () {
+          const schedules = yield* Schedules.Service;
+          const first = yield* schedules.create("123", {
+            description: "First reminder",
+            note: "The first reminder.",
+            timing: Schedules.AtTiming.make({ timestamp: "2026-01-15T10:01:00Z" }),
+          });
+          const second = yield* schedules.create("123", {
+            description: "Second reminder",
+            note: "The second reminder.",
+            timing: Schedules.AtTiming.make({ timestamp: "2026-01-15T10:02:00Z" }),
+          });
+          return [first, second] as const;
+        }),
+      );
+
+      // Both deadlines elapse before the feed ever reads, so one pass picks up both.
+      yield* TestClock.adjust("2 minutes");
+      yield* withSchedules(
+        directory,
+        Effect.gen(function* () {
+          const schedules = yield* Schedules.Service;
+          expect(yield* schedules.due.pipe(Stream.take(2), Stream.runCollect)).toEqual([
+            first,
+            second,
+          ]);
+          expect(yield* schedules.list("123")).toEqual([]);
         }),
       );
     }),
@@ -120,13 +174,15 @@ it.layer(NodeServices.layer)("schedules", (it) => {
               expiresAt: null,
             }),
           };
-          expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([
+          expect(yield* schedules.due.pipe(Stream.take(1), Stream.runCollect)).toEqual([
             { ...expected, nextRunAt: Date.parse("2026-01-15T00:15:00Z") },
           ]);
-          expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([]);
+          expect(yield* schedules.list("123")).toEqual([
+            { ...expected, nextRunAt: Date.parse("2026-01-15T04:15:00Z") },
+          ]);
 
           yield* TestClock.setTime(Date.parse("2026-01-15T04:15:00Z"));
-          expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([
+          expect(yield* schedules.due.pipe(Stream.take(1), Stream.runCollect)).toEqual([
             { ...expected, nextRunAt: Date.parse("2026-01-15T04:15:00Z") },
           ]);
         }),
@@ -134,7 +190,7 @@ it.layer(NodeServices.layer)("schedules", (it) => {
     }),
   );
 
-  it.effect("cancels a listed alarm while leaving another alarm runnable", () =>
+  it.effect("wakes an idle feed but fires an alarm only at its deadline", () =>
     Effect.gen(function* () {
       const directory = yield* temporaryDirectory;
       yield* TestClock.setTime(Date.parse("2026-01-15T10:00:00Z"));
@@ -142,6 +198,70 @@ it.layer(NodeServices.layer)("schedules", (it) => {
         directory,
         Effect.gen(function* () {
           const schedules = yield* Schedules.Service;
+          const fired = yield* consumeFirstWakeup(schedules);
+
+          const alarm = yield* schedules.create("123", {
+            description: "Check the oven",
+            note: "Remind <@456> to check the oven.",
+            timing: Schedules.AfterTiming.make({ seconds: 60 }),
+          });
+
+          yield* TestClock.adjust("59 seconds");
+          expect(yield* Deferred.isDone(fired)).toBe(false);
+
+          yield* TestClock.adjust("1 second");
+          expect(yield* Deferred.isDone(fired)).toBe(true);
+          expect(yield* Deferred.await(fired)).toEqual([alarm]);
+          expect(yield* schedules.list("123")).toEqual([]);
+        }),
+      );
+    }),
+  );
+
+  it.effect("honors a deadline moved earlier while the feed waits", () =>
+    Effect.gen(function* () {
+      const directory = yield* temporaryDirectory;
+      yield* TestClock.setTime(Date.parse("2026-01-15T10:00:00Z"));
+      yield* withSchedules(
+        directory,
+        Effect.gen(function* () {
+          const schedules = yield* Schedules.Service;
+          const fired = yield* consumeFirstWakeup(schedules);
+
+          const alarm = yield* schedules.create("123", {
+            description: "Check the oven",
+            note: "Remind <@456> to check the oven.",
+            timing: Schedules.AfterTiming.make({ seconds: 300 }),
+          });
+
+          yield* TestClock.adjust("10 seconds");
+          // Sooner than the feed's maximum wait, so only the change notification can
+          // deliver it on time.
+          const moved = yield* schedules.update("123", alarm.id, {
+            timing: Schedules.AfterTiming.make({ seconds: 30 }),
+          });
+
+          yield* TestClock.adjust("29 seconds");
+          expect(yield* Deferred.isDone(fired)).toBe(false);
+
+          yield* TestClock.adjust("1 second");
+          expect(yield* Deferred.isDone(fired)).toBe(true);
+          expect(yield* Deferred.await(fired)).toEqual([moved.after]);
+        }),
+      );
+    }),
+  );
+
+  it.effect("cancels a waiting alarm while leaving another alarm runnable", () =>
+    Effect.gen(function* () {
+      const directory = yield* temporaryDirectory;
+      yield* TestClock.setTime(Date.parse("2026-01-15T10:00:00Z"));
+      yield* withSchedules(
+        directory,
+        Effect.gen(function* () {
+          const schedules = yield* Schedules.Service;
+          const fired = yield* consumeFirstWakeup(schedules);
+
           const obsolete = yield* schedules.create("123", {
             description: "Obsolete reminder",
             note: "An obsolete reminder.",
@@ -156,10 +276,17 @@ it.layer(NodeServices.layer)("schedules", (it) => {
             obsolete.id,
             remaining.id,
           ]);
+
+          yield* TestClock.adjust("30 seconds");
           expect(yield* schedules.cancel("123", obsolete.id)).toEqual(obsolete);
 
-          yield* TestClock.adjust("3 minutes");
-          expect(yield* schedules.takeDue(yield* Clock.currentTimeMillis)).toEqual([remaining]);
+          yield* TestClock.adjust("30 seconds");
+          expect(yield* Deferred.isDone(fired)).toBe(false);
+
+          yield* TestClock.adjust("1 minute");
+          expect(yield* Deferred.isDone(fired)).toBe(true);
+          expect(yield* Deferred.await(fired)).toEqual([remaining]);
+          expect(yield* schedules.list("123")).toEqual([]);
         }),
       );
     }),

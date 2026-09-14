@@ -1,5 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { Clock, Context, Cron, DateTime, Effect, Layer, Option, Schema } from "effect";
+import {
+  Clock,
+  Context,
+  Cron,
+  DateTime,
+  Duration,
+  Effect,
+  Layer,
+  Option,
+  Queue,
+  Schedule,
+  Schema,
+  Stream,
+} from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
 export const AfterTiming = Schema.Struct({
@@ -135,11 +148,6 @@ const storeError = (operation: string, cause: unknown) =>
     cause,
   });
 
-const mapError = (operation: string) =>
-  Effect.mapError((cause: unknown) =>
-    cause instanceof ValidationError ? cause : storeError(operation, cause),
-  );
-
 const nextCron = Effect.fn("Schedules.nextCron")(function* (
   expression: string,
   timezone: string,
@@ -155,27 +163,6 @@ const nextCron = Effect.fn("Schedules.nextCron")(function* (
     try: () => Cron.next(cron, now).getTime(),
     catch: () => invalid("Cron expression has no calculable next occurrence."),
   });
-});
-
-const decodeRows = Effect.fn("Schedules.decodeRows")(function* (rows: unknown) {
-  const decoded = yield* Schema.decodeUnknownEffect(Schema.Array(Row))(rows);
-  return decoded.map((row) =>
-    Wakeup.make({
-      id: row.id,
-      channelId: row.channel_id,
-      description: row.description,
-      note: row.note,
-      nextRunAt: row.next_run_at,
-      recurrence:
-        row.cron !== null && row.timezone !== null
-          ? CronRecurrence.make({
-              expression: row.cron,
-              timezone: row.timezone,
-              expiresAt: row.expires_at,
-            })
-          : Once.make({}),
-    }),
-  );
 });
 
 const resolveTiming = Effect.fn("Schedules.resolveTiming")(function* (timing: Timing, now: number) {
@@ -211,6 +198,27 @@ const resolveTiming = Effect.fn("Schedules.resolveTiming")(function* (timing: Ti
   return resolved;
 });
 
+const decodeRows = Effect.fn("Schedules.decodeRows")(function* (rows: unknown) {
+  const decoded = yield* Schema.decodeUnknownEffect(Schema.Array(Row))(rows);
+  return decoded.map((row) =>
+    Wakeup.make({
+      id: row.id,
+      channelId: row.channel_id,
+      description: row.description,
+      note: row.note,
+      nextRunAt: row.next_run_at,
+      recurrence:
+        row.cron !== null && row.timezone !== null
+          ? CronRecurrence.make({
+              expression: row.cron,
+              timezone: row.timezone,
+              expiresAt: row.expires_at,
+            })
+          : Once.make({}),
+    }),
+  );
+});
+
 interface RecurrenceColumns {
   readonly cron: string | null;
   readonly timezone: string | null;
@@ -229,6 +237,8 @@ const recurrenceColumns = (recurrence: Recurrence): RecurrenceColumns =>
 
 const makeSchedules = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const changes = yield* Queue.make<void>({ capacity: 1, strategy: "sliding" });
+  const notifyChange = Queue.offer(changes, undefined);
 
   const create = Effect.fn("Schedules.create")(function* (channelId: string, input: CreateInput) {
     const decoded = yield* Schema.decodeEffect(CreateInput, { onExcessProperty: "error" })(
@@ -259,7 +269,11 @@ const makeSchedules = Effect.gen(function* () {
         ${storedRecurrence.cron},
         ${storedRecurrence.timezone}
       )
-    `.pipe(mapError("create"));
+    `.pipe(
+      Effect.mapError((cause) => storeError("create", cause)),
+      Effect.tap(notifyChange),
+      Effect.uninterruptible,
+    );
 
     return wakeup;
   });
@@ -268,7 +282,10 @@ const makeSchedules = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     return yield* sql`SELECT * FROM scheduled_wakeups WHERE channel_id = ${channelId}
       AND (expires_at IS NULL OR expires_at > ${now})
-      ORDER BY next_run_at, id`.pipe(Effect.flatMap(decodeRows), mapError("list"));
+      ORDER BY next_run_at, id`.pipe(
+      Effect.flatMap(decodeRows),
+      Effect.mapError((cause) => storeError("list", cause)),
+    );
   });
 
   const cancel = Effect.fn("Schedules.cancel")(function* (channelId: string, id: string) {
@@ -277,13 +294,14 @@ const makeSchedules = Effect.gen(function* () {
       WHERE channel_id = ${channelId} AND id = ${id}
       AND (expires_at IS NULL OR expires_at > ${now}) RETURNING *`.pipe(
       Effect.flatMap(decodeRows),
-      mapError("cancel"),
+      Effect.mapError((cause) => storeError("cancel", cause)),
     );
 
     if (rows[0] === undefined) {
       return yield* invalid("No active schedule found in this channel.");
     }
 
+    yield* notifyChange;
     return rows[0];
   });
 
@@ -318,7 +336,10 @@ const makeSchedules = Effect.gen(function* () {
             SELECT * FROM scheduled_wakeups
             WHERE channel_id = ${channelId} AND id = ${id}
               AND (expires_at IS NULL OR expires_at > ${now})
-          `.pipe(Effect.flatMap(decodeRows));
+          `.pipe(
+            Effect.flatMap(decodeRows),
+            Effect.mapError((cause) => storeError("update", cause)),
+          );
 
           const current = rows[0];
           if (current === undefined) {
@@ -354,10 +375,14 @@ const makeSchedules = Effect.gen(function* () {
           });
         }),
       )
-      .pipe(mapError("update"));
+      .pipe(
+        Effect.catchTag("SqlError", (cause) => Effect.fail(storeError("update", cause))),
+        Effect.tap(decoded.timing === undefined ? Effect.void : notifyChange),
+        Effect.uninterruptible,
+      );
   });
 
-  const takeDue = Effect.fn("Schedules.takeDue")(function* (now: number) {
+  const takeDue = Effect.fn("Schedules.takeDue", { root: true })(function* (now: number) {
     // Consume before dispatch: best-effort wakeups, not durable job execution.
     // Advancing from now coalesces missed cron ticks into one wakeup.
     return yield* sql
@@ -374,30 +399,101 @@ const makeSchedules = Effect.gen(function* () {
           for (const wakeup of due) {
             if (Recurrence.guards.once(wakeup.recurrence)) {
               yield* sql`DELETE FROM scheduled_wakeups WHERE id = ${wakeup.id}`;
+              continue;
+            }
+
+            const nextRunAt = yield* nextCron(
+              wakeup.recurrence.expression,
+              wakeup.recurrence.timezone,
+              now,
+            );
+            if (wakeup.recurrence.expiresAt !== null && nextRunAt >= wakeup.recurrence.expiresAt) {
+              yield* sql`DELETE FROM scheduled_wakeups WHERE id = ${wakeup.id}`;
             } else {
-              const nextRunAt = yield* nextCron(
-                wakeup.recurrence.expression,
-                wakeup.recurrence.timezone,
-                now,
-              );
-              if (
-                wakeup.recurrence.expiresAt !== null &&
-                nextRunAt >= wakeup.recurrence.expiresAt
-              ) {
-                yield* sql`DELETE FROM scheduled_wakeups WHERE id = ${wakeup.id}`;
-              } else {
-                yield* sql`UPDATE scheduled_wakeups SET next_run_at = ${nextRunAt} WHERE id = ${wakeup.id}`;
-              }
+              yield* sql`UPDATE scheduled_wakeups SET next_run_at = ${nextRunAt} WHERE id = ${wakeup.id}`;
             }
           }
 
           return due;
         }),
       )
-      .pipe(mapError("takeDue"));
+      .pipe(Effect.mapError((cause) => storeError("takeDue", cause)));
   });
 
-  return Service.of({ create, list, cancel, update, takeDue });
+  const nextDeadline = Effect.fn("Schedules.nextDeadline", { root: true })(function* () {
+    const rows = yield* sql`
+      SELECT next_run_at FROM scheduled_wakeups ORDER BY next_run_at LIMIT 1
+    `.pipe(
+      Effect.flatMap(
+        Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ next_run_at: Schema.Finite }))),
+      ),
+      Effect.mapError((cause) => storeError("nextDeadline", cause)),
+    );
+    const deadline = rows[0]?.next_run_at;
+    if (deadline !== undefined) {
+      yield* Effect.annotateCurrentSpan("nextDeadlineEpochMs", deadline);
+    }
+    return deadline;
+  });
+
+  // Recheck wall time without querying the store.
+  const CLOCK_SAMPLE_INTERVAL = Duration.seconds(5);
+  const RETRY_BACKOFF_CAP = Duration.seconds(60);
+
+  const waitUntil = Effect.fnUntraced(function* (deadline: number) {
+    while (true) {
+      const now = yield* Clock.currentTimeMillis;
+      if (now >= deadline) return;
+      yield* Effect.sleep(Duration.min(Duration.millis(deadline - now), CLOCK_SAMPLE_INTERVAL));
+    }
+  });
+
+  // Back off failed store operations, capped at one minute between retries.
+  const storeRetry = Schedule.min([
+    Schedule.exponential("1 second"),
+    Schedule.spaced(RETRY_BACKOFF_CAP),
+  ]).pipe(
+    Schedule.tap(({ input, attempt, duration }) =>
+      Effect.logError("Wakeup store operation failed; retrying", input).pipe(
+        Effect.annotateLogs({
+          retryAttempt: attempt,
+          retryDelayMs: Duration.toMillis(duration),
+        }),
+      ),
+    ),
+  );
+
+  const waitForChangeOrDeadline = (deadline: number | undefined) =>
+    deadline === undefined
+      ? Queue.take(changes)
+      : Effect.race(Queue.take(changes), waitUntil(deadline));
+
+  const awaitCheck = Effect.fnUntraced(function* () {
+    // Clear before querying so changes during the read remain buffered.
+    yield* Queue.clear(changes);
+    const deadline = yield* nextDeadline().pipe(
+      // This feed supervises store defects as well as typed store failures.
+      Effect.catchDefect((defect) => Effect.fail(storeError("nextDeadline", defect))),
+      Effect.retry(storeRetry),
+      Effect.orDie,
+    );
+    yield* waitForChangeOrDeadline(deadline);
+  });
+
+  const checks = Stream.fromEffectRepeat(awaitCheck());
+  const due = checks.pipe(
+    Stream.mapEffect(() =>
+      Clock.currentTimeMillis.pipe(
+        Effect.flatMap(takeDue),
+        Effect.catchDefect((defect) => Effect.fail(storeError("takeDue", defect))),
+        Effect.retry(storeRetry),
+        Effect.orDie,
+      ),
+    ),
+    Stream.flattenIterable,
+  );
+
+  return Service.of({ create, list, cancel, update, due });
 });
 
 export interface Interface {
@@ -417,9 +513,11 @@ export interface Interface {
     id: string,
     input: UpdateInput,
   ) => Effect.Effect<UpdateResult, ValidationError | StoreError>;
-  readonly takeDue: (
-    now: number,
-  ) => Effect.Effect<ReadonlyArray<Wakeup>, ValidationError | StoreError>;
+  /**
+   * Single-consumer feed of due wakeups. Consumes from the store before emission:
+   * best-effort delivery, not durable job execution.
+   */
+  readonly due: Stream.Stream<Wakeup>;
 }
 
 export class Service extends Context.Service<Service, Interface>()(
