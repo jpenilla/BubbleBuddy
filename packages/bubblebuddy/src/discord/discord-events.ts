@@ -1,4 +1,4 @@
-import type { ClientEvents } from "discord.js";
+import type { Client, ClientEvents } from "discord.js";
 import { Cause, Context, Effect, FiberSet, Layer, Scope } from "effect";
 import { DiscordClient } from "./discord-client.ts";
 
@@ -17,7 +17,11 @@ export interface Interface {
     event: Event,
     listener: Listener<Event>,
   ) => Effect.Effect<void, never, Scope.Scope>;
-  /** Register an Effectful listener, capturing registration context, within the current scope. */
+  /**
+   * Register an Effectful listener. Each event runs the listener in a new fiber,
+   * using the services available at registration. Invocations may overlap.
+   * When the registration scope closes, remove the listener and interrupt its fibers.
+   */
   readonly forkOn: <Event extends keyof ClientEvents, A, E, R>(
     event: Event,
     listener: Listener<Event, Effect.Effect<A, E, R>>,
@@ -53,21 +57,14 @@ export const layer = Layer.effect(
               client.removeListener(event, listener);
             }),
         ),
-      forkOn: (event, listener) =>
-        registerForkedEvent(
-          event,
-          (wrapper) => client.on(event, wrapper),
-          (wrapper) => client.removeListener(event, wrapper),
-          listener,
-        ),
+      forkOn: (event, listener) => forkOn(client, event, listener),
     });
   }),
 );
 
-const registerForkedEvent = Effect.fnUntraced(function* <Event extends keyof ClientEvents, A, E, R>(
+const forkOn = Effect.fnUntraced(function* <Event extends keyof ClientEvents, A, E, R>(
+  client: Client<true>,
   event: Event,
-  register: (wrapper: Listener<Event>) => void,
-  unregister: (wrapper: Listener<Event>) => void,
   listener: Listener<Event, Effect.Effect<A, E, R>>,
 ) {
   const fibers = yield* FiberSet.make<unknown, never>();
@@ -89,20 +86,11 @@ const registerForkedEvent = Effect.fnUntraced(function* <Event extends keyof Cli
 
   return yield* Effect.acquireRelease(
     Effect.sync(() => {
-      register(wrapper);
+      client.on(event, wrapper);
     }),
     () =>
-      Effect.gen(function* () {
-        unregister(wrapper);
-        yield* FiberSet.awaitEmpty(fibers).pipe(
-          Effect.timeout("3 seconds"),
-          Effect.catchTag("TimeoutError", (error) =>
-            Effect.logWarning(
-              "Timed out waiting for Discord event handler invocations to exit",
-              error,
-            ).pipe(Effect.annotateLogs({ eventName: event })),
-          ),
-        );
+      Effect.sync(() => {
+        client.removeListener(event, wrapper);
       }),
   );
 });
