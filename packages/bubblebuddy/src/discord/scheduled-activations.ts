@@ -4,7 +4,7 @@ import { ChannelSessions } from "../session/registry.ts";
 import { DiscordClient } from "./discord-client.ts";
 import { isGuildTextChannel, tryDiscordJsPromise } from "./utils.ts";
 
-export const ScheduledWakeupsLayer = Layer.effectDiscard(
+export const ScheduledActivationsLayer = Layer.effectDiscard(
   Effect.gen(function* () {
     const schedules = yield* Schedules.Service;
     const sessions = yield* ChannelSessions;
@@ -39,7 +39,7 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
             ).pipe(Effect.annotateLogs({ scheduleId: wakeup.id })),
           ),
           Effect.annotateLogs({ channelId: wakeup.channelId }),
-          Effect.withSpan("ScheduledWakeups.dispatch", {
+          Effect.withSpan("ScheduledActivations.dispatch", {
             root: true,
             attributes: { channelId: wakeup.channelId, scheduleId: wakeup.id },
           }),
