@@ -14,12 +14,16 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
       function* (wakeup: Schedules.Wakeup) {
         const channel = yield* tryDiscordJsPromise(() => client.channels.fetch(wakeup.channelId));
         if (channel === null || !isGuildTextChannel(channel)) {
-          yield* Effect.logWarning("Scheduled wakeup destination is unavailable");
+          yield* Effect.logWarning("Scheduled wakeup destination is unavailable").pipe(
+            Effect.annotateLogs({ scheduleId: wakeup.id }),
+          );
           return;
         }
         const session = yield* sessions.get(channel.id);
         const now = yield* Clock.currentTimeMillis;
-        yield* Effect.logInfo("Executing scheduled wakeup");
+        yield* Effect.logInfo("Executing scheduled wakeup").pipe(
+          Effect.annotateLogs({ scheduleId: wakeup.id }),
+        );
         yield* session.activate({
           channel,
           prompt: `Current time: ${new Date(now).toISOString()}\n\n${Schedules.describe(wakeup)}`,
@@ -29,11 +33,12 @@ export const ScheduledWakeupsLayer = Layer.effectDiscard(
         effect.pipe(
           Effect.scoped,
           Effect.onError((cause) =>
-            Cause.hasInterruptsOnly(cause)
+            (Cause.hasInterruptsOnly(cause)
               ? Effect.logDebug("Scheduled wakeup interrupted", cause)
-              : Effect.logError("Scheduled wakeup failed", cause),
+              : Effect.logError("Scheduled wakeup failed", cause)
+            ).pipe(Effect.annotateLogs({ scheduleId: wakeup.id })),
           ),
-          Effect.annotateLogs({ channelId: wakeup.channelId, scheduleId: wakeup.id }),
+          Effect.annotateLogs({ channelId: wakeup.channelId }),
           Effect.withSpan("ScheduledWakeups.dispatch", {
             root: true,
             attributes: { channelId: wakeup.channelId, scheduleId: wakeup.id },

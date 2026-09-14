@@ -38,10 +38,6 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
       return;
     }
 
-    const attributes = {
-      channelId: message.channel.id,
-      messageId: message.id,
-    };
     yield* Effect.gen(function* () {
       const sessions = yield* ChannelSessions;
       const session = yield* sessions.get(message.channel.id);
@@ -51,13 +47,25 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
       });
     }).pipe(
       Effect.onError((cause) =>
-        Cause.hasInterruptsOnly(cause)
+        (Cause.hasInterruptsOnly(cause)
           ? Effect.logDebug("Discord message activation interrupted", cause)
-          : Effect.logError("Discord message activation failed", cause),
+          : Effect.logError("Discord message activation failed", cause)
+        ).pipe(
+          Effect.annotateLogs({
+            channelId: message.channel.id,
+            messageId: message.id,
+          }),
+        ),
       ),
-      Effect.withSpan("DiscordActivation.handleMessage", { root: true }),
-      Effect.annotateSpans(attributes),
-      Effect.annotateLogs(attributes),
+      Effect.withSpan("DiscordActivation.handleMessage", {
+        root: true,
+        attributes: {
+          channelId: message.channel.id,
+          messageId: message.id,
+        },
+      }),
+      Effect.annotateSpans({ channelId: message.channel.id }),
+      Effect.annotateLogs({ channelId: message.channel.id }),
       Effect.ignoreCause(),
     );
   });

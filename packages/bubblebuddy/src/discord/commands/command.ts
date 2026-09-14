@@ -35,19 +35,22 @@ export const createCommand = <E, R>(definition: CommandDefinition<E, R>) =>
     return {
       data: definition.data,
       execute: (interaction) => {
-        const attributes = {
-          commandName: interaction.commandName,
-          interactionId: interaction.id,
-          channelId: interaction.channelId,
-        };
         return Effect.suspend(() => definition.execute(interaction)).pipe(
           Effect.scoped,
           Effect.onError((cause) => {
             const interrupted = Cause.hasInterruptsOnly(cause);
             return Effect.gen(function* () {
-              yield* interrupted
-                ? Effect.logDebug("Slash command interrupted", cause)
-                : Effect.logError("Slash command failed", cause);
+              yield* (
+                interrupted
+                  ? Effect.logDebug("Slash command interrupted", cause)
+                  : Effect.logError("Slash command failed", cause)
+              ).pipe(
+                Effect.annotateLogs({
+                  commandName: interaction.commandName,
+                  interactionId: interaction.id,
+                  channelId: interaction.channelId,
+                }),
+              );
               yield* tryDiscordJsPromise(async () => {
                 if (interaction.deferred) {
                   await interaction.editReply(
@@ -61,9 +64,16 @@ export const createCommand = <E, R>(definition: CommandDefinition<E, R>) =>
               }).pipe(Effect.timeout("3 seconds"), Effect.ignore());
             });
           }),
-          Effect.withSpan("Command.execute", { root: true }),
-          Effect.annotateSpans(attributes),
-          Effect.annotateLogs(attributes),
+          Effect.withSpan("Command.execute", {
+            root: true,
+            attributes: {
+              commandName: interaction.commandName,
+              interactionId: interaction.id,
+              channelId: interaction.channelId,
+            },
+          }),
+          Effect.annotateSpans({ channelId: interaction.channelId }),
+          Effect.annotateLogs({ channelId: interaction.channelId }),
           Effect.ignoreCause(),
           Effect.provide(context),
         );
