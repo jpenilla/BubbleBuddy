@@ -4,7 +4,6 @@ import {
   createAgentSession,
   SessionManager,
   SettingsManager,
-  type AgentSessionEvent,
   type ExtensionFactory,
   type SessionStats,
   type ToolDefinition,
@@ -36,12 +35,13 @@ import { FileConfig, type McpServerConfigEntry } from "../config/file.ts";
 import { LoadedResources } from "../resources.ts";
 import { createChannelWorkspaceResourceLoader } from "./workspace-resource-loader.ts";
 import { createIncusExtension } from "./incus-extension.ts";
-import type { DiscordOutputPump } from "../discord/session-output-pump.ts";
+import type { DiscordOutputPump } from "../discord/output-pump.ts";
 import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { PiContext } from "./context.ts";
 import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
 import { channelHostSessionsDir, createChannelMountedWorkspace } from "../shared/workspace.ts";
 import { SessionContainer } from "../session/session-container.ts";
+import { subscribe, type SessionEvent } from "./session-events.ts";
 
 const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
@@ -304,9 +304,7 @@ export const createPiSession = (
         Effect.ignoreCause(),
       );
 
-    const handleSessionEvent = (event: AgentSessionEvent): void => {
-      if (event.type !== "compaction_end") return;
-
+    const handleCompactionEnd = (event: SessionEvent<"compaction_end">): void => {
       const messages = pendingQueue;
       pendingQueue = [];
       if (messages.length === 0) return;
@@ -321,67 +319,66 @@ export const createPiSession = (
     };
 
     const activate = (activation: ActivatePiSessionInput) =>
-      operationLock.withPermit(
-        Effect.gen(function* () {
-          if (session.isStreaming || isActivating()) {
-            yield* Effect.tryPromise({
-              try: () => session.steer(activation.prompt),
-              catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
-            });
-            return;
-          }
+      operationLock
+        .withPermit(
+          Effect.gen(function* () {
+            if (session.isStreaming || isActivating()) {
+              yield* Effect.tryPromise({
+                try: () => session.steer(activation.prompt),
+                catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
+              });
+              return;
+            }
 
-          if (session.isCompacting) {
-            pendingQueue.push(activation.prompt);
-            return;
-          }
+            if (session.isCompacting) {
+              pendingQueue.push(activation.prompt);
+              return;
+            }
 
-          if (session.isRetrying) {
-            yield* Effect.tryPromise({
-              try: () => session.steer(activation.prompt),
-              catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
-            });
-            return;
-          }
+            if (session.isRetrying) {
+              yield* Effect.tryPromise({
+                try: () => session.steer(activation.prompt),
+                catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
+              });
+              return;
+            }
 
-          // The prompt outlives this activation, so it gets its own trace and a link
-          // back to the span that triggered it.
-          const triggerSpan = yield* Effect.currentSpan.pipe(Effect.orDie);
+            // The prompt outlives this activation, so it gets its own trace and a link
+            // back to the span that triggered it.
+            const triggerSpan = yield* Effect.currentSpan.pipe(Effect.orDie);
 
-          yield* FiberHandle.run(
-            activationFiber,
-            Effect.scoped(
-              activation.retainChannelSession.pipe(
-                Effect.andThen(
-                  Effect.tryPromise({
-                    try: () => session.prompt(activation.prompt),
-                    catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
-                  }).pipe(
-                    Effect.tapError((error) =>
-                      Effect.sync(() => output.reportUnexpectedError(error.cause)),
-                    ),
+            yield* FiberHandle.run(
+              activationFiber,
+              Effect.scoped(
+                activation.retainChannelSession.pipe(
+                  Effect.andThen(
+                    Effect.tryPromise({
+                      try: () => session.prompt(activation.prompt),
+                      catch: (cause) =>
+                        new PiSessionOperationError({ operation: "activate", cause }),
+                    }).pipe(Effect.tapError((error) => output.reportUnexpectedError(error.cause))),
                   ),
+                  Effect.onError((cause) =>
+                    Cause.hasInterruptsOnly(cause)
+                      ? Effect.logDebug("Session activation interrupted", cause)
+                      : Effect.logError("Session activation failed", cause),
+                  ),
+                  Effect.withSpan("PiSession.prompt", {
+                    root: true,
+                    attributes: {
+                      channelId: input.channel.id,
+                      modelId: piContext.model.id,
+                      modelProvider: piContext.model.provider,
+                    },
+                  }),
+                  Effect.linkSpans(triggerSpan, { relationship: "triggered_by" }),
+                  Effect.ignoreCause(),
                 ),
-                Effect.onError((cause) =>
-                  Cause.hasInterruptsOnly(cause)
-                    ? Effect.logDebug("Session activation interrupted", cause)
-                    : Effect.logError("Session activation failed", cause),
-                ),
-                Effect.withSpan("PiSession.prompt", {
-                  root: true,
-                  attributes: {
-                    channelId: input.channel.id,
-                    modelId: piContext.model.id,
-                    modelProvider: piContext.model.provider,
-                  },
-                }),
-                Effect.linkSpans(triggerSpan, { relationship: "triggered_by" }),
-                Effect.ignoreCause(),
               ),
-            ),
-          );
-        }),
-      );
+            );
+          }),
+        )
+        .pipe(Effect.withSpan("PiSession.activate"));
 
     const requestCompaction = (customInstructions?: string) =>
       operationLock.withPermit(
@@ -391,11 +388,11 @@ export const createPiSession = (
         }).pipe(Effect.asVoid),
       );
 
-    const unsubscribe = session.subscribe((event) => output.handleSessionEvent(event));
-    yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+    yield* subscribe(session, (event) => {
+      output.handleSessionEvent(event);
+      if (event.type === "compaction_end") handleCompactionEnd(event);
+    });
 
-    const unsubscribeInternal = session.subscribe(handleSessionEvent);
-    yield* Effect.addFinalizer(() => Effect.sync(unsubscribeInternal));
     yield* Effect.addFinalizer(prepareForClose);
 
     return {

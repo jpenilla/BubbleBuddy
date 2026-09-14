@@ -59,13 +59,15 @@ const scheduleMetadata = Effect.gen(function* () {
   yield* sql`CREATE INDEX scheduled_wakeups_due ON scheduled_wakeups (next_run_at)`;
 });
 
-const migrationsLayer = SqliteMigrator.layer({
-  loader: SqliteMigrator.fromRecord({
-    "1_initial_schema": initialSchema,
-    "2_scheduled_wakeups": scheduledWakeups,
-    "3_schedule_metadata": scheduleMetadata,
-  }),
-});
+const migrationsLayer = Layer.effectDiscard(
+  SqliteMigrator.run({
+    loader: SqliteMigrator.fromRecord({
+      "1_initial_schema": initialSchema,
+      "2_scheduled_wakeups": scheduledWakeups,
+      "3_schedule_metadata": scheduleMetadata,
+    }),
+  }).pipe(Effect.withSpan("AppDatabase.migrate")),
+);
 
 export const layerNoDeps = Layer.unwrap(
   Effect.gen(function* () {

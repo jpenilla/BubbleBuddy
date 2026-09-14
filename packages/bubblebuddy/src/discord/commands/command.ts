@@ -4,7 +4,7 @@ import type {
   GuildTextBasedChannel,
   SharedSlashCommand,
 } from "discord.js";
-import { Cause, Context, Effect, Tracer } from "effect";
+import { Cause, Effect } from "effect";
 
 import type { DiscordEvents } from "../discord-events.ts";
 import { isGuildTextChannel, tryDiscordJsPromise } from "../utils.ts";
@@ -31,27 +31,23 @@ export interface CommandDispatcher extends DiscordEvents.Listener<
 
 export const createCommand = <E, R>(definition: CommandDefinition<E, R>) =>
   Effect.gen(function* () {
-    // Inherit the invocation's parent span, not the construction-time span.
-    const context = Context.omit(Tracer.ParentSpan)(yield* Effect.context<R>());
+    const context = yield* Effect.context<R>();
     return {
       data: definition.data,
-      execute: (interaction) =>
-        Effect.suspend(() => definition.execute(interaction)).pipe(
+      execute: (interaction) => {
+        const attributes = {
+          commandName: interaction.commandName,
+          interactionId: interaction.id,
+          channelId: interaction.channelId,
+        };
+        return Effect.suspend(() => definition.execute(interaction)).pipe(
           Effect.scoped,
           Effect.onError((cause) => {
             const interrupted = Cause.hasInterruptsOnly(cause);
             return Effect.gen(function* () {
-              yield* (
-                interrupted
-                  ? Effect.logDebug("Slash command interrupted", cause)
-                  : Effect.logError("Slash command failed", cause)
-              ).pipe(
-                Effect.annotateLogs({
-                  commandName: interaction.commandName,
-                  interactionId: interaction.id,
-                  channelId: interaction.channelId,
-                }),
-              );
+              yield* interrupted
+                ? Effect.logDebug("Slash command interrupted", cause)
+                : Effect.logError("Slash command failed", cause);
               yield* tryDiscordJsPromise(async () => {
                 if (interaction.deferred) {
                   await interaction.editReply(
@@ -65,16 +61,13 @@ export const createCommand = <E, R>(definition: CommandDefinition<E, R>) =>
               }).pipe(Effect.timeout("3 seconds"), Effect.ignore());
             });
           }),
-          Effect.withSpan("Command.execute", {
-            attributes: {
-              commandName: interaction.commandName,
-              interactionId: interaction.id,
-              channelId: interaction.channelId,
-            },
-          }),
+          Effect.withSpan("Command.execute", { root: true }),
+          Effect.annotateSpans(attributes),
+          Effect.annotateLogs(attributes),
           Effect.ignoreCause(),
           Effect.provide(context),
-        ),
+        );
+      },
     } satisfies Command;
   });
 

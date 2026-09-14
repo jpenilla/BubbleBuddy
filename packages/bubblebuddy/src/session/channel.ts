@@ -12,7 +12,7 @@ import {
   Tracer,
 } from "effect";
 
-import { createDiscordOutputPump } from "../discord/session-output-pump.ts";
+import { createDiscordOutputPump } from "../discord/output-pump.ts";
 import { tryDiscordJsPromise } from "../discord/utils.ts";
 import {
   createPiSession,
@@ -92,10 +92,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
     const clearActiveSession = Effect.gen(function* () {
       yield* repository.clearActiveSession(input.channelId).pipe(mapToChannelSessionError);
       yield* Ref.set(activeSessionRef, undefined);
-    }).pipe(
-      Effect.annotateLogs(attributes),
-      Effect.withSpan("ChannelSession.clearActiveSession", { attributes }),
-    );
+    }).pipe(Effect.withSpan("ChannelSession.clearActiveSession", { attributes }));
 
     const getOrCreatePiSession = Effect.fn("ChannelSession.getOrCreatePiSession", { attributes })(
       function* (channel: GuildTextBasedChannel) {
@@ -130,7 +127,6 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
 
         return pi;
       },
-      Effect.annotateLogs(attributes),
     );
 
     const abort = Effect.gen(function* () {
