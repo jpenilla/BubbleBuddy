@@ -45,16 +45,19 @@ export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
           Effect.suspend(() => tool.execute(toolCallId, input, onUpdate, ctx)).pipe(
             Effect.scoped,
             Effect.onError((cause) =>
-              (Cause.hasDies(cause)
+              Cause.hasDies(cause)
                 ? Effect.logError("Tool defect", cause)
-                : Effect.logDebug("Tool failed", cause)
-              ).pipe(Effect.annotateLogs({ toolName: tool.name, toolCallId })),
+                : Effect.logDebug(
+                    Cause.hasInterruptsOnly(cause) ? "Tool interrupted" : "Tool failed",
+                    cause,
+                  ),
             ),
             Effect.withSpan("EffectTool.execute", {
               // The captured runtime belongs to tool construction, not this invocation.
               root: true,
-              attributes: { toolName: tool.name, toolCallId },
             }),
+            Effect.annotateSpans({ toolName: tool.name, toolCallId }),
+            Effect.annotateLogs({ toolName: tool.name, toolCallId }),
             Effect.catchDefect(() =>
               Effect.fail(
                 new AgentToolError({ message: "This tool encountered an internal error." }),

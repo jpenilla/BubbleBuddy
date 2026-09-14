@@ -82,10 +82,6 @@ const registerForkedEvent = Effect.fnUntraced(function* <Event extends keyof Cli
             : Effect.logError("Discord event handler failed", cause)
           ).pipe(Effect.annotateLogs({ eventName: event })),
         ),
-        Effect.withSpan("DiscordEvents.handleEvent", {
-          root: true,
-          attributes: { eventName: event },
-        }),
         Effect.ignoreCause(),
       ),
     );

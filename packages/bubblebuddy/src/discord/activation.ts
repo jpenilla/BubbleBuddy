@@ -1,5 +1,5 @@
 import { Events, type Client, type Message } from "discord.js";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Layer } from "effect";
 
 import { ChannelSessions } from "../session/registry.ts";
 import { DiscordEvents } from "./discord-events.ts";
@@ -38,10 +38,26 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
       return;
     }
 
-    const sessions = yield* ChannelSessions;
-    const session = yield* sessions.get(message.channel.id);
-    yield* session.activate({
-      channel: message.channel,
-      prompt: formatMessageForPrompt(message),
-    });
+    const attributes = {
+      channelId: message.channel.id,
+      messageId: message.id,
+    };
+    yield* Effect.gen(function* () {
+      const sessions = yield* ChannelSessions;
+      const session = yield* sessions.get(message.channel.id);
+      yield* session.activate({
+        channel: message.channel,
+        prompt: formatMessageForPrompt(message),
+      });
+    }).pipe(
+      Effect.onError((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.logDebug("Discord message activation interrupted", cause)
+          : Effect.logError("Discord message activation failed", cause),
+      ),
+      Effect.withSpan("DiscordActivation.handleMessage", { root: true }),
+      Effect.annotateSpans(attributes),
+      Effect.annotateLogs(attributes),
+      Effect.ignoreCause(),
+    );
   });

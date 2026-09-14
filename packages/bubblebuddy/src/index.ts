@@ -1,6 +1,8 @@
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+import { Otlp, OtlpSerialization } from "effect/unstable/observability";
 
 import { AppDatabase } from "./database.ts";
 import { ActivationLayer } from "./discord/activation.ts";
@@ -29,4 +31,9 @@ const AppLayer = Layer.mergeAll(ActivationLayer, SlashCommandsLayer, ScheduledWa
   Layer.provide(NodeServices.layer),
 );
 
-NodeRuntime.runMain(Layer.launch(AppLayer));
+const ObservabilityLayer = Otlp.layerFromConfig().pipe(
+  Layer.provide(OtlpSerialization.layerProtobuf),
+  Layer.provide(FetchHttpClient.layer),
+);
+
+NodeRuntime.runMain(Layer.launch(AppLayer).pipe(Effect.provide(ObservabilityLayer)));

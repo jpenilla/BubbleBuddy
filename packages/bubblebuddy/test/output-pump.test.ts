@@ -3,10 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import type { GuildTextBasedChannel } from "discord.js";
 import { Deferred, Effect, Exit, Fiber } from "effect";
 
-import {
-  createDiscordOutputPump,
-  type DiscordOutputPump,
-} from "../src/discord/session-output-pump.ts";
+import { createDiscordOutputPump, type DiscordOutputPump } from "../src/discord/output-pump.ts";
 
 type SessionEvent = Parameters<DiscordOutputPump["handleSessionEvent"]>[0];
 
