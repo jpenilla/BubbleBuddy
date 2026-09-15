@@ -1,4 +1,4 @@
-import { Effect, Schema, Scope, Stream } from "effect";
+import { Duration, Effect, Schema, Scope, Stream } from "effect";
 
 import type { GuestPath } from "./guest-path.ts";
 
@@ -98,6 +98,12 @@ export interface ExecOptions {
   readonly cwd?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly timeoutSeconds?: number;
+  /**
+   * After early exit, wait this long for remote termination after closing the sockets.
+   * Omitted means no confirmation wait. Cleanup cannot be interrupted by the caller;
+   * confirmation failures are logged without replacing the original outcome.
+   */
+  readonly terminationWaitTimeout?: Duration.Input;
   readonly onStdout?: OutputCallback;
   readonly onStderr?: OutputCallback;
 }
