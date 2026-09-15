@@ -1,4 +1,4 @@
-import { Effect, Fiber, Schema } from "effect";
+import { Duration, Effect, Fiber, Schema } from "effect";
 import * as Socket from "effect/unstable/socket/Socket";
 
 import { IncusApi } from "./incus-api.ts";
@@ -107,17 +107,25 @@ const confirmExecTermination = Effect.fn("IncusExecSession.confirmExecTerminatio
   project: string,
   operation: IncusApi.OperationRef,
   lifecycle: ExecLifecycle,
+  terminationWaitTimeout: Duration.Input | undefined,
 ) {
   // No control connection means Incus never started the command and ends the operation itself
   // after its required-websocket wait, so there is nothing to cancel.
-  if (lifecycle.terminal || !lifecycle.controlConnected) return;
+  if (terminationWaitTimeout === undefined || lifecycle.terminal || !lifecycle.controlConnected)
+    return;
 
-  // Closing the control socket makes Incus hard-kill the command (no SIGTERM, no descendants),
-  // matching Pi's bash tool. This confirms the operation ended and is bounded locally only.
+  // Closing the control socket asks Incus to kill the command. This only confirms that
+  // the operation ended; it does not independently verify descendant termination.
   yield* api.operations
     .wait(operation.id, { project, failureMode: "return" })
-    // Make the locally bounded wait interruptible; teardown runs uninterruptible by default.
-    .pipe(Effect.timeout("3 seconds"), Effect.interruptible, Effect.asVoid);
+    // The finalizer stays uninterruptible and joins a fresh child: the timeout can interrupt
+    // the child's wait, but the caller's already-pending interruption cannot.
+    .pipe(
+      Effect.timeout(terminationWaitTimeout),
+      Effect.forkChild,
+      Effect.flatMap(Fiber.join),
+      Effect.asVoid,
+    );
 });
 
 export const exec = Effect.fnUntraced(
@@ -151,7 +159,13 @@ export const exec = Effect.fnUntraced(
           execPayload(command, options),
           { project },
           (operation) =>
-            confirmExecTermination(api, project, operation, lifecycle).pipe(
+            confirmExecTermination(
+              api,
+              project,
+              operation,
+              lifecycle,
+              options?.terminationWaitTimeout,
+            ).pipe(
               Effect.withParentSpan(execSpan),
               Effect.catchCause((cause) =>
                 Effect.logWarning("Incus exec termination was not confirmed", cause).pipe(

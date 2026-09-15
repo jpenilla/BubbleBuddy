@@ -125,41 +125,35 @@ export const createIncusExtension = Effect.gen(function* () {
           container.exec(["/bin/bash", "-c", command], {
             cwd,
             timeoutSeconds,
+            terminationWaitTimeout: "3 seconds",
             onStdout: (chunk) => Effect.sync(() => execOptions.onData(Buffer.from(chunk))),
             onStderr: (chunk) => Effect.sync(() => execOptions.onData(Buffer.from(chunk))),
           }),
         ).pipe(
-          Effect.catchCause((cause) => {
-            if (execOptions.signal?.aborted || Cause.hasInterruptsOnly(cause)) {
-              return Effect.interrupt;
-            }
-            const error = Cause.findErrorOption(cause);
-            if (Option.isSome(error) && error.value instanceof IncusContainer.ExecTimeoutError) {
-              return Effect.fail(new AgentToolError({ message: `timeout:${timeoutSec}` }));
-            }
-            return Effect.logError("Sandbox bash command failed", cause).pipe(
-              Effect.annotateLogs({ toolName: "bash" }),
-              Effect.andThen(
-                Effect.fail(new AgentToolError({ message: "Sandbox internal error" })),
-              ),
-            );
-          }),
-          Effect.withSpan("IncusExtension.bash.exec", {
-            root: true,
-            attributes: { toolName: "bash" },
-          }),
+          Effect.catchCauseIf(
+            (cause) => !Cause.hasInterruptsOnly(cause),
+            Effect.fnUntraced(function* (cause) {
+              const error = Cause.findErrorOption(cause);
+              if (Option.isSome(error) && error.value instanceof IncusContainer.ExecTimeoutError) {
+                return yield* new AgentToolError({
+                  message: execOptions.signal?.aborted ? "aborted" : `timeout:${timeoutSec}`,
+                });
+              }
+              yield* Effect.logError("Sandbox bash command failed", cause);
+              return yield* new AgentToolError({ message: "Sandbox internal error" });
+            }),
+          ),
+          Effect.withSpan("IncusExtension.bash.exec", { root: true }),
           Effect.exit,
         ),
         { signal: execOptions.signal },
       );
 
       if (Exit.isSuccess(exit)) {
+        if (execOptions.signal?.aborted) throw new Error("aborted");
         return { exitCode: exit.value.exitCode };
       }
-      if (execOptions.signal?.aborted || Cause.hasInterruptsOnly(exit.cause)) {
-        throw new Error("aborted");
-      }
-
+      if (Cause.hasInterruptsOnly(exit.cause)) throw new Error("aborted");
       throw Cause.squash(exit.cause);
     },
   };
