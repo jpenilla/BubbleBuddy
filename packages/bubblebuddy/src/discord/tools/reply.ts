@@ -25,6 +25,7 @@ export const replyTool = defineEffectTool({
         "End the turn after this reply succeeds. Only takes effect when every tool call in the same batch is discord_reply with terminate=true.",
     }),
   }),
+  executionMode: "sequential",
   execute: (_toolCallId, params) =>
     Effect.gen(function* () {
       const context = yield* DiscordToolContext;

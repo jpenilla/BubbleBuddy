@@ -16,6 +16,7 @@ export const sendStickerTool = defineEffectTool({
     ),
     stickerId: Type.String({ description: "Sticker ID" }),
   }),
+  executionMode: "sequential",
   execute: (_toolCallId, params) =>
     Effect.gen(function* () {
       const context = yield* DiscordToolContext;

@@ -36,6 +36,7 @@ export const uploadFileTool = defineEffectTool({
     fileName: Type.Optional(Type.String({ description: "Optional attachment file name override" })),
     path: Type.String({ description: "Container path of file to upload" }),
   }),
+  executionMode: "sequential",
   execute: (_toolCallId, params) =>
     Effect.gen(function* () {
       const context = yield* DiscordToolContext;

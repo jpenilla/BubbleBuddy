@@ -12,22 +12,32 @@ import { saveMessageAssetsTool } from "./tools/save-message-assets.ts";
 import { sendStickerTool } from "./tools/send-sticker.ts";
 import { uploadFileTool } from "./tools/upload-file.ts";
 
-export const discordCoreTools = Effect.fn("discordCoreTools")(function* () {
-  return [
-    yield* currentDateTimeTool,
-    yield* listCustomEmojisTool,
-    yield* listStickersTool,
-    yield* sendStickerTool,
-    yield* reactTool,
-    yield* replyTool,
-    yield* fetchMessageTool,
-    yield* ScheduleTools.create,
-    yield* ScheduleTools.update,
-    yield* ScheduleTools.list,
-    yield* ScheduleTools.cancel,
-  ];
+export const makeDiscordTools = Effect.fn("makeDiscordTools")(function* (options: {
+  readonly enableAgenticWorkspace: boolean;
+}) {
+  const coreTools = yield* Effect.all([
+    currentDateTimeTool,
+    listCustomEmojisTool,
+    listStickersTool,
+    sendStickerTool,
+    reactTool,
+    replyTool,
+    fetchMessageTool,
+    ScheduleTools.create,
+    ScheduleTools.update,
+    ScheduleTools.list,
+    ScheduleTools.cancel,
+  ]);
+
+  const agenticWorkspaceTools = options.enableAgenticWorkspace
+    ? yield* makeAgenticWorkspaceTools
+    : [];
+
+  return [...coreTools, ...agenticWorkspaceTools];
 });
 
-export const discordWorkspaceTools = Effect.fn("discordWorkspaceTools")(function* () {
-  return [yield* saveMessageAssetsTool, yield* saveAssetsTool, yield* uploadFileTool];
-});
+const makeAgenticWorkspaceTools = Effect.all([
+  saveMessageAssetsTool,
+  saveAssetsTool,
+  uploadFileTool,
+]);

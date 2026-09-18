@@ -3,6 +3,7 @@ import {
   type AgentToolResult,
   type AgentToolUpdateCallback,
   type ExtensionContext,
+  type ToolExecutionMode,
 } from "@earendil-works/pi-coding-agent";
 import { Cause, Effect, Exit, Schema } from "effect";
 import type { Static, TSchema } from "typebox";
@@ -18,6 +19,7 @@ export interface EffectTool<TParams extends TSchema, Details, E, R> {
   readonly description: string;
   readonly promptSnippet?: string;
   readonly promptGuidelines?: readonly string[];
+  readonly executionMode?: ToolExecutionMode;
   readonly parameters: TParams;
   execute(
     toolCallId: string,
@@ -39,6 +41,7 @@ export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
       promptSnippet: tool.promptSnippet,
       promptGuidelines:
         tool.promptGuidelines === undefined ? undefined : [...tool.promptGuidelines],
+      executionMode: tool.executionMode,
       parameters: tool.parameters,
       execute: async (toolCallId, input, signal, onUpdate, ctx) => {
         const exit = await Effect.runPromiseExitWith(context)(

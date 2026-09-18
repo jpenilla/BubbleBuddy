@@ -25,7 +25,7 @@ import {
 import { HttpClient } from "effect/unstable/http";
 import { IncusClient } from "incus-api";
 
-import { discordCoreTools, discordWorkspaceTools } from "../discord/tools.ts";
+import { makeDiscordTools } from "../discord/tools.ts";
 import { DiscordToolContext } from "../discord/tool-context.ts";
 import { McpPiTools } from "../mcp/pi-tools.ts";
 import { McpClientFactory } from "../mcp/client-factory.ts";
@@ -163,8 +163,6 @@ export const createPiSession = (
       followUpMode: "all",
     });
     const sessionContainer = yield* Effect.gen(function* () {
-      if (!config.enableAgenticWorkspace) return undefined;
-
       const context = yield* Layer.build(
         SessionContainer.layer({
           channelId: input.channel.id,
@@ -196,7 +194,7 @@ export const createPiSession = (
       }),
     ];
 
-    if (sessionContainer !== undefined) {
+    if (config.enableAgenticWorkspace) {
       extensionFactories.push(
         yield* createIncusExtension.pipe(
           Effect.provideService(SessionContainer.Service, sessionContainer),
@@ -229,14 +227,12 @@ export const createPiSession = (
       }),
     );
 
-    const discordTools = yield* Effect.gen(function* () {
-      const core = yield* discordCoreTools();
-      if (sessionContainer === undefined) return core;
-      const workspaceTools = yield* discordWorkspaceTools().pipe(
-        Effect.provideService(SessionContainer.Service, sessionContainer),
-      );
-      return [...core, ...workspaceTools];
-    }).pipe(Effect.provide(toolContextLayer));
+    const discordTools = yield* makeDiscordTools({
+      enableAgenticWorkspace: config.enableAgenticWorkspace,
+    }).pipe(
+      Effect.provide(toolContextLayer),
+      Effect.provideService(SessionContainer.Service, sessionContainer),
+    );
 
     const mcpTools = yield* Effect.forEach(
       Object.entries(config.mcpServers),
@@ -244,8 +240,7 @@ export const createPiSession = (
       { concurrency: 3 },
     ).pipe(Effect.map((tools) => tools.flat()));
 
-    const allTools = [...discordTools, ...mcpTools];
-    yield* ensureUniqueToolNames(allTools);
+    const allTools = yield* ensureUniqueToolNames([...discordTools, ...mcpTools]);
 
     const { session } = yield* Effect.acquireRelease(
       Effect.tryPromise({
@@ -442,7 +437,7 @@ const loadMcpServerTools = Effect.fnUntraced(
   })),
 );
 
-const ensureUniqueToolNames = Effect.fnUntraced(function* (tools: readonly ToolDefinition[]) {
+const ensureUniqueToolNames = Effect.fnUntraced(function* <T extends ToolDefinition>(tools: T[]) {
   const counts = new Map<string, number>();
   for (const tool of tools) {
     counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1);
@@ -453,4 +448,5 @@ const ensureUniqueToolNames = Effect.fnUntraced(function* (tools: readonly ToolD
       message: `Duplicate tool names detected: ${duplicateCounts.map(([name, count]) => `"${name}" (${count}x)`).join(", ")}`,
     });
   }
+  return tools;
 });
