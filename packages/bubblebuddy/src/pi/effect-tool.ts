@@ -19,8 +19,8 @@ export interface EffectTool<TParams extends TSchema, Details, E, R> {
   readonly description: string;
   readonly promptSnippet?: string;
   readonly promptGuidelines?: readonly string[];
-  readonly executionMode?: ToolExecutionMode;
   readonly parameters: TParams;
+  readonly executionMode?: ToolExecutionMode;
   execute(
     toolCallId: string,
     params: Static<TParams>,
@@ -41,8 +41,8 @@ export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
       promptSnippet: tool.promptSnippet,
       promptGuidelines:
         tool.promptGuidelines === undefined ? undefined : [...tool.promptGuidelines],
-      executionMode: tool.executionMode,
       parameters: tool.parameters,
+      executionMode: tool.executionMode,
       execute: async (toolCallId, input, signal, onUpdate, ctx) => {
         const exit = await Effect.runPromiseExitWith(context)(
           Effect.suspend(() => tool.execute(toolCallId, input, onUpdate, ctx)).pipe(
