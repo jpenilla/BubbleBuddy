@@ -13,11 +13,11 @@ catalog:
   "@earendil-works/pi-ai": ^0.85.1
   "@earendil-works/pi-coding-agent": ^0.85.1
   typebox: 1.3.7
-  effect: 4.0.0-rc.115
-  "@effect/platform-node": 4.0.0-rc.115
-  "@effect/sql-sqlite-node": 4.0.0-rc.115
+  effect: 4.0.0-rc.116
+  "@effect/platform-node": 4.0.0-rc.116
+  "@effect/sql-sqlite-node": 4.0.0-rc.116
   "@effect/tsgo": 0.45.0
-  "@effect/vitest": 4.0.0-rc.115
+  "@effect/vitest": 4.0.0-rc.116
   typescript: ^7.0.2
   "@types/node": ^26.4.1
   oxfmt: ^0.67.0
