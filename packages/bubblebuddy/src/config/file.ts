@@ -1,14 +1,5 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import {
-  Context,
-  Effect,
-  FileSystem,
-  Layer,
-  Path,
-  Schema,
-  SchemaGetter,
-  SchemaTransformation,
-} from "effect";
+import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
 import { AppHome } from "./env.ts";
 import { ConfigError } from "./error.ts";
 import { normalizeLineEndings } from "../shared/text.ts";
@@ -80,18 +71,7 @@ const defaultConfigFile = {
   mcpServers: {},
 } satisfies FileConfigShape;
 
-const fromPrettyJsonString = <S extends Schema.Top>(schema: S) =>
-  Schema.String.pipe(
-    Schema.decodeTo(
-      schema,
-      new SchemaTransformation.Transformation(
-        SchemaGetter.parseJson({}),
-        SchemaGetter.stringifyJson({ space: 2 }),
-      ),
-    ),
-  );
-
-const ConfigFileJsonSchema = fromPrettyJsonString(ConfigFileSchema);
+const ConfigFileJsonSchema = Schema.fromJsonString(ConfigFileSchema, { space: 2 });
 const decodeConfigFileJson = Schema.decodeUnknownEffect(ConfigFileJsonSchema);
 const encodeConfigFileJson = Schema.encodeEffect(ConfigFileJsonSchema);
 
