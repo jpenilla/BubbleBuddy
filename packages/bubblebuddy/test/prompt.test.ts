@@ -35,9 +35,7 @@ describe("prompt rendering", () => {
     expect(prompt).toContain("Profile section");
     expect(prompt).toContain("Discord section");
     expect(prompt).toContain("Available tools:\n- discord_lookup: Look up prior Discord messages");
-    expect(prompt).toContain(
-      "Guidelines:\n- Use discord_lookup when the user asks about prior messages.",
-    );
+    expect(prompt).toContain("- Use discord_lookup when the user asks about prior messages.");
     expect(prompt).toContain("Current date: ");
     expect(prompt).not.toContain("Current working directory:");
   });

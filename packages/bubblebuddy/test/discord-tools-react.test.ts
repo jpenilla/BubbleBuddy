@@ -56,7 +56,7 @@ describe("react tool", () => {
 
     const result = await tool.execute(
       "tool-call",
-      { messageId: "message", emojis: ["👍", "🎉"] },
+      { messageId: "message", emojis: ["👍", "🎉"], terminate: false },
       undefined,
       undefined,
       extensionContext,
@@ -83,6 +83,7 @@ describe("react tool", () => {
         {
           messageId: "message",
           emojis: ["👍", "<:wave:12345678901234567>", "🎉"],
+          terminate: false,
         },
         undefined,
         undefined,

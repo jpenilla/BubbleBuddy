@@ -20,6 +20,12 @@ export interface ComposeSystemPromptInput {
 
 const PLACEHOLDER_PATTERN = /\{\{\s*(botName|channelName|channelStatusText|guildName)\s*\}\}/g;
 
+const DISCORD_GUIDELINES = [
+  "Transcript users have mention=<@id>; copy it exactly to ping them. @name is plain text only.",
+  "Ordinary assistant text is streamed into new messages and automatically split across as many messages as needed; it does not need to fit in a single Discord message.",
+  "For tools that support terminate, set terminate=true when the action completes your response; use false when continuing. Early termination only applies when every tool call in the same batch succeeds and returns terminate=true. Terminating calls may be batched across different tools.",
+];
+
 const normalizeSection = (value: string): string | undefined => {
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
@@ -41,14 +47,13 @@ const formatAvailableToolsSection = ({
   return lines.length === 0 ? undefined : `Available tools:\n${lines.join("\n")}`;
 };
 
-const formatGuidelinesSection = ({
-  promptGuidelines,
-}: BuildSystemPromptOptions): string | undefined => {
-  const lines = [
-    ...new Set((promptGuidelines ?? []).map((line) => line.trim()).filter(Boolean)),
-  ].map((line) => `- ${line}`);
+const formatGuidelinesSection = ({ promptGuidelines }: BuildSystemPromptOptions): string => {
+  const guidelines = [...DISCORD_GUIDELINES, ...(promptGuidelines ?? [])];
+  const normalizedGuidelines = guidelines.map((line) => line.trim()).filter(Boolean);
+  const uniqueGuidelines = [...new Set(normalizedGuidelines)];
+  const lines = uniqueGuidelines.map((line) => `- ${line}`);
 
-  return lines.length === 0 ? undefined : `Guidelines:\n${lines.join("\n")}`;
+  return `Guidelines:\n${lines.join("\n")}`;
 };
 
 const formatContextFilesSection = ({

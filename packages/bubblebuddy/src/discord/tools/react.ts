@@ -22,6 +22,9 @@ export const reactTool = defineEffectTool({
       },
     ),
     messageId: Type.String({ description: "Message ID" }),
+    terminate: Type.Boolean({
+      description: "End the turn after these reactions succeed.",
+    }),
   }),
   execute: (_toolCallId, params) =>
     Effect.gen(function* () {
@@ -61,6 +64,7 @@ export const reactTool = defineEffectTool({
       return {
         content: [{ type: "text", text: "Reactions added." }],
         details: undefined,
+        terminate: params.terminate,
       };
     }),
 });

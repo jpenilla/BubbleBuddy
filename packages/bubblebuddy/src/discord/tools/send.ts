@@ -64,12 +64,12 @@ export const makeSendTool = Effect.fn("makeSendTool")(function* (options: {
       : "Send a message with a reply reference or stickers. Requires at least one of replyTo or stickerIds.",
     promptGuidelines: [
       enableFiles
-        ? "Ordinary assistant text is streamed into new messages and automatically split across as many messages as needed; it does not need to fit in a single Discord message. discord_send adds Discord-specific delivery options: a reply reference with optional author notification, stickers, and file attachments."
-        : "Ordinary assistant text is streamed into new messages and automatically split across as many messages as needed; it does not need to fit in a single Discord message. discord_send adds Discord-specific delivery options: a reply reference with optional author notification and stickers.",
+        ? "discord_send adds Discord-specific delivery options: a reply reference with optional author notification, stickers, and file attachments."
+        : "discord_send adds Discord-specific delivery options: a reply reference with optional author notification and stickers.",
       enableFiles
         ? "A discord_send call with stickers or files is a single message, so keep its text within the character limit; text-only replies may be any length and are split automatically."
         : "A discord_send call with stickers is a single message, so keep its text within the character limit; text-only replies may be any length and are split automatically.",
-      "Use discord_send during a turn as needed. For a send that completes the response, include any closing text in content and set terminate=true. Early termination only applies when every tool call in the same batch sets terminate=true, so batch terminating sends only with each other.",
+      "Use discord_send during a turn as needed. For a send that completes the response, include any closing text in content.",
     ],
     parameters: Type.Object({
       content: Type.Optional(
@@ -94,8 +94,7 @@ export const makeSendTool = Effect.fn("makeSendTool")(function* (options: {
         }),
       ),
       terminate: Type.Boolean({
-        description:
-          "End the turn after this send succeeds. Use false for intermediate sends. Only takes effect when every tool call in the same batch sets terminate=true.",
+        description: "End the turn after this send succeeds.",
       }),
       ...(enableFiles
         ? {
