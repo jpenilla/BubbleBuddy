@@ -3,7 +3,8 @@ import { SqlClient } from "effect/unstable/sql";
 
 export const SHOW_THINKING_DEFAULT = false;
 export const REPLY_MODE_DEFAULT = "mention-only" as const;
-export type ReplyMode = "mention-only" | "automatic";
+export const ReplyModeSchema = Schema.Literals(["mention-only", "automatic"]);
+export type ReplyMode = typeof ReplyModeSchema.Type;
 
 export class ChannelStateRepositoryError extends Schema.TaggedError<ChannelStateRepositoryError>()(
   "ChannelStateRepositoryError",
