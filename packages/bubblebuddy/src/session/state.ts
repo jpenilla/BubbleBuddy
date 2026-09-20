@@ -78,10 +78,13 @@ const createChannelStateRepository = Effect.gen(function* () {
 
     getReplyMode: (channelId) =>
       Effect.gen(function* () {
-        const rows = yield* sql<{ reply_mode: string | null }>`
+        const rows = yield* sql<{ reply_mode: unknown }>`
           SELECT reply_mode FROM channel_settings WHERE channel_id = ${channelId}
         `;
-        return rows[0]?.reply_mode === "automatic" ? "automatic" : REPLY_MODE_DEFAULT;
+        const replyMode = rows[0]?.reply_mode;
+        return replyMode == null
+          ? REPLY_MODE_DEFAULT
+          : yield* Schema.decodeUnknownEffect(ReplyModeSchema)(replyMode);
       }).pipe(mapToLoadError(channelId)),
 
     setReplyMode: (channelId, value) =>
