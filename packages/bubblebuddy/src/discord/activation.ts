@@ -2,6 +2,7 @@ import { Events, type Client, type Message } from "discord.js";
 import { Cause, Effect, Layer } from "effect";
 
 import { ChannelSessions } from "../session/registry.ts";
+import { ChannelSettings } from "../session/settings.ts";
 import { DiscordEvents } from "./discord-events.ts";
 import { DiscordClient } from "./discord-client.ts";
 import { isGuildTextChannel } from "./utils.ts";
@@ -34,11 +35,16 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
       return;
     }
 
-    if (!message.mentions.has(client.user.id)) {
-      return;
-    }
-
     yield* Effect.gen(function* () {
+      if (!message.mentions.has(client.user.id)) {
+        const settingsService = yield* ChannelSettings.Service;
+        const settings = yield* settingsService.get(message.channel.id);
+        const replyMode = yield* settings.getReplyMode;
+        if (replyMode === "mention-only") {
+          return;
+        }
+      }
+
       const sessions = yield* ChannelSessions;
       const session = yield* sessions.get(message.channel.id);
       yield* session.activate({

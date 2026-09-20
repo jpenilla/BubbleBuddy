@@ -10,6 +10,7 @@ import { DiscordEvents } from "./discord/discord-events.ts";
 import { DiscordClient } from "./discord/discord-client.ts";
 import { SlashCommandsLayer } from "./discord/commands/index.ts";
 import { ChannelSessions } from "./session/registry.ts";
+import { ChannelSettings } from "./session/settings.ts";
 import { ScheduledActivationsLayer } from "./discord/scheduled-activations.ts";
 import { Schedules } from "./scheduling/schedules.ts";
 import { EnvConfig } from "./config/env.ts";
@@ -29,6 +30,7 @@ const AppLayer = Layer.mergeAll(
   ScheduledActivationsLayer,
 ).pipe(
   Layer.provide(ChannelSessions.layer),
+  Layer.provide(ChannelSettings.layer),
   Layer.provide(Schedules.layer),
   Layer.provide(AppDatabase.layer),
   Layer.provide(DiscordLayer),

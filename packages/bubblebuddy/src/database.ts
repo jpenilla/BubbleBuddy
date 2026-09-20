@@ -59,12 +59,18 @@ const scheduleMetadata = Effect.gen(function* () {
   yield* sql`CREATE INDEX scheduled_wakeups_due ON scheduled_wakeups (next_run_at)`;
 });
 
+const replyMode = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`ALTER TABLE channel_settings ADD COLUMN reply_mode TEXT`;
+});
+
 const migrationsLayer = Layer.effectDiscard(
   SqliteMigrator.run({
     loader: SqliteMigrator.fromRecord({
       "1_initial_schema": initialSchema,
       "2_scheduled_wakeups": scheduledWakeups,
       "3_schedule_metadata": scheduleMetadata,
+      "4_reply_mode": replyMode,
     }),
   }).pipe(Effect.withSpan("AppDatabase.migrate")),
 );

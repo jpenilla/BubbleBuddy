@@ -1,16 +1,5 @@
 import { Routes, type GuildTextBasedChannel } from "discord.js";
-import {
-  Context,
-  Effect,
-  Option,
-  Ref,
-  Schema,
-  Scope,
-  ScopedRef,
-  Semaphore,
-  SynchronizedRef,
-  Tracer,
-} from "effect";
+import { Context, Effect, Option, Ref, Schema, Scope, ScopedRef, Semaphore, Tracer } from "effect";
 
 import { createDiscordOutputPump } from "../discord/output-pump.ts";
 import { tryDiscordJsPromise } from "../discord/utils.ts";
@@ -21,7 +10,8 @@ import {
   type PiSessionServices,
   type SessionStats,
 } from "../pi/session.ts";
-import { ChannelStateRepository } from "./state.ts";
+import { ChannelStateRepository, type ReplyMode } from "./state.ts";
+import { ChannelSettings } from "./settings.ts";
 
 export interface ActivateChannelSessionInput {
   readonly channel: GuildTextBasedChannel;
@@ -40,6 +30,7 @@ export type DiscardResult = "discarded" | "rejected-busy";
 export interface ChannelStatus {
   readonly model: PiSessionModelInfo | undefined;
   readonly showThinking: boolean;
+  readonly replyMode: ReplyMode;
   readonly stats: SessionStats;
 }
 
@@ -63,7 +54,6 @@ export interface ChannelSession {
   readonly status: (
     channel: GuildTextBasedChannel,
   ) => Effect.Effect<ChannelStatus, ChannelSessionError>;
-  readonly toggleShowThinking: Effect.Effect<boolean, ChannelSessionError>;
 }
 
 interface CreateChannelSessionInput {
@@ -75,17 +65,16 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
   Effect.gen(function* () {
     const attributes = { channelId: input.channelId };
     const repository = yield* ChannelStateRepository;
-    // Re-provided at Pi session creation, so drop ParentSpan to keep the invocation's parent.
-    const piServices = Context.omit(Tracer.ParentSpan)(yield* Effect.context<PiSessionServices>());
-    const lock = yield* Semaphore.make(1);
     const mapToChannelSessionError = Effect.mapError(
       (cause) => new ChannelSessionError({ channelId: input.channelId, cause }),
     );
+    const settingsService = yield* ChannelSettings.Service;
+    const settings = yield* settingsService.get(input.channelId).pipe(mapToChannelSessionError);
+    // Re-provided at Pi session creation, so drop ParentSpan to keep the invocation's parent.
+    const piServices = Context.omit(Tracer.ParentSpan)(yield* Effect.context<PiSessionServices>());
+    const lock = yield* Semaphore.make(1);
     const activeSessionRef = yield* Ref.make(
       yield* repository.getActiveSession(input.channelId).pipe(mapToChannelSessionError),
-    );
-    const showThinkingRef = yield* SynchronizedRef.make(
-      yield* repository.getShowThinking(input.channelId).pipe(mapToChannelSessionError),
     );
     const piRef = yield* ScopedRef.make<PiSessionHandle | undefined>(() => undefined);
 
@@ -105,7 +94,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
           Effect.gen(function* () {
             const output = yield* createDiscordOutputPump({
               channel,
-              showThinking: SynchronizedRef.get(showThinkingRef),
+              showThinking: settings.getShowThinking,
             });
             const pi = yield* createPiSession({
               channel,
@@ -230,23 +219,13 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
           const pi = yield* getOrCreatePiSession(channel);
           return {
             model: pi.getModelInfo(),
-            showThinking: yield* SynchronizedRef.get(showThinkingRef),
+            showThinking: yield* settings.getShowThinking,
+            replyMode: yield* settings.getReplyMode,
             stats: pi.getSessionStats(),
           };
         }),
       );
     }, Effect.annotateLogs(attributes));
-
-    const toggleShowThinking = SynchronizedRef.updateAndGetEffect(showThinkingRef, (current) =>
-      Effect.gen(function* () {
-        const next = !current;
-        yield* repository.setShowThinking(input.channelId, next).pipe(mapToChannelSessionError);
-        return next;
-      }),
-    ).pipe(
-      Effect.annotateLogs(attributes),
-      Effect.withSpan("ChannelSession.toggleShowThinking", { attributes }),
-    );
 
     return {
       abort,
@@ -254,7 +233,6 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
       compact,
       discard,
       status,
-      toggleShowThinking,
     } satisfies ChannelSession;
   }).pipe(
     // Construction-scoped only; the returned operations carry their own attributes.

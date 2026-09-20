@@ -14,6 +14,7 @@ const policies: Readonly<Record<string, ToolOutput.Policy>> = {
   discord_fetch_message: hidden,
   discord_react: hidden,
   discord_send: hidden,
+  stay_silent: hidden,
   discord_save_assets: hidden,
   discord_save_message_assets: hidden,
 };
