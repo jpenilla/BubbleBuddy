@@ -23,7 +23,10 @@ const createStatusEmbed = (status: ChannelStatus): EmbedBuilder => {
     .addFields(
       {
         name: "Settings",
-        value: `Thinking messages: ${status.showThinking ? "enabled" : "disabled"}`,
+        value: [
+          `Thinking messages: ${status.showThinking ? "enabled" : "disabled"}`,
+          `Reply mode: ${status.replyMode}`,
+        ].join("\n"),
         inline: false,
       },
       {

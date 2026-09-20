@@ -134,6 +134,7 @@ BubbleBuddy registers these slash commands:
 - `/compact` — manually compact the current channel session.
 - `/status` — show current channel/session status.
 - `/thinking` — toggle thinking messages for the channel.
+- `/reply-mode` — set the channel's reply mode: `mention-only` (default) or `automatic`.
 
 ## Scheduled wakeups
 

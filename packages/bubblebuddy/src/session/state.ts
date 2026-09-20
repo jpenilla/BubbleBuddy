@@ -2,6 +2,8 @@ import { Context, Effect, Layer, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
 export const SHOW_THINKING_DEFAULT = false;
+export const REPLY_MODE_DEFAULT = "mention-only" as const;
+export type ReplyMode = "mention-only" | "automatic";
 
 export class ChannelStateRepositoryError extends Schema.TaggedError<ChannelStateRepositoryError>()(
   "ChannelStateRepositoryError",
@@ -25,7 +27,7 @@ const createChannelStateRepository = Effect.gen(function* () {
     );
 
   const deleteDefaultSettings = (channelId: string) =>
-    sql`DELETE FROM channel_settings WHERE channel_id = ${channelId} AND show_thinking IS NULL`;
+    sql`DELETE FROM channel_settings WHERE channel_id = ${channelId} AND show_thinking IS NULL AND reply_mode IS NULL`;
 
   const deleteDefaultSession = (channelId: string) =>
     sql`DELETE FROM channel_sessions WHERE channel_id = ${channelId} AND active_session IS NULL`;
@@ -72,6 +74,25 @@ const createChannelStateRepository = Effect.gen(function* () {
         `;
         yield* deleteDefaultSettings(channelId);
       }).pipe(mapToSaveError(channelId)),
+
+    getReplyMode: (channelId) =>
+      Effect.gen(function* () {
+        const rows = yield* sql<{ reply_mode: string | null }>`
+          SELECT reply_mode FROM channel_settings WHERE channel_id = ${channelId}
+        `;
+        return rows[0]?.reply_mode === "automatic" ? "automatic" : REPLY_MODE_DEFAULT;
+      }).pipe(mapToLoadError(channelId)),
+
+    setReplyMode: (channelId, value) =>
+      Effect.gen(function* () {
+        const storedValue = value === REPLY_MODE_DEFAULT ? null : value;
+        yield* sql`
+          INSERT INTO channel_settings (channel_id, reply_mode)
+          VALUES (${channelId}, ${storedValue})
+          ON CONFLICT(channel_id) DO UPDATE SET reply_mode = excluded.reply_mode
+        `;
+        yield* deleteDefaultSettings(channelId);
+      }).pipe(mapToSaveError(channelId)),
   });
 });
 
@@ -90,6 +111,11 @@ export class ChannelStateRepository extends Context.Service<
     setShowThinking(
       channelId: string,
       value: boolean,
+    ): Effect.Effect<void, ChannelStateRepositoryError>;
+    getReplyMode(channelId: string): Effect.Effect<ReplyMode, ChannelStateRepositoryError>;
+    setReplyMode(
+      channelId: string,
+      value: ReplyMode,
     ): Effect.Effect<void, ChannelStateRepositoryError>;
   }
 >()("bubblebuddy/session/ChannelStateRepository") {

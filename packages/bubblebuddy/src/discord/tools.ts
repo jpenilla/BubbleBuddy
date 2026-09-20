@@ -9,6 +9,7 @@ import { reactTool } from "./tools/react.ts";
 import { saveAssetsTool } from "./tools/save-assets.ts";
 import { saveMessageAssetsTool } from "./tools/save-message-assets.ts";
 import { makeSendTool } from "./tools/send.ts";
+import { staySilentTool } from "./tools/stay-silent.ts";
 
 export const makeDiscordTools = Effect.fn("makeDiscordTools")(function* (options: {
   readonly enableAgenticWorkspace: boolean;
@@ -18,6 +19,7 @@ export const makeDiscordTools = Effect.fn("makeDiscordTools")(function* (options
     listCustomEmojisTool,
     listStickersTool,
     makeSendTool({ enableAgenticWorkspace: options.enableAgenticWorkspace }),
+    staySilentTool,
     reactTool,
     fetchMessageTool,
     ScheduleTools.create,
