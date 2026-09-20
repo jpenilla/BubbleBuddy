@@ -13,11 +13,9 @@ const policies: Readonly<Record<string, ToolOutput.Policy>> = {
   discord_list_stickers: hidden,
   discord_fetch_message: hidden,
   discord_react: hidden,
-  discord_reply: hidden,
+  discord_send: hidden,
   discord_save_assets: hidden,
   discord_save_message_assets: hidden,
-  discord_send_sticker: hidden,
-  discord_upload_file: hidden,
 };
 
 export const forTool = (name: string): ToolOutput.Policy =>

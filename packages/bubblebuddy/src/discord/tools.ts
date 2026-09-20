@@ -6,11 +6,9 @@ import { ScheduleTools } from "./tools/schedules.ts";
 import { listCustomEmojisTool } from "./tools/list-custom-emojis.ts";
 import { listStickersTool } from "./tools/list-stickers.ts";
 import { reactTool } from "./tools/react.ts";
-import { replyTool } from "./tools/reply.ts";
 import { saveAssetsTool } from "./tools/save-assets.ts";
 import { saveMessageAssetsTool } from "./tools/save-message-assets.ts";
-import { sendStickerTool } from "./tools/send-sticker.ts";
-import { uploadFileTool } from "./tools/upload-file.ts";
+import { makeSendTool } from "./tools/send.ts";
 
 export const makeDiscordTools = Effect.fn("makeDiscordTools")(function* (options: {
   readonly enableAgenticWorkspace: boolean;
@@ -19,9 +17,8 @@ export const makeDiscordTools = Effect.fn("makeDiscordTools")(function* (options
     currentDateTimeTool,
     listCustomEmojisTool,
     listStickersTool,
-    sendStickerTool,
+    makeSendTool({ enableAgenticWorkspace: options.enableAgenticWorkspace }),
     reactTool,
-    replyTool,
     fetchMessageTool,
     ScheduleTools.create,
     ScheduleTools.update,
@@ -36,8 +33,4 @@ export const makeDiscordTools = Effect.fn("makeDiscordTools")(function* (options
   return [...coreTools, ...agenticWorkspaceTools];
 });
 
-const makeAgenticWorkspaceTools = Effect.all([
-  saveMessageAssetsTool,
-  saveAssetsTool,
-  uploadFileTool,
-]);
+const makeAgenticWorkspaceTools = Effect.all([saveMessageAssetsTool, saveAssetsTool]);
