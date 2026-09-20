@@ -135,7 +135,11 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
       activation: ActivateChannelSessionInput,
     ) {
       const pi = yield* ScopedRef.get(piRef);
-      if (pi === undefined || !(pi.isStreaming() || pi.isRetrying() || pi.isCompacting())) {
+      const replyMode = yield* settings.getReplyMode;
+      const shouldTypeEagerly =
+        replyMode === "mention-only" &&
+        (pi === undefined || !(pi.isStreaming() || pi.isRetrying() || pi.isCompacting()));
+      if (shouldTypeEagerly) {
         yield* tryDiscordJsPromise((signal) =>
           activation.channel.client.rest.post(Routes.channelTyping(activation.channel.id), {
             signal,
