@@ -1,4 +1,12 @@
-import { type Embed, Message, MessageFlags, StickerFormatType, type Sticker } from "discord.js";
+import {
+  type Embed,
+  type Message,
+  MessageFlags,
+  MessageReferenceType,
+  StickerFormatType,
+  type MessageSnapshot,
+  type Sticker,
+} from "discord.js";
 
 import { sanitizeAttachmentFilename } from "../shared/workspace.ts";
 
@@ -20,18 +28,10 @@ export const normalizeIncomingUserMentions = (
   return normalized;
 };
 
-export type PromptAttachment = {
-  readonly name: string;
-  readonly size: number;
-};
-
-const formatAttachmentsSuffix = (attachments: readonly PromptAttachment[]): string => {
-  if (attachments.length === 0) return "";
-  const entries = attachments.map(
-    (att, idx) => `[${idx}] ${sanitizeAttachmentFilename(att.name)} ${att.size}`,
-  );
-  return ` [attachments: ${entries.join(", ")}]`;
-};
+type MessageBody = Pick<
+  MessageSnapshot,
+  "content" | "mentions" | "attachments" | "embeds" | "stickers" | "flags"
+>;
 
 const formatEmbedAsset = (
   asset: { readonly width?: number; readonly height?: number } | undefined,
@@ -69,46 +69,52 @@ const formatEmbed = (embed: Embed, index: number): string => {
 const formatSticker = (sticker: Sticker, index: number): string =>
   `[sticker ${index}] id=${sticker.id} name=${sticker.name} format=${StickerFormatType[sticker.format]} description=${sticker.description ?? ""} tags=${sticker.tags ?? ""}`;
 
-export const formatMessageForPrompt = (message: Message<true>): string => {
-  const attachments = [...message.attachments.values()].map((att) => ({
-    name: att.name,
-    size: att.size,
-  }));
-  const formattedMessage = formatIncomingDiscordMessage(
-    message.id,
-    message.author.username,
-    message.author.id,
-    message.content,
-    new Map([...message.mentions.users.values()].map((user) => [user.id, user.username])),
-    message.reference?.messageId ?? undefined,
-    attachments,
+const formatMessageBody = (body: MessageBody): string => {
+  const usernamesById = new Map(
+    [...body.mentions.users.values()].map((user) => [user.id, user.username]),
   );
-  if (message.flags.has(MessageFlags.IsComponentsV2)) {
-    return `${formattedMessage}\n[Discord Components V2 content display not yet implemented]`;
-  }
+  const text = normalizeIncomingUserMentions(body.content, usernamesById).trim();
+  const attachments = [...body.attachments.values()]
+    .map(
+      (attachment, index) =>
+        `[${index}] ${sanitizeAttachmentFilename(attachment.name)} ${attachment.size}`,
+    )
+    .join(", ");
+  const textWithAttachments = [text, attachments.length > 0 ? `[attachments: ${attachments}]` : ""]
+    .filter((part) => part.length > 0)
+    .join(" ");
+  const blocks = body.flags.has(MessageFlags.IsComponentsV2)
+    ? ["[Discord Components V2 content display not yet implemented]"]
+    : [...body.embeds.map(formatEmbed), ...[...body.stickers.values()].map(formatSticker)];
 
-  const extraBlocks = [
-    ...message.embeds.map(formatEmbed),
-    ...[...message.stickers.values()].map(formatSticker),
-  ];
-  return extraBlocks.length === 0
-    ? formattedMessage
-    : `${formattedMessage}\n${extraBlocks.join("\n")}`;
+  return [textWithAttachments, ...blocks].filter((line) => line.length > 0).join("\n");
 };
 
-export const formatIncomingDiscordMessage = (
-  messageId: string,
-  authorUsername: string,
-  authorId: string,
-  content: string,
-  usernamesById: ReadonlyMap<string, string>,
-  inReplyToMessageId?: string,
-  attachments: readonly PromptAttachment[] = [],
-): string => {
-  const normalizedContent = normalizeIncomingUserMentions(content, usernamesById).trim();
-  const replyReference = inReplyToMessageId !== undefined ? ` reply_to=${inReplyToMessageId}` : "";
-  const prefix = `[msg ${messageId} user=${authorUsername} mention=<@${authorId}>${replyReference}]`;
-  const suffix = formatAttachmentsSuffix(attachments);
-  const base = normalizedContent.length === 0 ? prefix : `${prefix} ${normalizedContent}`;
-  return suffix.length === 0 ? base : `${base}${suffix}`;
+const formatForwardedMessage = (message: Message<true>): string => {
+  const reference = message.reference;
+  const metadata = [
+    ["message_id", reference?.messageId],
+    ["channel_id", reference?.channelId],
+    ["guild_id", reference?.guildId],
+  ]
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(" ");
+  const forwardedHeader = metadata.length === 0 ? "[forwarded]" : `[forwarded ${metadata}]`;
+  const snapshots = [...message.messageSnapshots.values()];
+  const snapshotBodies =
+    snapshots.length === 0
+      ? ["[forwarded content unavailable]"]
+      : snapshots.map(formatMessageBody).filter((body) => body.length > 0);
+  return [forwardedHeader, ...snapshotBodies, "[/forwarded]"].join("\n");
+};
+
+export const formatMessageForPrompt = (message: Message<true>): string => {
+  const isForward = message.reference?.type === MessageReferenceType.Forward;
+  const replyTo = isForward ? undefined : message.reference?.messageId;
+  const replyReference = replyTo == null ? "" : ` reply_to=${replyTo}`;
+  const header = `[msg ${message.id} user=${message.author.username} mention=<@${message.author.id}>${replyReference}]`;
+  const lines = [header, formatMessageBody(message)].filter((line) => line.length > 0);
+  if (isForward) lines.push(formatForwardedMessage(message));
+  return lines.join("\n");
 };

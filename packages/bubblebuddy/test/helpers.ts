@@ -1,3 +1,14 @@
+import {
+  Collection,
+  MessageFlagsBitField,
+  type MessageFlagsResolvable,
+  type MessageReferenceType,
+  type Attachment,
+  type Embed,
+  type Message,
+  type MessageSnapshot,
+  type Sticker,
+} from "discord.js";
 import { Layer, Redacted } from "effect";
 import { EnvConfig, type EnvConfigShape } from "../src/config/env.ts";
 
@@ -13,3 +24,72 @@ export const createTestEnvConfig = (overrides: Partial<EnvConfigShape> = {}): En
 
 export const createTestEnvLayer = (overrides: Partial<EnvConfigShape> = {}) =>
   Layer.succeed(EnvConfig, createTestEnvConfig(overrides));
+
+type TestEmbed = Pick<Embed, "toJSON">;
+type TestAttachment = Pick<Attachment, "name" | "size">;
+type TestSticker = Pick<Sticker, "id" | "name" | "format" | "description" | "tags">;
+
+type TestMessageOptions = {
+  readonly id?: string;
+  readonly username?: string;
+  readonly authorId?: string;
+  readonly content?: string;
+  readonly channelId?: string;
+  readonly mentions?: ReadonlyMap<string, string>;
+  readonly reference?: {
+    readonly messageId: string;
+    readonly channelId?: string;
+    readonly guildId?: string;
+    readonly type?: MessageReferenceType;
+  };
+  readonly attachments?: ReadonlyMap<string, TestAttachment>;
+  readonly embeds?: readonly TestEmbed[];
+  readonly stickers?: ReadonlyMap<string, TestSticker>;
+  readonly flags?: MessageFlagsResolvable;
+  readonly messageSnapshots?: ReadonlyMap<string, MessageSnapshot>;
+};
+
+export const createTestMessage = (options: TestMessageOptions = {}): Message<true> =>
+  ({
+    id: options.id ?? "456",
+    author: {
+      username: options.username ?? "alice",
+      id: options.authorId ?? "789",
+    },
+    content: options.content ?? "Hello world",
+    channelId: options.channelId ?? "channel-1",
+    mentions: {
+      users: new Collection(
+        [...(options.mentions ?? new Map()).entries()].map(([id, username]) => [
+          id,
+          { id, username },
+        ]),
+      ),
+    },
+    reference: options.reference ?? null,
+    attachments: new Collection([...(options.attachments ?? new Map()).entries()]),
+    embeds: options.embeds ?? [],
+    flags: new MessageFlagsBitField(options.flags),
+    stickers: new Collection([...(options.stickers ?? new Map()).entries()]),
+    messageSnapshots: new Collection([...(options.messageSnapshots ?? new Map()).entries()]),
+  }) as unknown as Message<true>;
+
+type TestMessageBodyOptions = Pick<
+  TestMessageOptions,
+  "content" | "mentions" | "attachments" | "embeds" | "stickers" | "flags"
+>;
+
+export const createTestMessageSnapshot = (
+  options: TestMessageBodyOptions = {},
+): MessageSnapshot => {
+  const message = createTestMessage(options);
+  return {
+    author: null,
+    content: message.content,
+    mentions: message.mentions,
+    attachments: message.attachments,
+    embeds: message.embeds,
+    flags: message.flags,
+    stickers: message.stickers,
+  } as unknown as MessageSnapshot;
+};
