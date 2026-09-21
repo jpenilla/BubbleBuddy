@@ -134,10 +134,7 @@ export const createDiscordOutputPump = (
       const text = pendingText;
       pendingText = "";
       if (text.trim().length > 0) {
-        yield* sendChunkedMessage({ channel, content: text }).pipe(
-          withToolOutputBoundary,
-          Effect.tap(() => typingIndicator.messageSent),
-        );
+        yield* sendChunkedMessage({ channel, content: text }).pipe(withToolOutputBoundary);
       }
     });
 
@@ -252,14 +249,11 @@ export const createDiscordOutputPump = (
       const msg = event.message;
       if (msg.role !== "assistant") return Effect.void;
       return enqueueHigh(
-        Effect.gen(function* () {
+        Effect.sync(() => {
           pendingText = msg.content
             .filter((block) => block.type === "text")
             .map((block) => block.text)
             .join("");
-          if (msg.stopReason === "pending") {
-            yield* typingIndicator.activate;
-          }
         }).pipe(Effect.withSpan("DiscordOutputPump.onMessageStart")),
       );
     };
@@ -269,8 +263,8 @@ export const createDiscordOutputPump = (
       if (msg.role !== "assistant") return Effect.void;
       return enqueueHigh(
         Effect.gen(function* () {
-          yield* flushPendingText;
           yield* typingIndicator.deactivate;
+          yield* flushPendingText;
           switch (msg.stopReason) {
             case "error":
               yield* sendModelRequestError(
@@ -302,24 +296,31 @@ export const createDiscordOutputPump = (
           );
         case "text_delta":
           return enqueueUpdate(
-            Effect.sync(() => {
+            Effect.gen(function* () {
               pendingText += assistantEvent.delta;
+              if (assistantEvent.delta.length > 0) {
+                yield* typingIndicator.activate;
+              }
             }),
           );
         case "text_end":
           return enqueueUpdate(
             Effect.gen(function* () {
               pendingText = assistantEvent.content;
+              yield* typingIndicator.deactivate;
               yield* flushPendingText;
             }),
           );
+        case "thinking_delta":
+          return enqueueUpdate(typingIndicator.deactivate);
         case "thinking_end":
           return enqueueUpdate(
             Effect.gen(function* () {
               const showThinking = yield* input.showThinking;
               const thinking = assistantEvent.content.trim();
               if (showThinking && thinking.length > 0) {
-                yield* sendThinking(thinking).pipe(Effect.tap(() => typingIndicator.messageSent));
+                yield* typingIndicator.deactivate;
+                yield* sendThinking(thinking);
               }
             }),
           );
