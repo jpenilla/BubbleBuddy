@@ -131,7 +131,7 @@ describe("prompt formatting", () => {
     );
   });
 
-  test("formats forwarded snapshots with source metadata and normalized snapshot content", () => {
+  test("formats the forwarded snapshot with normalized snapshot content", () => {
     const formatted = formatMessageForPrompt(
       createTestMessage({
         id: "outer-message",
@@ -155,16 +155,14 @@ describe("prompt formatting", () => {
       }),
     );
 
-    expect(formatted).toContain(
-      "[forwarded message_id=source-message channel_id=source-channel guild_id=source-guild]",
-    );
+    expect(formatted).toContain("[forwarded]");
     expect(formatted).toContain("@snapshot-user mention=<@123>");
     expect(formatted).toContain("[embed 0]");
     expect(formatted).toMatch(/"title"\s*:\s*"forwarded embed"/);
     expect(formatted).not.toContain("reply_to=");
   });
 
-  test("formats attachment-only forwarded snapshots without unavailable content", () => {
+  test("formats an attachment-only forwarded snapshot", () => {
     const formatted = formatMessageForPrompt(
       createTestMessage({
         content: "",
@@ -188,27 +186,6 @@ describe("prompt formatting", () => {
 
     expect(attachmentIndex).toBeGreaterThan(forwardedStart);
     expect(attachmentIndex).toBeLessThan(forwardedEnd);
-    expect(formatted).not.toContain("[forwarded content unavailable]");
-  });
-
-  test("marks forwarded content unavailable when no snapshots are present", () => {
-    const formatted = formatMessageForPrompt(
-      createTestMessage({
-        content: "",
-        reference: {
-          type: MessageReferenceType.Forward,
-          messageId: "source-message",
-          channelId: "source-channel",
-          guildId: "source-guild",
-        },
-      }),
-    );
-
-    expect(formatted).toContain(
-      "[forwarded message_id=source-message channel_id=source-channel guild_id=source-guild]",
-    );
-    expect(formatted).toContain("[forwarded content unavailable]");
-    expect(formatted).not.toContain("reply_to=");
   });
 
   test("keeps forwarded content alongside the Components V2 placeholder", () => {

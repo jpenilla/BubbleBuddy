@@ -91,22 +91,8 @@ const formatMessageBody = (body: MessageBody): string => {
 };
 
 const formatForwardedMessage = (message: Message<true>): string => {
-  const reference = message.reference;
-  const metadata = [
-    ["message_id", reference?.messageId],
-    ["channel_id", reference?.channelId],
-    ["guild_id", reference?.guildId],
-  ]
-    .filter(([, value]) => value !== undefined && value !== null)
-    .map(([key, value]) => `${key}=${value}`)
-    .join(" ");
-  const forwardedHeader = metadata.length === 0 ? "[forwarded]" : `[forwarded ${metadata}]`;
-  const snapshots = [...message.messageSnapshots.values()];
-  const snapshotBodies =
-    snapshots.length === 0
-      ? ["[forwarded content unavailable]"]
-      : snapshots.map(formatMessageBody).filter((body) => body.length > 0);
-  return [forwardedHeader, ...snapshotBodies, "[/forwarded]"].join("\n");
+  const snapshot = message.messageSnapshots.first()!;
+  return ["[forwarded]", formatMessageBody(snapshot), "[/forwarded]"].join("\n");
 };
 
 export const formatMessageForPrompt = (message: Message<true>): string => {
