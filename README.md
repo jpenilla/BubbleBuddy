@@ -8,15 +8,15 @@
 ![tsgo](https://img.shields.io/badge/typecheck-tsgo-3178C6?logo=typescript&logoColor=white)
 ![Status](https://img.shields.io/badge/status-personal%20WIP-8A2BE2)
 
-BubbleBuddy is a fun Discord companion that lives in your servers. It gives Discord communities a shared AI buddy that remembers each channel's conversation separately. It is powered by [Pi](https://github.com/earendil-works/pi), built with [Effect](https://effect.website/) v4, and can optionally use agentic coding abilities through [Incus](https://linuxcontainers.org/incus/) containers.
+BubbleBuddy is a fun Discord companion that lives in your servers. It gives Discord communities a shared AI buddy that remembers conversations separately for each channel and thread. It is powered by [Pi](https://github.com/earendil-works/pi), built with [Effect](https://effect.website/) v4, and can optionally use agentic coding abilities through [Incus](https://linuxcontainers.org/incus/) containers.
 
 ## Features
 
-- Channel-scoped Pi-backed assistant sessions. Use any model or provider supported by Pi.
-- Mention-based and ping-reply interaction support.
-- [Slash commands](#slash-command-reference) for managing channel sessions.
+- Separate Pi-backed assistant sessions for each channel and thread. Use any model or provider supported by Pi.
+- Mention-based and ping-reply interaction support, with an optional automatic reply mode.
+- [Slash commands](#slash-command-reference) for managing sessions.
 - [MCP server support](#mcp-server-definitions).
-- Channel-scoped alarms and cron schedules with saved instructions.
+- Alarms and cron schedules with saved instructions.
 - Sandboxed agentic workspace. When enabled, the assistant can use tools to interact with an Incus container, giving it access to project files and coding capabilities without exposing host credentials or environment variables.
 
 ## Setup
@@ -41,12 +41,12 @@ BubbleBuddy's Discord client uses these gateway intents:
 Enable the privileged **Message Content Intent** for the bot, then invite it to your server:
 
 ```text
-https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=bot+applications.commands&permissions=563089540369472
+https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=bot+applications.commands&permissions=563364418276416
 ```
 
-Replace `YOUR_CLIENT_ID` with the application ID from your Discord application. The permissions value includes message/reply basics such as viewing channels, sending messages, reading message history, embeds, attachments, reactions, external emoji/stickers, polls, mentions, and application commands.
+Replace `YOUR_CLIENT_ID` with the application ID from your Discord application. The permissions value includes message/reply basics such as viewing channels, sending messages in channels and threads, reading message history, embeds, attachments, reactions, external emoji/stickers, polls, mentions, and application commands.
 
-BubbleBuddy currently only supports guild text channels.
+BubbleBuddy currently supports guild text channels and threads. Direct messages and group DMs are not supported.
 
 ### Local setup
 
@@ -71,9 +71,9 @@ Configuration and state, including the database, sessions, and workspaces, is st
 
 If `BUBBLEBUDDY_HOME` is unset, BubbleBuddy uses the platform-standard application data path:
 
-- Linux: `~/.local/share/bubblebuddy`
+- Linux: `$XDG_DATA_HOME/bubblebuddy`, falling back to `~/.local/share/bubblebuddy`
 - macOS: `~/Library/Application Support/BubbleBuddy`
-- Windows: `%APPDATA%/BubbleBuddy`
+- Windows: `%APPDATA%/BubbleBuddy`, falling back to `~/AppData/Roaming/BubbleBuddy`
 
 ### First-run configuration
 
@@ -81,15 +81,15 @@ The `$BUBBLEBUDDY_HOME/bubblebuddy.json` configuration file will be generated on
 
 ### `bubblebuddy.json` reference
 
-| Key                      | Description                                                                                                                                                                    | Default                |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- |
-| `botProfileFile`         | Bot profile to load. Use `"default"` for the bundled friendly profile, an absolute path, or a path relative to `BUBBLEBUDDY_HOME`.                                             | `"default"`            |
-| `modelProvider`          | Pi model provider to use. Must be changed.                                                                                                                                     | `"YOUR_PROVIDER"`      |
-| `modelId`                | Pi model ID to use. Must be changed.                                                                                                                                           | `"YOUR_MODEL"`         |
-| `enableAgenticWorkspace` | Enables the Incus-backed workspace and additional agentic capabilities. Requires a local Incus server with a `default` profile.                                                | `false`                |
-| `thinkingLevel`          | Thinking level passed to Pi. Valid values are `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, and `"xhigh"`. Some models only accept a subset or do not support thinking. | `"minimal"`            |
-| `channelIdleTimeoutMs`   | How long idle channel sessions stay loaded before eviction.                                                                                                                    | `1800000` (30 minutes) |
-| `mcpServers`             | MCP server definitions made available to Pi sessions.                                                                                                                          | `{}`                   |
+| Key                      | Description                                                                                                                                                                             | Default                |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `botProfileFile`         | Bot profile to load. Use `"default"` for the bundled friendly profile, an absolute path, or a path relative to `BUBBLEBUDDY_HOME`.                                                      | `"default"`            |
+| `modelProvider`          | Pi model provider to use. Must be changed.                                                                                                                                              | `"YOUR_PROVIDER"`      |
+| `modelId`                | Pi model ID to use. Must be changed.                                                                                                                                                    | `"YOUR_MODEL"`         |
+| `enableAgenticWorkspace` | Enables the Incus-backed workspace and additional agentic capabilities. Requires a local Incus server with a `default` profile.                                                         | `false`                |
+| `thinkingLevel`          | Thinking level passed to Pi. Valid values are `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, and `"max"`. Some models only accept a subset or do not support thinking. | `"minimal"`            |
+| `channelIdleTimeoutMs`   | How long idle channel sessions stay loaded before eviction.                                                                                                                             | `1800000` (30 minutes) |
+| `mcpServers`             | MCP server definitions made available to Pi sessions.                                                                                                                                   | `{}`                   |
 
 ### MCP server definitions
 
@@ -128,13 +128,14 @@ For checks, tests, formatting, linting, and typechecking scripts, see `package.j
 
 ## Slash command reference
 
-BubbleBuddy registers these slash commands:
+These commands apply to the current channel or thread:
 
-- `/new` — discard this channel's current session; the next interaction starts fresh.
-- `/compact` — manually compact the current channel session.
-- `/status` — show current channel/session status.
-- `/thinking` — toggle thinking messages for the channel.
-- `/reply-mode` — set the channel's reply mode: `mention-only` (default) or `automatic`.
+- `/abort` — abort the current run, compaction, or retry.
+- `/compact` — manually compact the current session.
+- `/new` — discard the current session; the next interaction starts fresh.
+- `/reply-mode` — set reply mode: `mention-only` (default) or `automatic`.
+- `/status` — show current session status.
+- `/thinking` — toggle thinking messages.
 
 ## Scheduled wakeups
 
@@ -144,7 +145,7 @@ Ask BubbleBuddy to remind you about something or carry out a task later, once or
 - “Post a weekday morning briefing at 9 AM, New York time.”
 - “Remind us every Friday to submit timesheets, until the end of August.”
 
-Schedules stay in the channel where you create them and survive restarts and `/new`. You can ask what’s scheduled, change the timing or instructions, or cancel a schedule.
+Schedules stay in the channel or thread where you create them and survive restarts and `/new`. You can ask what’s scheduled, change the timing or instructions, or cancel a schedule.
 
 If the bot is offline, unexpired schedules catch up when it returns. Repeating tasks run once rather than replaying every missed occurrence. You can give repeating tasks an end date; once that time passes, no new work starts—including missed occurrences that weren’t picked up while the bot was offline. Work already started may still finish.
 
@@ -152,6 +153,6 @@ Delivery is best effort, and failed tasks aren’t automatically retried. Don’
 
 ## Project status and safety notes
 
-BubbleBuddy is a personal project and still evolving. The current shape is a Discord companion with channel-scoped Pi sessions and optional agentic workspace support.
+BubbleBuddy is a personal project and still evolving.
 
-Agentic workspace support uses Incus and should be enabled only after reviewing the configured tools and workspace behavior. In particular, file upload behavior has not been fully audited yet.
+Agentic workspace isolation relies on Incus and its container configuration. Built-in workspace tools and Discord file transfers access the container through the Incus API. A shared workspace mount on the same host is still required for loading workspace `AGENTS.md` and skills; it is not used to enforce tool isolation.

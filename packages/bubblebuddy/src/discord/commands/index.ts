@@ -8,9 +8,9 @@ import { abortCommand } from "./abort.ts";
 import { createCommandDispatcher } from "./command.ts";
 import { compactCommand } from "./compact.ts";
 import { discardSessionCommand } from "./discard-session.ts";
+import { replyModeCommand } from "./reply-mode.ts";
 import { statusCommand } from "./status.ts";
 import { thinkingCommand } from "./thinking.ts";
-import { replyModeCommand } from "./reply-mode.ts";
 
 export const SlashCommandsLayer = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -20,9 +20,9 @@ export const SlashCommandsLayer = Layer.effectDiscard(
       abortCommand,
       compactCommand,
       discardSessionCommand,
+      replyModeCommand,
       statusCommand,
       thinkingCommand,
-      replyModeCommand,
     ]);
     yield* tryDiscordJsPromise(() =>
       client.application.commands.set(commands.map((command) => command.data.toJSON())),
