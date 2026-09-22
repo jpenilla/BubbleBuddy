@@ -1,5 +1,6 @@
-import type { Message } from "discord.js";
+import type { Attachment, Embed, Message } from "discord.js";
 import { Effect } from "effect";
+import { posix } from "node:path";
 import { Type } from "typebox";
 
 import { DISCORD_ASSETS_SEGMENT } from "../../shared/constants.ts";
@@ -16,11 +17,9 @@ import {
 } from "./asset-save.ts";
 
 type EmbedAssetSlot = "author-icon" | "footer-icon" | "image" | "thumbnail" | "video";
+type AssetSource = "message" | "forwarded";
 
-const embedAssetUrl = (
-  embed: Message<true>["embeds"][number],
-  slot: EmbedAssetSlot,
-): string | undefined => {
+const embedAssetUrl = (embed: Embed, slot: EmbedAssetSlot): string | undefined => {
   switch (slot) {
     case "image":
     case "thumbnail":
@@ -34,18 +33,12 @@ const embedAssetUrl = (
 };
 
 const saveMessageAttachment = Effect.fn("saveMessageAttachment")(function* (
-  message: Message<true>,
-  index: number,
+  attachment: Attachment | undefined,
+  destination: string,
 ) {
-  const attachment = [...message.attachments.values()][index];
   if (attachment === undefined)
     return yield* new AssetSaveError({ message: "Attachment not found." });
-  const directory = yield* prepareAssetDirectory(
-    DISCORD_ASSETS_SEGMENT,
-    message.id,
-    "attachments",
-    String(index),
-  );
+  const directory = yield* prepareAssetDirectory(destination);
   return yield* downloadAsset(
     attachment.url,
     directory,
@@ -54,26 +47,21 @@ const saveMessageAttachment = Effect.fn("saveMessageAttachment")(function* (
 });
 
 const saveEmbedAsset = Effect.fn("saveEmbedAsset")(function* (
-  message: Message<true>,
-  index: number,
+  embed: Embed | undefined,
+  destination: string,
   slot: EmbedAssetSlot,
 ) {
-  const embed = message.embeds[index];
   if (embed === undefined) return yield* new AssetSaveError({ message: "Embed not found." });
   const url = embedAssetUrl(embed, slot);
   if (!url) return yield* new AssetSaveError({ message: `Embed has no downloadable ${slot}.` });
-  const directory = yield* prepareAssetDirectory(
-    DISCORD_ASSETS_SEGMENT,
-    message.id,
-    "embeds",
-    String(index),
-  );
+  const directory = yield* prepareAssetDirectory(destination);
   return yield* downloadAssetByContentType(url, directory, slot);
 });
 
 const saveMessageAssets = Effect.fn("saveMessageAssets")(function* (
   message: Message<true>,
   selections: {
+    readonly source?: AssetSource;
     readonly attachments?: readonly number[];
     readonly embedAuthorIcons?: readonly number[];
     readonly embedFooterIcons?: readonly number[];
@@ -82,14 +70,32 @@ const saveMessageAssets = Effect.fn("saveMessageAssets")(function* (
     readonly embedVideos?: readonly number[];
   },
 ) {
+  const source = selections.source ?? "message";
+  const assets = source === "forwarded" ? message.messageSnapshots.first() : message;
+  if (assets === undefined) {
+    return yield* new AssetSaveError({ message: "Forwarded message snapshot not found." });
+  }
+  const directory = posix.join(
+    DISCORD_ASSETS_SEGMENT,
+    message.id,
+    source === "forwarded" ? "forwarded" : "",
+  );
+  const attachments = [...assets.attachments.values()];
   const attachmentJobs = (selections.attachments ?? []).map((index) => ({
     label: `attachment ${index}`,
-    save: saveMessageAttachment(message, index),
+    save: saveMessageAttachment(
+      attachments[index],
+      posix.join(directory, "attachments", String(index)),
+    ),
   }));
   const embedJobs = (indices: readonly number[] | undefined, slot: EmbedAssetSlot) =>
     (indices ?? []).map((index) => ({
       label: `embed ${index} ${slot}`,
-      save: saveEmbedAsset(message, index, slot),
+      save: saveEmbedAsset(
+        assets.embeds[index],
+        posix.join(directory, "embeds", String(index)),
+        slot,
+      ),
     }));
 
   return yield* runAssetJobs([
@@ -113,6 +119,12 @@ export const saveMessageAssetsTool = defineEffectTool({
   description: "Save message attachments and embed media into the container workspace.",
   parameters: Type.Object({
     messageId: Type.String({ description: "Message ID" }),
+    source: Type.Optional(
+      Type.Union([Type.Literal("message"), Type.Literal("forwarded")], {
+        description:
+          "Use forwarded for attachments and embeds inside the [forwarded] block; otherwise message (default).",
+      }),
+    ),
     attachments: Type.Optional(Indices),
     embedAuthorIcons: Type.Optional(Indices),
     embedFooterIcons: Type.Optional(Indices),
