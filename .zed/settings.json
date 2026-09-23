@@ -1,4 +1,16 @@
 {
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/.svn",
+    "**/.hg",
+    "**/.jj",
+    "**/CVS",
+    "**/.DS_Store",
+    "**/Thumbs.db",
+    "**/.classpath",
+    "**/.settings",
+    "repos"
+  ],
   "languages": {
     "TypeScript": {
       "language_servers": ["effect-tsgo", "oxlint"]
