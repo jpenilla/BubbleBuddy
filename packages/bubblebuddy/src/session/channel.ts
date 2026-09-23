@@ -1,5 +1,16 @@
 import { type GuildTextBasedChannel } from "discord.js";
-import { Context, Effect, Option, Ref, Schema, Scope, ScopedRef, Semaphore, Tracer } from "effect";
+import {
+  Context,
+  Effect,
+  Fiber,
+  Option,
+  Ref,
+  Schema,
+  Scope,
+  ScopedRef,
+  Semaphore,
+  Tracer,
+} from "effect";
 
 import { createDiscordOutputPump } from "../discord/output-pump.ts";
 import {
@@ -50,6 +61,7 @@ export interface ChannelSession {
     input: CompactChannelSessionInput,
   ) => Effect.Effect<CompactResult, ChannelSessionError>;
   readonly discard: Effect.Effect<DiscardResult, ChannelSessionError>;
+  readonly abortAndDiscard: Effect.Effect<void, ChannelSessionError>;
   readonly status: (
     channel: GuildTextBasedChannel,
   ) => Effect.Effect<ChannelStatus, ChannelSessionError>;
@@ -194,6 +206,31 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
         Effect.withSpan("ChannelSession.discard", { attributes }),
       );
 
+    const abortAndDiscard = Effect.gen(function* () {
+      // Abort can interrupt a compaction holding the lock; do not wait for the lock first.
+      const abortFiber = yield* Effect.forkChild(abort, { startImmediately: true });
+      yield* lock.withPermit(
+        Effect.gen(function* () {
+          yield* Fiber.join(abortFiber);
+          const pi = yield* ScopedRef.get(piRef);
+          if (pi !== undefined) {
+            // An activation may have started before this lock was acquired.
+            if (pi.isStreaming() || pi.isCompacting() || pi.isRetrying()) {
+              yield* pi.abort.pipe(mapToChannelSessionError);
+            }
+            yield* pi.awaitIdle;
+          }
+
+          // @effect-diagnostics-next-line effectSucceedWithVoid:off
+          yield* ScopedRef.set(piRef, Effect.succeed(undefined));
+          yield* clearActiveSession;
+        }),
+      );
+    }).pipe(
+      Effect.annotateLogs(attributes),
+      Effect.withSpan("ChannelSession.abortAndDiscard", { attributes }),
+    );
+
     const status = Effect.fn("ChannelSession.status", { attributes })(function* (
       channel: GuildTextBasedChannel,
     ) {
@@ -212,6 +249,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
 
     return {
       abort,
+      abortAndDiscard,
       activate,
       compact,
       discard,

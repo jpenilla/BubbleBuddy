@@ -60,6 +60,7 @@ export interface PiSessionHandle {
   readonly getModelInfo: () => PiSessionModelInfo | undefined;
   readonly getSessionStats: () => SessionStats;
   readonly abort: Effect.Effect<void, PiSessionOperationError>;
+  readonly awaitIdle: Effect.Effect<void>;
   readonly activate: (
     input: ActivatePiSessionInput,
   ) => Effect.Effect<void, PiSessionOperationError>;
@@ -393,6 +394,7 @@ export const createPiSession = (
 
     return {
       abort,
+      awaitIdle: FiberHandle.awaitEmpty(activationFiber),
       activate,
       requestCompaction,
       isCompacting: () => session.isCompacting,
