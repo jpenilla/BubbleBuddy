@@ -51,17 +51,24 @@ export const createCommand = <E, R>(definition: CommandDefinition<E, R>) =>
                   channelId: interaction.channelId,
                 }),
               );
-              yield* tryDiscordJsPromise(async () => {
+              yield* Effect.gen(function* () {
                 if (interaction.deferred) {
-                  await interaction.editReply(
-                    interrupted ? "Command interrupted." : "Error handling slash command",
+                  yield* tryDiscordJsPromise(() =>
+                    interaction.editReply(
+                      interrupted ? "Command interrupted." : "Error handling slash command",
+                    ),
                   );
                 } else if (!interaction.replied) {
-                  await interaction.reply(
-                    interrupted ? "Command interrupted." : "Error handling slash command",
+                  yield* tryDiscordJsPromise(() =>
+                    interaction.reply(
+                      interrupted ? "Command interrupted." : "Error handling slash command",
+                    ),
                   );
                 }
-              }).pipe(Effect.timeout("3 seconds"), Effect.ignore());
+              }).pipe(
+                Effect.timeout("3 seconds"),
+                Effect.ignore({ log: "Warn", message: "Slash command error reply failed" }),
+              );
             });
           }),
           Effect.withSpan("Command.execute", {
