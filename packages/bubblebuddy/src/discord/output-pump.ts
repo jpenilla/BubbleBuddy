@@ -123,9 +123,7 @@ export const createDiscordOutputPump = (
       const embed = createCompactionStatusEmbed(status);
       const existing = compactionStatusMessage;
       if (existing === undefined) yield* toolOutputs.boundary;
-      const sent = yield* tryDiscordJsPromise(() =>
-        sendOrEditStatusCard(channel, compactionStatusMessage, embed),
-      );
+      const sent = yield* sendOrEditStatusCard(channel, compactionStatusMessage, embed);
       compactionStatusMessage = status.phase === "start" ? sent : undefined;
     });
 
@@ -142,9 +140,7 @@ export const createDiscordOutputPump = (
         const embed = createRetryStatusEmbed(status);
         const existing = retryStatusState?.message;
         if (existing === undefined) yield* toolOutputs.boundary;
-        const sent = yield* tryDiscordJsPromise(() =>
-          sendOrEditStatusCard(channel, existing, embed),
-        );
+        const sent = yield* sendOrEditStatusCard(channel, existing, embed);
         retryStatusState = { message: sent, attempt: status.attempt };
       });
 
@@ -154,9 +150,9 @@ export const createDiscordOutputPump = (
         if (status.phase === "success" && current === undefined) {
           return;
         }
-        yield* tryDiscordJsPromise(() =>
-          sendOrEditStatusCard(channel, current?.message, createRetryStatusEmbed(status)),
-        ).pipe(withToolOutputBoundary);
+        yield* sendOrEditStatusCard(channel, current?.message, createRetryStatusEmbed(status)).pipe(
+          withToolOutputBoundary,
+        );
         retryStatusState = undefined;
       });
 
@@ -168,7 +164,7 @@ export const createDiscordOutputPump = (
             phase: "aborted",
             attempt: current.attempt,
           });
-          yield* tryDiscordJsPromise(() => sendOrEditStatusCard(channel, current.message, embed));
+          yield* sendOrEditStatusCard(channel, current.message, embed);
           retryStatusState = undefined;
           return;
         }

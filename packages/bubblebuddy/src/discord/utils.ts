@@ -39,18 +39,18 @@ export const isGuildTextChannel = (channel: unknown): channel is GuildTextBasedC
   typeof channel.isSendable === "function" &&
   channel.isSendable();
 
-export const sendOrEditStatusCard = async (
+export const sendOrEditStatusCard = Effect.fnUntraced(function* (
   channel: GuildTextBasedChannel,
   existing: Message<true> | undefined,
   embed: EmbedBuilder,
-): Promise<Message<true>> => {
+) {
   if (existing !== undefined) {
-    await existing.edit({ embeds: [embed] });
+    yield* tryDiscordJsPromise(() => existing.edit({ embeds: [embed] }));
     return existing;
   }
 
-  return await channel.send({ embeds: [embed] });
-};
+  return yield* tryDiscordJsPromise(() => channel.send({ embeds: [embed] }));
+});
 
 export const sendChunkedMessage = Effect.fn("sendChunkedMessage")(function* (opts: {
   channel: GuildTextBasedChannel;
