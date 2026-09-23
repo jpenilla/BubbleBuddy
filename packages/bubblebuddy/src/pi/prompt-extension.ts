@@ -20,7 +20,7 @@ export const createPromptComposerExtension = (
   const discordContext = renderPromptTemplate(input.discordContextTemplate, input.promptContext);
 
   return (pi: ExtensionAPI) => {
-    pi.on("before_agent_start", async (event) => ({
+    pi.on("before_agent_start", (event) => ({
       systemPrompt: composeSystemPrompt({
         botProfile,
         discordContext,

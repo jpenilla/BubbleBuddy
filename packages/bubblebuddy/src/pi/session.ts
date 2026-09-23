@@ -118,6 +118,7 @@ export const createPiSession = (
     const appHome = yield* AppHome;
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    const runFork = Effect.runForkWith(yield* Effect.context());
     const sessionsDir = channelHostSessionsDir(path, appHome, input.channel.id);
     const workspace = createChannelMountedWorkspace(path, appHome, input.channel.id, WORKSPACE_CWD);
 
@@ -307,11 +308,23 @@ export const createPiSession = (
       if (messages.length === 0) return;
 
       for (const text of messages) {
-        void session.steer(text);
+        void session.steer(text).catch((cause: unknown) => {
+          runFork(
+            Effect.logWarning("Failed to steer agent after compaction", cause).pipe(
+              Effect.annotateLogs({ channelId: input.channel.id }),
+            ),
+          );
+        });
       }
 
       if (event.result === undefined && !event.willRetry) {
-        session.agent.continue();
+        void session.agent.continue().catch((cause: unknown) => {
+          runFork(
+            Effect.logWarning("Failed to continue agent after compaction", cause).pipe(
+              Effect.annotateLogs({ channelId: input.channel.id }),
+            ),
+          );
+        });
       }
     };
 
