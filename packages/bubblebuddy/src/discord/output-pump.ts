@@ -267,6 +267,11 @@ export const createDiscordOutputPump = (
           yield* flushPendingText;
           switch (msg.stopReason) {
             case "error":
+              // pi can report cancellation during a tool call as an error: https://github.com/earendil-works/pi/issues/8409
+              if (msg.errorMessage?.trim() === "This operation was aborted") {
+                yield* sendRunAborted();
+                break;
+              }
               yield* sendModelRequestError(
                 msg.errorMessage ?? "The model request failed without an error message.",
               );
