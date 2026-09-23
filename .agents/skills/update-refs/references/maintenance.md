@@ -60,7 +60,7 @@ Inspect the configured paths and indexed gitlinks and cross-check them against t
 
 ```bash
 git config -f .gitmodules --get-regexp '^submodule\..*\.(path|url|branch|shallow)$'
-git ls-files --stage repos/
+git ls-files --stage .refs/
 ```
 
 Initialized checkouts must match their gitlinks, be clean, and use detached HEADs. Any `-`, `+`, or `U` prefix is a failure:

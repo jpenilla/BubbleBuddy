@@ -1,41 +1,41 @@
-[submodule "repos/discord.js"]
-	path = repos/discord.js
+[submodule ".refs/discord.js"]
+	path = .refs/discord.js
 	url = https://github.com/discordjs/discord.js.git
 	shallow = true
-[submodule "repos/effect"]
-	path = repos/effect
+[submodule ".refs/effect"]
+	path = .refs/effect
 	url = https://github.com/Effect-TS/effect.git
 	shallow = true
-[submodule "repos/effect-solutions"]
-	path = repos/effect-solutions
+[submodule ".refs/effect-solutions"]
+	path = .refs/effect-solutions
 	url = https://github.com/kitlangton/effect-solutions.git
 	branch = main
 	shallow = true
-[submodule "repos/executor"]
-	path = repos/executor
+[submodule ".refs/executor"]
+	path = .refs/executor
 	url = https://github.com/RhysSullivan/executor.git
 	branch = main
 	shallow = true
-[submodule "repos/incus"]
-	path = repos/incus
+[submodule ".refs/incus"]
+	path = .refs/incus
 	url = https://github.com/lxc/incus.git
 	branch = main
 	shallow = true
-[submodule "repos/opencode"]
-	path = repos/opencode
+[submodule ".refs/opencode"]
+	path = .refs/opencode
 	url = https://github.com/anomalyco/opencode.git
 	branch = v2
 	shallow = true
-[submodule "repos/pi"]
-	path = repos/pi
+[submodule ".refs/pi"]
+	path = .refs/pi
 	url = https://github.com/earendil-works/pi.git
 	shallow = true
-[submodule "repos/t3code"]
-	path = repos/t3code
+[submodule ".refs/t3code"]
+	path = .refs/t3code
 	url = https://github.com/pingdotgg/t3code.git
 	branch = main
 	shallow = true
-[submodule "repos/mcp-typescript-sdk"]
-	path = repos/mcp-typescript-sdk
+[submodule ".refs/mcp-typescript-sdk"]
+	path = .refs/mcp-typescript-sdk
 	url = https://github.com/modelcontextprotocol/typescript-sdk.git
 	shallow = true
