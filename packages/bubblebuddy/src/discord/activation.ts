@@ -1,5 +1,5 @@
-import { Events, type Client, type Message } from "discord.js";
-import { Cause, Effect, Layer } from "effect";
+import { Events, MessageFlags, type Client, type Message } from "discord.js";
+import { Cause, Deferred, Effect, Layer, Option } from "effect";
 
 import { ChannelSessions } from "../session/registry.ts";
 import { ChannelSettings } from "../session/settings.ts";
@@ -36,7 +36,12 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
     }
 
     yield* Effect.gen(function* () {
-      if (!message.mentions.has(client.user.id)) {
+      let resolvedMessage = message;
+      if (message.flags.has(MessageFlags.Loading)) {
+        resolvedMessage = yield* awaitLoadingResponse(message);
+      }
+
+      if (!resolvedMessage.mentions.has(client.user.id)) {
         const settingsService = yield* ChannelSettings.Service;
         const settings = yield* settingsService.get(message.channel.id);
         const replyMode = yield* settings.getReplyMode;
@@ -49,7 +54,7 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
       const session = yield* sessions.get(message.channel.id);
       yield* session.activate({
         channel: message.channel,
-        prompt: formatMessageForPrompt(message),
+        prompt: formatMessageForPrompt(resolvedMessage),
       });
     }).pipe(
       Effect.onError((cause) =>
@@ -75,3 +80,26 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
       Effect.ignoreCause(),
     );
   });
+
+const awaitLoadingResponse = Effect.fn("DiscordActivation.awaitLoadingResponse")(function* (
+  message: Message<true>,
+) {
+  const events = yield* DiscordEvents.Service;
+  const updated = yield* Deferred.make<Message<true>>();
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      yield* events.on(Events.MessageUpdate, (_before, after) => {
+        if (after.id === message.id && after.inGuild() && !after.flags.has(MessageFlags.Loading)) {
+          Deferred.doneUnsafe(updated, Effect.succeed(after));
+        }
+      });
+      // The cached message may have been updated before the listener was registered.
+      if (!message.flags.has(MessageFlags.Loading)) return message;
+      // Interaction tokens remain valid for 15 minutes: https://docs.discord.com/developers/interactions/receiving-and-responding#interaction-tokens
+      return yield* Deferred.await(updated).pipe(
+        Effect.timeoutOption("15 minutes"),
+        Effect.map(Option.getOrElse(() => message)),
+      );
+    }),
+  );
+});
