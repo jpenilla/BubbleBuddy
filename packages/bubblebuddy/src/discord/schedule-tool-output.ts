@@ -9,6 +9,7 @@ import { ScheduleTools } from "./tools/schedules.ts";
 import { EMBED_COLOR } from "./utils.ts";
 
 const formatTimestamp = (milliseconds: number): string =>
+  // @effect-diagnostics-next-line globalDate:off -- discord.js time() requires a Date.
   time(new Date(milliseconds), TimestampStyles.ShortDateMediumTime);
 
 // Generous versus a real cron expression, so a truncation almost never triggers.

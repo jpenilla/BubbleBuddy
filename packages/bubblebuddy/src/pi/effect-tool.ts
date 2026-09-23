@@ -43,6 +43,7 @@ export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
         tool.promptGuidelines === undefined ? undefined : [...tool.promptGuidelines],
       parameters: tool.parameters,
       executionMode: tool.executionMode,
+      // @effect-diagnostics-next-line asyncFunction:off -- Pi requires a promise-returning tool callback.
       execute: async (toolCallId, input, signal, onUpdate, ctx) => {
         const exit = await Effect.runPromiseExitWith(context)(
           Effect.suspend(() => tool.execute(toolCallId, input, onUpdate, ctx)).pipe(

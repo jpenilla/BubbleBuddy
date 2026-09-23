@@ -6,6 +6,7 @@ import { GuestPath, IncusApi, IncusClient, IncusContainer } from "../src/index.t
 
 const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
+// @effect-diagnostics-next-line processEnv:off -- Vitest selects the suite before an Effect context exists.
 const describeIntegration = process.env.INCUS_API_INTEGRATION === "1" ? describe : describe.skip;
 
 const integrationImage: IncusContainer.ImageSource = {

@@ -51,6 +51,7 @@ export const createIncusExtension = Effect.gen(function* () {
   ) => Effect.flatMap(sessionContainer.get, effect);
 
   const readOperations: ReadOperations = {
+    // @effect-diagnostics-next-line asyncFunction:off -- Pi's read operation returns a promise.
     access: async (path) => {
       const result = await runPromise(
         withContainer((container) =>
@@ -61,6 +62,7 @@ export const createIncusExtension = Effect.gen(function* () {
         throw new Error(`File not readable: ${path}`);
       }
     },
+    // @effect-diagnostics-next-line asyncFunction:off -- Pi's MIME detector returns a promise.
     detectImageMimeType: async (path) => {
       try {
         const chunks: Uint8Array[] = [];
@@ -82,6 +84,7 @@ export const createIncusExtension = Effect.gen(function* () {
         return null;
       }
     },
+    // @effect-diagnostics-next-line asyncFunction:off -- Pi's read operation returns a promise.
     readFile: async (path) => {
       const data = await runPromise(
         withContainer((container) =>
@@ -93,6 +96,7 @@ export const createIncusExtension = Effect.gen(function* () {
   };
 
   const writeOperations: WriteOperations = {
+    // @effect-diagnostics-next-line asyncFunction:off -- Pi's mkdir operation returns a promise.
     mkdir: async (dir) => {
       await runPromise(
         withContainer((container) =>
@@ -102,6 +106,7 @@ export const createIncusExtension = Effect.gen(function* () {
         ).pipe(Effect.withSpan("IncusExtension.write.mkdir", { root: true })),
       );
     },
+    // @effect-diagnostics-next-line asyncFunction:off -- Pi's write operation returns a promise.
     writeFile: async (path, content) => {
       const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
       await runPromise(
@@ -119,6 +124,7 @@ export const createIncusExtension = Effect.gen(function* () {
   };
 
   const editOperations: EditOperations = {
+    // @effect-diagnostics-next-line asyncFunction:off -- Pi's edit access operation returns a promise.
     access: async (path) => {
       const result = await runPromise(
         withContainer((container) =>
@@ -138,6 +144,7 @@ export const createIncusExtension = Effect.gen(function* () {
   };
 
   const bashOperations: BashOperations = {
+    // @effect-diagnostics-next-line asyncFunction:off -- Pi's bash operation returns a promise.
     exec: async (command, cwd, execOptions) => {
       const timeoutSec = execOptions.timeout;
       const timeoutSeconds = timeoutSec !== undefined && timeoutSec > 0 ? timeoutSec : undefined;

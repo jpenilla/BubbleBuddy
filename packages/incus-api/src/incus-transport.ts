@@ -1,5 +1,7 @@
 import { type Buffer } from "node:buffer";
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Node agents configure Unix-socket and TLS transport.
 import * as Http from "node:http";
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- HTTPS agent supplies Incus client TLS options.
 import * as Https from "node:https";
 import * as net from "node:net";
 
