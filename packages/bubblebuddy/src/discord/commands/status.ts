@@ -34,7 +34,11 @@ const createStatusEmbed = (status: ChannelStatus): EmbedBuilder => {
         value:
           status.model === undefined
             ? "unknown"
-            : [`Provider: ${status.model.provider}`, `Model: ${status.model.name}`].join("\n"),
+            : [
+                `Provider: ${status.model.provider}`,
+                `Model: ${status.model.name}`,
+                `Thinking level: ${status.model.thinkingLevel}`,
+              ].join("\n"),
         inline: false,
       },
       {

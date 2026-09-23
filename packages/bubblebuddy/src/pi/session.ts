@@ -49,6 +49,7 @@ export interface PiSessionModelInfo {
   readonly id: string;
   readonly name: string;
   readonly provider: string;
+  readonly thinkingLevel: string;
 }
 
 export interface PiSessionHandle {
@@ -405,7 +406,12 @@ export const createPiSession = (
         const model = session.model;
         return model === undefined
           ? undefined
-          : { id: model.id, name: model.name, provider: model.provider };
+          : {
+              id: model.id,
+              name: model.name,
+              provider: model.provider,
+              thinkingLevel: session.thinkingLevel,
+            };
       },
       getSessionStats: () => session.getSessionStats(),
     };
