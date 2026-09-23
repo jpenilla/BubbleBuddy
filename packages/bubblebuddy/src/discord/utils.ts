@@ -24,12 +24,21 @@ export class DiscordJsError extends Schema.TaggedError<DiscordJsError>()("Discor
   cause: Schema.Defect(),
 }) {}
 
+const discordJsError = (cause: unknown) =>
+  new DiscordJsError({ message: "Discord operation failed.", cause });
+
 export const tryDiscordJsPromise = <A>(
   evaluate: (signal: AbortSignal) => PromiseLike<A>,
 ): Effect.Effect<A, DiscordJsError> =>
   Effect.tryPromise({
     try: evaluate,
-    catch: (cause) => new DiscordJsError({ message: "Discord operation failed.", cause }),
+    catch: discordJsError,
+  });
+
+export const tryDiscordJsOperation = <A>(evaluate: () => A): Effect.Effect<A, DiscordJsError> =>
+  Effect.try({
+    try: evaluate,
+    catch: discordJsError,
   });
 
 export const isGuildTextChannel = (channel: unknown): channel is GuildTextBasedChannel =>
@@ -81,13 +90,15 @@ export const sendMessage = Effect.fn("sendMessage")(function* (
   channel: GuildTextBasedChannel,
   options: MessageCreateOptions,
 ) {
-  return yield* tryDiscordJsPromise(async (signal) => {
-    const payload = MessagePayload.create(channel, options).resolveBody();
-    const { body, files } = await payload.resolveFiles();
-    await channel.client.rest.post(Routes.channelMessages(channel.id), {
+  const payload = yield* tryDiscordJsOperation(() =>
+    MessagePayload.create(channel, options).resolveBody(),
+  );
+  const { body, files } = yield* tryDiscordJsPromise(() => payload.resolveFiles());
+  yield* tryDiscordJsPromise((signal) =>
+    channel.client.rest.post(Routes.channelMessages(channel.id), {
       body,
       files: files ?? undefined,
       signal,
-    });
-  });
+    }),
+  );
 });
