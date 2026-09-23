@@ -1,10 +1,10 @@
-import { Effect, Ref } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 import { assertInstanceOf } from "@effect/vitest/utils";
+import { Effect, Ref } from "effect";
 
+import { IncusApi } from "../src/incus-api.ts";
 import { IncusContainerOperations } from "../src/incus-container-operations.ts";
 import { IncusContainer } from "../src/incus-container.ts";
-import { IncusApi } from "../src/incus-api.ts";
 import { exec } from "../src/incus-exec-session.ts";
 import { apiFixture, errorFrom } from "./incus-fixtures.ts";
 

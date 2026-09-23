@@ -13,7 +13,7 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        "ignoreEffectWarningsInTscExitCode": true
+        "diagnostics": false
       }
     ]
   },

@@ -1,6 +1,6 @@
 import { Cause, Effect, Exit, Option } from "effect";
 
-import type { IncusApi } from "../src/incus-api.ts";
+import { type IncusApi } from "../src/incus-api.ts";
 
 export interface ApiOverrides {
   readonly create?: IncusApi.Interface["instances"]["create"];

@@ -1,6 +1,6 @@
 import { fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "@effect/vitest";
-import type { GuildTextBasedChannel } from "discord.js";
+import { type GuildTextBasedChannel } from "discord.js";
 import { Deferred, Effect, Exit, Fiber } from "effect";
 
 import { createDiscordOutputPump, type DiscordOutputPump } from "../src/discord/output-pump.ts";

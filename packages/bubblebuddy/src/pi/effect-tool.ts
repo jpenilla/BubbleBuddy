@@ -6,7 +6,7 @@ import {
   type ToolExecutionMode,
 } from "@earendil-works/pi-coding-agent";
 import { Cause, Effect, Exit, Schema } from "effect";
-import type { Static, TSchema } from "typebox";
+import { type Static, type TSchema } from "typebox";
 
 export class AgentToolError extends Schema.TaggedError<AgentToolError>()("AgentToolError", {
   message: Schema.String,

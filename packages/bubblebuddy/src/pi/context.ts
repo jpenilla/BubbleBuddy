@@ -1,5 +1,5 @@
+import { type Api, type Model } from "@earendil-works/pi-ai";
 import { getAgentDir, ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { Api, Model } from "@earendil-works/pi-ai";
 import { Context, Effect, Layer, Path } from "effect";
 
 import { FileConfig } from "../config/file.ts";

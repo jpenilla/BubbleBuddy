@@ -1,7 +1,8 @@
-import { GuestPath } from "incus-api";
+import { posix } from "node:path";
+
 import { Effect, Option, Schema } from "effect";
 import { HttpClient, HttpClientResponse, Mime } from "effect/unstable/http";
-import { posix } from "node:path";
+import { GuestPath } from "incus-api";
 
 import { SessionContainer } from "../../session/session-container.ts";
 

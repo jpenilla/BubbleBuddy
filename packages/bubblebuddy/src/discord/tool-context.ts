@@ -1,7 +1,7 @@
+import { type GuildTextBasedChannel } from "discord.js";
 import { Context } from "effect";
-import type { GuildTextBasedChannel } from "discord.js";
 
-import type { ExecuteOrderedDiscordAction } from "./output-pump.ts";
+import { type ExecuteOrderedDiscordAction } from "./output-pump.ts";
 
 export class DiscordToolContext extends Context.Service<
   DiscordToolContext,

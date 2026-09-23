@@ -1,6 +1,6 @@
 import { posix as posixPath } from "node:path";
 
-import { Path } from "effect";
+import { type Path } from "effect";
 
 export const sanitizeAttachmentFilename = (filename: string): string => {
   const base = filename.trim().split("/").at(-1)?.split("\\").at(-1) ?? "";

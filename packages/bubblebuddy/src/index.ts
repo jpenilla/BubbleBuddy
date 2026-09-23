@@ -4,16 +4,16 @@ import { Config, Effect, Layer, References } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { Otlp, OtlpSerialization } from "effect/unstable/observability";
 
+import { EnvConfig } from "./config/env.ts";
 import { AppDatabase } from "./database.ts";
 import { ActivationLayer } from "./discord/activation.ts";
-import { DiscordEvents } from "./discord/discord-events.ts";
-import { DiscordClient } from "./discord/discord-client.ts";
 import { SlashCommandsLayer } from "./discord/commands/index.ts";
-import { ChannelSessions } from "./session/registry.ts";
-import { ChannelSettings } from "./session/settings.ts";
+import { DiscordClient } from "./discord/discord-client.ts";
+import { DiscordEvents } from "./discord/discord-events.ts";
 import { ScheduledActivationsLayer } from "./discord/scheduled-activations.ts";
 import { Schedules } from "./scheduling/schedules.ts";
-import { EnvConfig } from "./config/env.ts";
+import { ChannelSessions } from "./session/registry.ts";
+import { ChannelSettings } from "./session/settings.ts";
 
 const DiscordClientLayer = Layer.unwrap(
   Effect.gen(function* () {

@@ -1,11 +1,12 @@
-import type { Attachment, Embed, Message } from "discord.js";
-import { Effect } from "effect";
 import { posix } from "node:path";
+
+import { type Attachment, type Embed, type Message } from "discord.js";
+import { Effect } from "effect";
 import { Type } from "typebox";
 
+import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { DISCORD_ASSETS_SEGMENT } from "../../shared/constants.ts";
 import { sanitizeAttachmentFilename } from "../../shared/workspace.ts";
-import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { DiscordToolContext } from "../tool-context.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
 import {

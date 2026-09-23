@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
 import { Collection, MessageFlags, MessageReferenceType, StickerFormatType } from "discord.js";
+import { describe, expect, test } from "vitest";
 
 import {
   formatMessageForPrompt,

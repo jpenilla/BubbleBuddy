@@ -1,7 +1,7 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Effect } from "effect";
-import { describe, expect, test } from "vitest";
 import { Type } from "typebox";
+import { describe, expect, test } from "vitest";
 
 import { DiscordJsError } from "../src/discord/utils.ts";
 import { AgentToolError, defineEffectTool } from "../src/pi/effect-tool.ts";

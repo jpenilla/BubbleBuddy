@@ -9,14 +9,13 @@
     }
   },
   "scripts": {
-    "check": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test",
+    "check": "pnpm run fmt:check && pnpm run lint && pnpm run test",
     "test": "vitest run --passWithNoTests",
     "test:integration": "INCUS_API_INTEGRATION=1 vitest run test/integration.test.ts",
     "lint": "oxlint src test",
     "lint:fix": "oxlint src test --fix",
     "fmt": "oxfmt src test",
-    "fmt:check": "oxfmt src test --check",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "fmt:check": "oxfmt src test --check"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

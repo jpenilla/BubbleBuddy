@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/@effect/tsgo/oxlint-schema.json",
+  "extends": ["./node_modules/@effect/tsgo/oxlint-presets/recommended.json"],
+  "plugins": ["import", "typescript"],
+  "options": { "typeCheck": true },
+  "rules": {
+    "typescript/consistent-type-imports": [
+      "error",
+      { "prefer": "type-imports", "fixStyle": "inline-type-imports" }
+    ],
+    "import/consistent-type-specifier-style": ["error", "prefer-inline"]
+  }
+}

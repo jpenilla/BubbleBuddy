@@ -1,11 +1,11 @@
-import { GuestPath } from "../src/guest-path.ts";
-import { Context, Effect, Ref, Schema, Stream } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 import { assertInstanceOf } from "@effect/vitest/utils";
+import { Context, Effect, Ref, Schema, Stream } from "effect";
 
-import { IncusFileOperations } from "../src/incus-file-operations.ts";
+import { GuestPath } from "../src/guest-path.ts";
 import { IncusApi } from "../src/incus-api.ts";
 import { IncusContainer } from "../src/incus-container.ts";
+import { IncusFileOperations } from "../src/incus-file-operations.ts";
 import { apiFixture, errorFrom } from "./incus-fixtures.ts";
 
 class StreamValue extends Context.Service<

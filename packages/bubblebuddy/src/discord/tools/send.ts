@@ -1,17 +1,18 @@
+import { posix } from "node:path";
+
 import { type AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { NodeStream } from "@effect/platform-node";
-import { GuestPath } from "incus-api";
 import { GuildPremiumTier, type GuildTextBasedChannel } from "discord.js";
 import { Effect, Ref, Stream } from "effect";
-import { posix } from "node:path";
+import { GuestPath } from "incus-api";
 import { Type } from "typebox";
 
+import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
+import { SessionContainer } from "../../session/session-container.ts";
+import { DISCORD_SAFE_MESSAGE_LIMIT } from "../../shared/constants.ts";
 import { listUsableStickers } from "../assets.ts";
 import { DiscordToolContext } from "../tool-context.ts";
 import { sendChunkedMessage, sendMessage } from "../utils.ts";
-import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
-import { DISCORD_SAFE_MESSAGE_LIMIT } from "../../shared/constants.ts";
-import { SessionContainer } from "../../session/session-container.ts";
 
 const MAX_STICKERS = 3;
 const MAX_FILES = 10;

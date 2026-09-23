@@ -2,12 +2,12 @@ import { Effect } from "effect";
 
 import { currentDateTimeTool } from "./tools/current-date-time.ts";
 import { fetchMessageTool } from "./tools/fetch-message.ts";
-import { ScheduleTools } from "./tools/schedules.ts";
 import { listCustomEmojisTool } from "./tools/list-custom-emojis.ts";
 import { listStickersTool } from "./tools/list-stickers.ts";
 import { reactTool } from "./tools/react.ts";
 import { saveAssetsTool } from "./tools/save-assets.ts";
 import { saveMessageAssetsTool } from "./tools/save-message-assets.ts";
+import { ScheduleTools } from "./tools/schedules.ts";
 import { makeSendTool } from "./tools/send.ts";
 import { staySilentTool } from "./tools/stay-silent.ts";
 

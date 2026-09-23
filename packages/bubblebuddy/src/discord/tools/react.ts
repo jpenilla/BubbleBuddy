@@ -2,10 +2,10 @@ import { parseEmoji } from "discord.js";
 import { Effect, Result } from "effect";
 import { Type } from "typebox";
 
+import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
 import { listUsableCustomEmojis } from "../assets.ts";
 import { DiscordToolContext } from "../tool-context.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
-import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
 
 export const reactTool = defineEffectTool({
   name: "discord_react",

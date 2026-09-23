@@ -1,10 +1,11 @@
 import { Effect, Layer } from "effect";
 import {
   HttpClient,
-  HttpClientError,
-  HttpClientRequest,
-  HttpClientResponse,
+  type HttpClientError,
+  type HttpClientRequest,
+  type HttpClientResponse,
 } from "effect/unstable/http";
+
 import { IncusApi } from "../src/incus-api.ts";
 import { IncusTransport } from "../src/incus-transport.ts";
 

@@ -8,11 +8,12 @@
   "scripts": {
     "check": "pnpm -r run check",
     "dev": "pnpm --filter bubblebuddy run dev",
-    "prepare": "effect-tsgo patch",
+    "prepare": "effect-tsgo patch --typescript --oxlint",
     "start": "pnpm --filter bubblebuddy run start"
   },
   "devDependencies": {
     "@effect/tsgo": "catalog:",
+    "oxlint-tsgolint": "catalog:",
     "typescript": "catalog:"
   }
 }

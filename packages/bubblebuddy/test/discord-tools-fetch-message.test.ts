@@ -1,10 +1,10 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { describe, expect, test, vi } from "vitest";
-import type { GuildTextBasedChannel } from "discord.js";
+import { type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type GuildTextBasedChannel } from "discord.js";
 import { Effect } from "effect";
+import { describe, expect, test, vi } from "vitest";
 
-import { DiscordToolContext } from "../src/discord/tool-context.ts";
 import { formatMessageForPrompt } from "../src/discord/prompt-formatting.ts";
+import { DiscordToolContext } from "../src/discord/tool-context.ts";
 import { fetchMessageTool } from "../src/discord/tools/fetch-message.ts";
 import { createTestMessage } from "./helpers.ts";
 

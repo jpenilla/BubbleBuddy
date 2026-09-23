@@ -1,10 +1,10 @@
+import { formatEmoji } from "discord.js";
 import { Effect } from "effect";
 import { Type } from "typebox";
-import { formatEmoji } from "discord.js";
 
+import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { listUsableCustomEmojis } from "../assets.ts";
 import { DiscordToolContext } from "../tool-context.ts";
-import { defineEffectTool } from "../../pi/effect-tool.ts";
 
 export const listCustomEmojisTool = defineEffectTool({
   name: "discord_list_custom_emojis",

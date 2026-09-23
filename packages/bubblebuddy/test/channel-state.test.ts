@@ -1,11 +1,11 @@
-import { expect, it } from "@effect/vitest";
-
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { expect, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
-import { ChannelStateRepository } from "../src/session/state-repository.ts";
+
 import { AppHome } from "../src/config/env.ts";
 import { AppDatabase } from "../src/database.ts";
+import { ChannelStateRepository } from "../src/session/state-repository.ts";
 import { createTestEnvLayer } from "./helpers.ts";
 
 const withRepo = <A, E, R>(effect: Effect.Effect<A, E, R>) =>

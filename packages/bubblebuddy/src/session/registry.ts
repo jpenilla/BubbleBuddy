@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, RcMap, Scope } from "effect";
+import { Context, Effect, Layer, RcMap, type Scope } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 
 import { AppHome } from "../config/env.ts";

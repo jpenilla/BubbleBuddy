@@ -1,10 +1,11 @@
 import { ContainerBuilder, TextDisplayBuilder, time, TimestampStyles } from "discord.js";
 import { Effect, Option, Schema } from "effect";
+
 import { Schedules } from "../scheduling/schedules.ts";
 import { inlineCode } from "../shared/markdown.ts";
 import { collapseWhitespace, truncate } from "../shared/text.ts";
+import { type ToolOutput } from "./tool-output.ts";
 import { ScheduleTools } from "./tools/schedules.ts";
-import type { ToolOutput } from "./tool-output.ts";
 import { EMBED_COLOR } from "./utils.ts";
 
 const formatTimestamp = (milliseconds: number): string =>

@@ -1,8 +1,8 @@
 import { Events } from "discord.js";
 import { Effect, Layer } from "effect";
 
-import { DiscordEvents } from "../discord-events.ts";
 import { DiscordClient } from "../discord-client.ts";
+import { DiscordEvents } from "../discord-events.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
 import { abortCommand } from "./abort.ts";
 import { createCommandDispatcher } from "./command.ts";

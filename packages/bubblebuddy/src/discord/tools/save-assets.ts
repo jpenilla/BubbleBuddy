@@ -2,9 +2,9 @@ import { Constants, StickerFormatType, parseEmoji } from "discord.js";
 import { Effect } from "effect";
 import { Type } from "typebox";
 
+import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { DISCORD_ASSETS_SEGMENT } from "../../shared/constants.ts";
 import { sanitizeAttachmentFilename } from "../../shared/workspace.ts";
-import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { listUsableStickers, type UsableSticker } from "../assets.ts";
 import { DiscordToolContext } from "../tool-context.ts";
 import {

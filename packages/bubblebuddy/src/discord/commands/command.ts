@@ -1,12 +1,12 @@
-import type {
-  ChatInputCommandInteraction,
-  Guild,
-  GuildTextBasedChannel,
-  SharedSlashCommand,
+import {
+  type ChatInputCommandInteraction,
+  type Guild,
+  type GuildTextBasedChannel,
+  type SharedSlashCommand,
 } from "discord.js";
 import { Cause, Effect } from "effect";
 
-import type { DiscordEvents } from "../discord-events.ts";
+import { type DiscordEvents } from "../discord-events.ts";
 import { isGuildTextChannel, tryDiscordJsPromise } from "../utils.ts";
 
 type GuildTextChannelInteraction = ChatInputCommandInteraction<"raw" | "cached"> & {

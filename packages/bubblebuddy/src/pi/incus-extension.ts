@@ -1,10 +1,6 @@
 import { Buffer } from "node:buffer";
 
 import {
-  detectSupportedImageMimeType,
-  IMAGE_TYPE_SNIFF_BYTES,
-} from "@earendil-works/pi-coding-agent/utils/mime";
-import {
   createBashToolDefinition,
   createEditToolDefinition,
   createReadToolDefinition,
@@ -15,6 +11,10 @@ import {
   type ReadOperations,
   type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
+import {
+  detectSupportedImageMimeType,
+  IMAGE_TYPE_SNIFF_BYTES,
+} from "@earendil-works/pi-coding-agent/utils/mime";
 import { Cause, Effect, Exit, FiberSet, Option, Stream } from "effect";
 import { GuestPath, IncusContainer } from "incus-api";
 

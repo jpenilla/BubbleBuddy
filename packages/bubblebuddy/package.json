@@ -3,15 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test",
+    "check": "pnpm run fmt:check && pnpm run lint && pnpm run test",
     "dev": "node --env-file-if-exists=.env --watch src/index.ts",
     "start": "node --env-file-if-exists=.env src/index.ts",
     "test": "vitest run",
     "lint": "oxlint src test",
     "lint:fix": "oxlint src test --fix",
     "fmt": "oxfmt src test",
-    "fmt:check": "oxfmt src test --check",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "fmt:check": "oxfmt src test --check"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "catalog:",

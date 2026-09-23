@@ -1,4 +1,4 @@
-import { Context, Duration, Effect, Layer, RcMap, Scope, SynchronizedRef } from "effect";
+import { Context, Duration, Effect, Layer, RcMap, type Scope, SynchronizedRef } from "effect";
 
 import { ChannelStateRepository } from "./state-repository.ts";
 import { type ReplyMode } from "./state.ts";

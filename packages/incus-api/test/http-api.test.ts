@@ -1,7 +1,8 @@
-import { Effect, Result } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 import { assertInstanceOf, assertSuccess, assertTrue } from "@effect/vitest/utils";
+import { Effect, Result } from "effect";
 import { HttpClientError, HttpClientResponse } from "effect/unstable/http";
+
 import { IncusApi } from "../src/incus-api.ts";
 import { layerWith } from "./http-fixtures.ts";
 

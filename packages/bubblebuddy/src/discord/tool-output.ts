@@ -1,4 +1,4 @@
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   MessageFlags,
   type GuildTextBasedChannel,
@@ -6,6 +6,7 @@ import {
   type ContainerBuilder,
 } from "discord.js";
 import { Data, Effect } from "effect";
+
 import { createToolStatusComponents, type ToolStatusEntry } from "./tool-status-components.ts";
 import { formatToolDescription } from "./tool-status-formatting.ts";
 import { tryDiscordJsPromise } from "./utils.ts";

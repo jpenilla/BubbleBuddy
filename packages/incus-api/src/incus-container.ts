@@ -1,8 +1,7 @@
-import { Duration, Effect, Schema, Scope, Stream } from "effect";
+import { type Duration, type Effect, Schema, type Scope, type Stream } from "effect";
 
-import type { GuestPath } from "./guest-path.ts";
-
-import type { IncusApi } from "./incus-api.ts";
+import { type GuestPath } from "./guest-path.ts";
+import { type IncusApi } from "./incus-api.ts";
 
 export class MetadataError extends Schema.TaggedError<MetadataError>()(
   "IncusContainer.MetadataError",

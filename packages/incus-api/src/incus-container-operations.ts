@@ -1,9 +1,9 @@
-import { Cause, Effect, Exit } from "effect";
+import { type Cause, Effect, type Exit } from "effect";
 
-import { IncusContainer } from "./incus-container.ts";
+import { type IncusApi } from "./incus-api.ts";
+import { type IncusContainer } from "./incus-container.ts";
 import { IncusExecSession } from "./incus-exec-session.ts";
 import { IncusFileOperations } from "./incus-file-operations.ts";
-import type { IncusApi } from "./incus-api.ts";
 
 export const create = (
   project: string,

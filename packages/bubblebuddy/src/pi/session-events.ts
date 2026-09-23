@@ -1,4 +1,4 @@
-import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { Effect } from "effect";
 
 export type SessionEvent<Type extends AgentSessionEvent["type"]> = Extract<

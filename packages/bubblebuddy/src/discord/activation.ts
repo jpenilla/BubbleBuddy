@@ -3,10 +3,10 @@ import { Cause, Deferred, Effect, Layer, Option } from "effect";
 
 import { ChannelSessions } from "../session/registry.ts";
 import { ChannelSettings } from "../session/settings.ts";
-import { DiscordEvents } from "./discord-events.ts";
 import { DiscordClient } from "./discord-client.ts";
-import { isGuildTextChannel } from "./utils.ts";
+import { DiscordEvents } from "./discord-events.ts";
 import { formatMessageForPrompt } from "./prompt-formatting.ts";
+import { isGuildTextChannel } from "./utils.ts";
 
 export const ActivationLayer = Layer.effectDiscard(
   Effect.gen(function* () {

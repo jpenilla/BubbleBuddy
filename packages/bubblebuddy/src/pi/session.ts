@@ -8,7 +8,7 @@ import {
   type SessionStats,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { GuildTextBasedChannel } from "discord.js";
+import { type GuildTextBasedChannel } from "discord.js";
 import {
   Cause,
   Context,
@@ -22,26 +22,26 @@ import {
   Scope,
   Semaphore,
 } from "effect";
-import { HttpClient } from "effect/unstable/http";
+import { type HttpClient } from "effect/unstable/http";
 import { IncusClient } from "incus-api";
 
-import { makeDiscordTools } from "../discord/tools.ts";
-import { DiscordToolContext } from "../discord/tool-context.ts";
-import { McpPiTools } from "../mcp/pi-tools.ts";
-import { McpClientFactory } from "../mcp/client-factory.ts";
 import { AppHome } from "../config/env.ts";
-import { Schedules } from "../scheduling/schedules.ts";
 import { FileConfig, type McpServerConfigEntry } from "../config/file.ts";
+import { type DiscordOutputPump } from "../discord/output-pump.ts";
+import { DiscordToolContext } from "../discord/tool-context.ts";
+import { makeDiscordTools } from "../discord/tools.ts";
+import { McpClientFactory } from "../mcp/client-factory.ts";
+import { McpPiTools } from "../mcp/pi-tools.ts";
 import { LoadedResources } from "../resources.ts";
-import { createChannelWorkspaceResourceLoader } from "./workspace-resource-loader.ts";
-import { createIncusExtension } from "./incus-extension.ts";
-import type { DiscordOutputPump } from "../discord/output-pump.ts";
-import { createPromptComposerExtension } from "./prompt-extension.ts";
-import { PiContext } from "./context.ts";
+import { type Schedules } from "../scheduling/schedules.ts";
+import { SessionContainer } from "../session/session-container.ts";
 import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
 import { channelHostSessionsDir, createChannelMountedWorkspace } from "../shared/workspace.ts";
-import { SessionContainer } from "../session/session-container.ts";
+import { PiContext } from "./context.ts";
+import { createIncusExtension } from "./incus-extension.ts";
+import { createPromptComposerExtension } from "./prompt-extension.ts";
 import { subscribe, type SessionEvent } from "./session-events.ts";
+import { createChannelWorkspaceResourceLoader } from "./workspace-resource-loader.ts";
 
 const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 

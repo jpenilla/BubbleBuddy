@@ -1,8 +1,8 @@
 import { Effect, Option, Ref, Stream } from "effect";
-import { GuestPath } from "./guest-path.ts";
 
-import { IncusContainer } from "./incus-container.ts";
+import { GuestPath } from "./guest-path.ts";
 import { IncusApi } from "./incus-api.ts";
+import { IncusContainer } from "./incus-container.ts";
 
 export const create = (
   api: IncusApi.Interface,

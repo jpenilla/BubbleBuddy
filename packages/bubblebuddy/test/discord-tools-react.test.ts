@@ -1,7 +1,7 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { describe, expect, test } from "vitest";
-import type { GuildTextBasedChannel } from "discord.js";
+import { type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type GuildTextBasedChannel } from "discord.js";
 import { Effect } from "effect";
+import { describe, expect, test } from "vitest";
 
 import { DiscordToolContext } from "../src/discord/tool-context.ts";
 import { reactTool } from "../src/discord/tools/react.ts";

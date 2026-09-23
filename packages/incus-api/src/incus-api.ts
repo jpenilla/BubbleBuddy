@@ -1,28 +1,28 @@
-import type { GuestPath } from "./guest-path.ts";
 import {
   Cause,
   Context,
   Data,
   Effect,
-  Exit,
+  type Exit,
   Layer,
   Match,
   Option,
   Schema,
   Scope,
-  Stream,
+  type Stream,
 } from "effect";
-import * as Socket from "effect/unstable/socket/Socket";
 import {
   Headers,
   HttpBody,
   HttpClient,
-  HttpClientError,
+  type HttpClientError,
   HttpClientRequest,
   HttpClientResponse,
-  HttpMethod,
+  type HttpMethod,
 } from "effect/unstable/http";
+import type * as Socket from "effect/unstable/socket/Socket";
 
+import { type GuestPath } from "./guest-path.ts";
 import { IncusTransport } from "./incus-transport.ts";
 
 const ImageSource = Schema.Struct({

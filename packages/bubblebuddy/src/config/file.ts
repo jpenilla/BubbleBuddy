@@ -1,8 +1,9 @@
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { type ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
+
+import { normalizeLineEndings } from "../shared/text.ts";
 import { AppHome } from "./env.ts";
 import { ConfigError } from "./error.ts";
-import { normalizeLineEndings } from "../shared/text.ts";
 
 export type { ThinkingLevel };
 

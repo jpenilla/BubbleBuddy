@@ -1,13 +1,12 @@
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { type GuildTextBasedChannel, type Message } from "discord.js";
-import { Cause, Context, Deferred, Effect, Match, Scope, Tracer } from "effect";
-
-import { createTypingIndicator } from "../discord/typing-indicator.ts";
+import { Cause, Context, Deferred, Effect, Match, type Scope, Tracer } from "effect";
 
 import {
   createCompactionStatusEmbed,
   type CompactionStatus,
 } from "../discord/compaction-status-embed.ts";
+import { splitThinkingStatus } from "../discord/response-formatting.ts";
 import {
   createModelRequestErrorEmbed,
   createRetryStatusEmbed,
@@ -16,17 +15,17 @@ import {
   createRunErrorEmbed,
   type RetryStatus,
 } from "../discord/run-status-embed.ts";
-import { ToolOutput } from "./tool-output.ts";
-import { ToolOutputPolicies } from "./tool-output-policies.ts";
+import { createTypingIndicator } from "../discord/typing-indicator.ts";
 import {
   sendChunkedMessage,
   sendMessage,
   sendOrEditStatusCard,
   tryDiscordJsPromise,
 } from "../discord/utils.ts";
-import { createPriorityDrainableWorker } from "../shared/priority-drainable-worker.ts";
-import { splitThinkingStatus } from "../discord/response-formatting.ts";
 import { type SessionEvent } from "../pi/session-events.ts";
+import { createPriorityDrainableWorker } from "../shared/priority-drainable-worker.ts";
+import { ToolOutputPolicies } from "./tool-output-policies.ts";
+import { ToolOutput } from "./tool-output.ts";
 
 export type ExecuteOrderedDiscordAction = <A, E>(
   operation: Effect.Effect<A, E>,

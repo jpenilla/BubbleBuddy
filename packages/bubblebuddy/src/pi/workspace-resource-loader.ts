@@ -7,8 +7,8 @@ import {
   type SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 
-import type { MountedWorkspace } from "../shared/workspace.ts";
 import { normalizeLineEndings } from "../shared/text.ts";
+import { type MountedWorkspace } from "../shared/workspace.ts";
 
 export interface CreateChannelWorkspaceResourceLoaderInput {
   readonly agentDir: string;

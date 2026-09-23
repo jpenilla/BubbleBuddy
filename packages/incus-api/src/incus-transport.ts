@@ -1,10 +1,10 @@
-import { NodeHttpClient, NodeSocket } from "@effect/platform-node";
-import { Buffer } from "node:buffer";
+import { type Buffer } from "node:buffer";
 import * as Http from "node:http";
 import * as Https from "node:https";
 import * as net from "node:net";
 
-import { Context, Duration, Effect, Layer } from "effect";
+import { NodeHttpClient, NodeSocket } from "@effect/platform-node";
+import { Context, type Duration, Effect, Layer } from "effect";
 import { identity } from "effect/Function";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";

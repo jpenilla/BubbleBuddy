@@ -1,12 +1,12 @@
 import { isDeepStrictEqual } from "node:util";
 
 import { type AgentToolResult, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import type { CallToolResult, ContentBlock, Tool } from "@modelcontextprotocol/client";
+import { type CallToolResult, type ContentBlock, type Tool } from "@modelcontextprotocol/client";
 import { Effect, Match, Predicate } from "effect";
 import { Type } from "typebox";
 
 import { defineEffectTool } from "../pi/effect-tool.ts";
-import { McpClient } from "./client.ts";
+import { type McpClient } from "./client.ts";
 import { formatToolName } from "./names.ts";
 
 const detailsTag = "bubblebuddy/mcp/pi-tool-details";

@@ -1,8 +1,8 @@
 import { Context, Effect, Layer } from "effect";
 
-import { IncusContainerOperations } from "./incus-container-operations.ts";
-import { IncusContainer } from "./incus-container.ts";
 import { IncusApi } from "./incus-api.ts";
+import { IncusContainerOperations } from "./incus-container-operations.ts";
+import { type IncusContainer } from "./incus-container.ts";
 import { IncusTransport } from "./incus-transport.ts";
 
 export interface Project {

@@ -1,9 +1,9 @@
-import { GuestPath } from "../src/guest-path.ts";
 import { randomUUID } from "node:crypto";
 
 import { assert, describe, expect, it } from "@effect/vitest";
-import { Deferred, Effect, Exit, Fiber, Scope, Stream } from "effect";
+import { Deferred, Effect, Exit, Fiber, type Scope, Stream } from "effect";
 
+import { GuestPath } from "../src/guest-path.ts";
 import { IncusApi, IncusClient, IncusContainer } from "../src/index.ts";
 
 const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });

@@ -1,5 +1,6 @@
-import { Brand, Effect, Schema } from "effect";
 import { posix } from "node:path";
+
+import { Brand, Effect, Schema } from "effect";
 
 export class PathError extends Schema.TaggedError<PathError>()("GuestPath.PathError", {
   path: Schema.String,

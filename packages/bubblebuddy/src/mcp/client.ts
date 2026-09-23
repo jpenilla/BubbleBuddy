@@ -47,7 +47,7 @@ import {
   StdioClientTransport,
   type StdioServerParameters,
 } from "@modelcontextprotocol/client/stdio";
-import { Data, Deferred, Effect, Option, PubSub, Schema, Scope, Stream } from "effect";
+import { Data, Deferred, Effect, Option, PubSub, Schema, type Scope, Stream } from "effect";
 
 export type Transport = Data.TaggedEnum<{
   Http: {

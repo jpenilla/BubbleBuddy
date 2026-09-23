@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,9 +5,10 @@ import { join } from "node:path";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Path } from "effect";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-import { createMountedWorkspace } from "../src/shared/workspace.ts";
 import { createChannelWorkspaceResourceLoader } from "../src/pi/workspace-resource-loader.ts";
+import { createMountedWorkspace } from "../src/shared/workspace.ts";
 
 describe("channel workspace resource loader", () => {
   let tempDir = "";

@@ -1,13 +1,13 @@
-import { Deferred, Effect, Fiber } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 import { assertInstanceOf } from "@effect/vitest/utils";
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
-import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
+import { Deferred, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
+import type * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
+import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 
 import { IncusApi } from "../src/incus-api.ts";
-import { errorFrom } from "./incus-fixtures.ts";
 import { type HttpHandler, layerWith } from "./http-fixtures.ts";
+import { errorFrom } from "./incus-fixtures.ts";
 
 const response = (request: HttpClientRequest.HttpClientRequest, metadata: unknown) =>
   HttpClientResponse.fromWeb(

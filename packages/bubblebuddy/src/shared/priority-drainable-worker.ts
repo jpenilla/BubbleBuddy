@@ -1,4 +1,4 @@
-import type { Scope } from "effect";
+import { type Scope } from "effect";
 import { Effect, Option, TxQueue, TxRef } from "effect";
 
 export interface PriorityDrainableWorker<A> {

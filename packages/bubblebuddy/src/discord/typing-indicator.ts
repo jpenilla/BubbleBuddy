@@ -1,5 +1,5 @@
 import { Routes, type GuildTextBasedChannel } from "discord.js";
-import { Cause, Effect, FiberHandle, Schedule, Scope } from "effect";
+import { Cause, Effect, FiberHandle, Schedule, type Scope } from "effect";
 
 import { tryDiscordJsPromise } from "./utils.ts";
 

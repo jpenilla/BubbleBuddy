@@ -10,6 +10,7 @@ import {
   type Sticker,
 } from "discord.js";
 import { Layer, Redacted } from "effect";
+
 import { EnvConfig, type EnvConfigShape } from "../src/config/env.ts";
 
 const defaultEnvConfig: EnvConfigShape = {

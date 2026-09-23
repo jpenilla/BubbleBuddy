@@ -1,6 +1,6 @@
 import { EmbedBuilder, InteractionContextType, SlashCommandBuilder } from "discord.js";
 
-import type { ChannelStatus } from "../../session/channel.ts";
+import { type ChannelStatus } from "../../session/channel.ts";
 import { ChannelSessions } from "../../session/registry.ts";
 import { EMBED_COLOR, tryDiscordJsPromise } from "../utils.ts";
 import { createCommand, inGuildTextChannel } from "./command.ts";

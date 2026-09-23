@@ -6,7 +6,7 @@ import {
   Option,
   Ref,
   Schema,
-  Scope,
+  type Scope,
   ScopedRef,
   Semaphore,
   Tracer,
@@ -20,9 +20,9 @@ import {
   type PiSessionServices,
   type SessionStats,
 } from "../pi/session.ts";
+import { ChannelSettings } from "./settings.ts";
 import { ChannelStateRepository } from "./state-repository.ts";
 import { type ReplyMode } from "./state.ts";
-import { ChannelSettings } from "./settings.ts";
 
 export interface ActivateChannelSessionInput {
   readonly channel: GuildTextBasedChannel;

@@ -1,5 +1,6 @@
-import type { ClientEvents } from "discord.js";
-import { Cause, Context, Effect, FiberSet, Layer, Scope } from "effect";
+import { type ClientEvents } from "discord.js";
+import { Cause, Context, Effect, FiberSet, Layer, type Scope } from "effect";
+
 import { DiscordClient } from "./discord-client.ts";
 
 export interface Listener<Event extends keyof ClientEvents, Return = void> {

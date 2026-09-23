@@ -1,10 +1,10 @@
 import { Effect } from "effect";
 import { Type } from "typebox";
 
+import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { formatMessageForPrompt } from "../prompt-formatting.ts";
 import { DiscordToolContext } from "../tool-context.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
-import { defineEffectTool } from "../../pi/effect-tool.ts";
 
 export const fetchMessageTool = defineEffectTool({
   name: "discord_fetch_message",

@@ -7,7 +7,7 @@ import {
   type MessageMentionOptions,
   type ReplyOptions,
 } from "discord.js";
-import type { EmbedBuilder } from "discord.js";
+import { type EmbedBuilder } from "discord.js";
 import { Effect, Schema } from "effect";
 
 import { splitDiscordMessage } from "./response-formatting.ts";

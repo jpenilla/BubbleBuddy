@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 
-import { Config, Context, Effect, Layer, Option, Path, Redacted } from "effect";
+import { Config, Context, Effect, Layer, Option, Path, type Redacted } from "effect";
 
 export type EnvConfigShape = {
   readonly appHome?: string;

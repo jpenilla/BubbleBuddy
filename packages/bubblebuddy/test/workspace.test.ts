@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { sanitizeAttachmentFilename } from "../src/shared/workspace.ts";
 
 describe("attachment filenames", () => {
