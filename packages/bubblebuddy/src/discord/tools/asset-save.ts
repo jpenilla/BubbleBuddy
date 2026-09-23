@@ -1,5 +1,3 @@
-import { posix } from "node:path";
-
 import { Crypto, Effect, Option, Schema } from "effect";
 import { HttpClient, HttpClientResponse, Mime } from "effect/unstable/http";
 import { GuestPath } from "incus-api";
@@ -21,7 +19,8 @@ export const prepareAssetDirectory = Effect.fn("prepareAssetDirectory")(function
   ...segments: string[]
 ) {
   const sessionContainer = yield* SessionContainer.Service;
-  const directory = yield* GuestPath.resolve(sessionContainer.cwd, ...segments);
+  const guestPath = yield* GuestPath.Service;
+  const directory = yield* guestPath.resolve(sessionContainer.cwd, ...segments);
   const container = yield* sessionContainer.get;
   yield* container.files.mkdir(directory, { recursive: true });
   return directory;
@@ -32,16 +31,17 @@ const writeAsset = Effect.fn("writeAsset")(function* (
   directory: GuestPath.GuestPath,
   filename: string,
 ) {
-  if (posix.basename(filename) !== filename || filename === "." || filename === "..") {
+  const guestPath = yield* GuestPath.Service;
+  if (guestPath.path.basename(filename) !== filename || filename === "." || filename === "..") {
     return yield* new AssetSaveError({ message: "Invalid asset filename." });
   }
 
   const sessionContainer = yield* SessionContainer.Service;
   const container = yield* sessionContainer.get;
-  const destination = yield* GuestPath.resolve(directory, filename);
+  const destination = yield* guestPath.resolve(directory, filename);
   const crypto = yield* Crypto.Crypto;
   const uuid = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
-  const temporaryPath = yield* GuestPath.resolve(directory, `${filename}.${uuid}.tmp`);
+  const temporaryPath = yield* guestPath.resolve(directory, `${filename}.${uuid}.tmp`);
   yield* container.files
     .write(temporaryPath, response.stream)
     .pipe(

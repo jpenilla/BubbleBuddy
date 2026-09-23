@@ -4,7 +4,8 @@ import { join } from "node:path";
 
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Path } from "effect";
+import { Effect, Layer, Path } from "effect";
+import { GuestPath } from "incus-api";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { createChannelWorkspaceResourceLoader } from "../src/pi/workspace-resource-loader.ts";
@@ -36,8 +37,9 @@ describe("channel workspace resource loader", () => {
     Effect.runSync(
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        return createMountedWorkspace(path, workspaceDir, containerRoot);
-      }).pipe(Effect.provide(NodeServices.layer)),
+        const guestPath = yield* GuestPath.Service;
+        return createMountedWorkspace(path, guestPath.path, workspaceDir, containerRoot);
+      }).pipe(Effect.provide(Layer.merge(NodeServices.layer, GuestPath.layer))),
     );
 
   const createLoader = (enableAgenticWorkspace: boolean) =>

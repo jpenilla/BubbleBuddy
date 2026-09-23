@@ -1,6 +1,6 @@
 import { Effect, Option, Ref, Stream } from "effect";
 
-import { GuestPath } from "./guest-path.ts";
+import { type GuestPath } from "./guest-path.ts";
 import { IncusApi } from "./incus-api.ts";
 import { IncusContainer } from "./incus-container.ts";
 
@@ -8,6 +8,7 @@ export const create = (
   api: IncusApi.Interface,
   name: string,
   project: string,
+  guestPath: GuestPath.Interface,
 ): IncusContainer.FileOperations => {
   const projectOptions = { project };
   const attributes = { containerName: name, incusProject: project };
@@ -55,7 +56,7 @@ export const create = (
       Stream.provideContext(context),
     );
     if (options?.createParents) {
-      yield* ensureParentDirectories(api, name, project, path, {
+      yield* ensureParentDirectories(api, name, project, guestPath, path, {
         uid: options.uid,
         gid: options.gid,
       });
@@ -80,7 +81,7 @@ export const create = (
     },
   )(function* (path: GuestPath.GuestPath, options?: { readonly recursive?: boolean }) {
     if (options?.recursive) {
-      yield* createDirectories(api, name, project, path);
+      yield* createDirectories(api, name, project, guestPath, path);
     } else {
       yield* api.instances.files.write(
         name,
@@ -130,19 +131,21 @@ const ensureParentDirectories = (
   api: IncusApi.Interface,
   name: string,
   project: string,
+  guestPath: GuestPath.Interface,
   path: GuestPath.GuestPath,
   fileOptions?: IncusContainer.FileWriteOptions,
-) => createDirectories(api, name, project, GuestPath.dirname(path), fileOptions);
+) => createDirectories(api, name, project, guestPath, guestPath.dirname(path), fileOptions);
 
 const createDirectories = (
   api: IncusApi.Interface,
   name: string,
   project: string,
+  guestPath: GuestPath.Interface,
   path: GuestPath.GuestPath,
   fileOptions?: IncusContainer.FileWriteOptions,
 ) =>
   Effect.forEach(
-    GuestPath.directoryChain(path),
+    guestPath.directoryChain(path),
     (directory) => ensureDirectory(api, name, project, directory, fileOptions),
     { discard: true },
   );

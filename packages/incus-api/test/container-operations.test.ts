@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { assertInstanceOf } from "@effect/vitest/utils";
 import { Effect, Ref, Schema } from "effect";
 
+import { GuestPath } from "../src/guest-path.ts";
 import { IncusApi } from "../src/incus-api.ts";
 import { IncusContainerOperations } from "../src/incus-container-operations.ts";
 import { IncusContainer } from "../src/incus-container.ts";
@@ -75,7 +76,7 @@ describe("Incus container operations", () => {
       });
 
       const exit = yield* Effect.scoped(
-        IncusContainerOperations.create("default", api).scoped({
+        IncusContainerOperations.create("default", api, yield* GuestPath.Service).scoped({
           name: "failed-start",
           image,
         }),
@@ -83,14 +84,14 @@ describe("Incus container operations", () => {
 
       expect(yield* Ref.get(present)).toBe(false);
       expect(errorFrom(exit)).toBe(startFailure);
-    }),
+    }).pipe(Effect.provide(GuestPath.layer)),
   );
 
   it.effect("rejects invalid exec websocket metadata", () =>
     Effect.gen(function* () {
       const api = invalidWebSocketSecretsApi();
       const exit = yield* Effect.scoped(
-        IncusContainerOperations.create("default", api)
+        IncusContainerOperations.create("default", api, yield* GuestPath.Service)
           .scoped({ name: "container", image })
           .pipe(Effect.flatMap((container) => container.exec(["true"]))),
       ).pipe(Effect.exit);
@@ -101,6 +102,6 @@ describe("Incus container operations", () => {
         expect(error.operation).toBe("exec-operation");
         expect(error.metadata).toMatchObject({ websocketSecrets: { "0": "stdin" } });
       }
-    }),
+    }).pipe(Effect.provide(GuestPath.layer)),
   );
 });

@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
-
+import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
-import { Deferred, Effect, Exit, Fiber, Schema, type Scope, Stream } from "effect";
+import { Crypto, Deferred, Effect, Exit, Fiber, Layer, Schema, type Scope, Stream } from "effect";
 
 import { GuestPath } from "../src/guest-path.ts";
 import { IncusApi, IncusClient, IncusContainer } from "../src/index.ts";
@@ -93,12 +92,18 @@ const processTerminationCheckScript = (pidPath: string) =>
   ].join("\n");
 
 const withContainer = <A, E>(
-  body: (container: IncusContainer.Container) => Effect.Effect<A, E, Scope.Scope>,
+  body: (
+    container: IncusContainer.Container,
+    guestPath: GuestPath.Interface,
+  ) => Effect.Effect<A, E, Scope.Scope>,
 ) =>
   Effect.gen(function* () {
     const incus = yield* IncusClient.Service;
+    const guestPath = yield* GuestPath.Service;
+    const crypto = yield* Crypto.Crypto;
+    const id = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
     const containers = incus.project("default").containers;
-    const name = `incus-api-integration-${randomUUID().slice(0, 8)}`;
+    const name = `incus-api-integration-${id.slice(0, 8)}`;
     const scenarioExit = yield* Effect.scoped(
       Effect.gen(function* () {
         const container = yield* containers.scoped({
@@ -106,7 +111,7 @@ const withContainer = <A, E>(
           image: integrationImage,
           profiles: ["default"],
         });
-        return yield* body(container);
+        return yield* body(container, guestPath);
       }),
     ).pipe(Effect.exit);
     expect(yield* containers.exists(name)).toBe(false);
@@ -114,7 +119,7 @@ const withContainer = <A, E>(
       onSuccess: Effect.succeed,
       onFailure: Effect.failCause,
     });
-  }).pipe(Effect.provide(IncusClientLayer));
+  }).pipe(Effect.provide(Layer.mergeAll(IncusClientLayer, GuestPath.layer, NodeCrypto.layer)));
 
 const assertProcessTerminated = Effect.fn("assertProcessTerminated")(function* (
   container: IncusContainer.Container,
@@ -130,12 +135,12 @@ describeIntegration("Incus integration", () => {
   it.live(
     "round-trips binary files and reads directories and symlinks",
     () =>
-      withContainer((container) =>
+      withContainer((container, guestPath) =>
         Effect.gen(function* () {
           const payload = binaryFixture();
           // Keep fixtures outside /tmp, which the guest may mount during early boot.
-          const directoryPath = yield* GuestPath.of("/root/incus api integration/nested #?");
-          const payloadPath = yield* GuestPath.resolve(directoryPath, "payload #?.bin");
+          const directoryPath = yield* guestPath.of("/root/incus api integration/nested #?");
+          const payloadPath = yield* guestPath.resolve(directoryPath, "payload #?.bin");
           yield* container.files.write(
             payloadPath,
             Stream.fromIterable([
@@ -150,7 +155,7 @@ describeIntegration("Incus integration", () => {
           expect(read.byteLength).toBe(payload.byteLength);
           expect(read).toEqual(payload);
 
-          const linkPath = yield* GuestPath.resolve(directoryPath, "latest.bin");
+          const linkPath = yield* guestPath.resolve(directoryPath, "latest.bin");
           const linkErrors: Uint8Array[] = [];
           const link = yield* container.exec(["/bin/ln", "-s", "payload #?.bin", linkPath], {
             onStderr: (chunk) =>
@@ -167,7 +172,7 @@ describeIntegration("Incus integration", () => {
           const symlink = yield* container.files.read(linkPath);
           assert(IncusApi.FileRead.$is("Symlink")(symlink), "Expected a symlink");
           expect(symlink.target).toBe(payloadPath);
-          const target = yield* container.files.read(yield* GuestPath.of(symlink.target));
+          const target = yield* container.files.read(yield* guestPath.of(symlink.target));
           assert(IncusApi.FileRead.$is("File")(target), "Expected a regular file");
           expect(concatenate(yield* target.bytes.pipe(Stream.runCollect))).toEqual(payload);
         }),
@@ -178,9 +183,9 @@ describeIntegration("Incus integration", () => {
   it.live(
     "preserves exec output and exit code with cwd and environment",
     () =>
-      withContainer((container) =>
+      withContainer((container, guestPath) =>
         Effect.gen(function* () {
-          const cwd = yield* GuestPath.of("/tmp/incus api integration/cwd");
+          const cwd = yield* guestPath.of("/tmp/incus api integration/cwd");
           yield* container.files.mkdir(cwd, { recursive: true });
           const stdout: Uint8Array[] = [];
           const stderr: Uint8Array[] = [];

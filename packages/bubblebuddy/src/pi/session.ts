@@ -22,7 +22,7 @@ import {
   Semaphore,
 } from "effect";
 import { type HttpClient } from "effect/unstable/http";
-import { IncusClient } from "incus-api";
+import { GuestPath, IncusClient } from "incus-api";
 
 import { AppHome } from "../config/env.ts";
 import { FileConfig, type McpServerConfigEntry } from "../config/file.ts";
@@ -105,6 +105,7 @@ export type PiSessionServices =
   | HttpClient.HttpClient
   | LoadedResources
   | Path.Path
+  | GuestPath.Service
   | PiContext
   | AppHome;
 
@@ -118,9 +119,16 @@ export const createPiSession = (
     const appHome = yield* AppHome;
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    const guestPath = yield* GuestPath.Service;
     const runFork = Effect.runForkWith(yield* Effect.context());
     const sessionsDir = channelHostSessionsDir(path, appHome, input.channel.id);
-    const workspace = createChannelMountedWorkspace(path, appHome, input.channel.id, WORKSPACE_CWD);
+    const workspace = createChannelMountedWorkspace(
+      path,
+      guestPath.path,
+      appHome,
+      input.channel.id,
+      WORKSPACE_CWD,
+    );
 
     yield* fs
       .makeDirectory(sessionsDir, { recursive: true })
@@ -171,7 +179,7 @@ export const createPiSession = (
           channelId: input.channel.id,
           cwd: workspace.root.container,
           workspaceDir: workspace.root.host,
-        }).pipe(Layer.provide(IncusClientLayer)),
+        }).pipe(Layer.provide(IncusClientLayer), Layer.provide(GuestPath.layer)),
       ).pipe(
         Effect.mapError(
           (cause) =>

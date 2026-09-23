@@ -1,5 +1,3 @@
-import { posix as posixPath } from "node:path";
-
 import { type Path } from "effect";
 
 export const sanitizeAttachmentFilename = (filename: string): string => {
@@ -38,20 +36,27 @@ export const channelHostSessionsDir = (path: Path.Path, appHome: string, channel
 
 export const createChannelMountedWorkspace = (
   path: Path.Path,
+  guestPath: Path.Path,
   appHome: string,
   channelId: string,
   containerRoot: string,
 ): MountedWorkspace =>
-  createMountedWorkspace(path, channelHostWorkspaceDir(path, appHome, channelId), containerRoot);
+  createMountedWorkspace(
+    path,
+    guestPath,
+    channelHostWorkspaceDir(path, appHome, channelId),
+    containerRoot,
+  );
 
 export const createMountedWorkspace = (
   path: Path.Path,
+  guestPath: Path.Path,
   hostDir: string,
   containerRoot: string,
 ): MountedWorkspace => ({
   root: { host: hostDir, container: containerRoot },
   resolve: (...segments: string[]): DualPath => ({
     host: path.resolve(hostDir, ...segments),
-    container: posixPath.resolve(containerRoot, ...segments),
+    container: guestPath.resolve(containerRoot, ...segments),
   }),
 });

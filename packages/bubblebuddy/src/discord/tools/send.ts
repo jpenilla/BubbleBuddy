@@ -1,5 +1,3 @@
-import { posix } from "node:path";
-
 import { type AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { NodeStream } from "@effect/platform-node";
 import { GuildPremiumTier, type GuildTextBasedChannel } from "discord.js";
@@ -23,13 +21,14 @@ const getGuildUploadLimit = (premiumTier: GuildPremiumTier): bigint => {
   return 10_485_760n; // 10 MiB
 };
 
-const resolveGuestPath = (cwd: GuestPath.GuestPath, inputPath: string) => {
+const resolveGuestPath = Effect.fnUntraced(function* (cwd: GuestPath.GuestPath, inputPath: string) {
   const rawPath = inputPath.trim();
   if (rawPath.length === 0) {
-    return Effect.fail(new AgentToolError({ message: "File path must not be empty." }));
+    return yield* new AgentToolError({ message: "File path must not be empty." });
   }
-  return GuestPath.resolve(cwd, rawPath);
-};
+  const guestPath = yield* GuestPath.Service;
+  return yield* guestPath.resolve(cwd, rawPath);
+});
 
 const replyOptions = (params: { replyTo?: string; ping?: boolean }) =>
   params.replyTo === undefined
@@ -209,8 +208,9 @@ const resolveFiles = (
 
     return yield* Effect.forEach(filePaths, (inputPath) =>
       Effect.gen(function* () {
-        const guestPath = yield* resolveGuestPath(sessionContainer.cwd, inputPath);
-        const file = yield* container.files.readFile(guestPath);
+        const guestPath = yield* GuestPath.Service;
+        const filePath = yield* resolveGuestPath(sessionContainer.cwd, inputPath);
+        const file = yield* container.files.readFile(filePath);
         if (file.size !== undefined && file.size > limit) {
           return yield* new AgentToolError({
             message: `File size ${file.size} exceeds this server's upload limit of ${limit} bytes.`,
@@ -238,7 +238,7 @@ const resolveFiles = (
 
         return {
           attachment: readable,
-          name: posix.basename(guestPath),
+          name: guestPath.path.basename(filePath),
         };
       }),
     );

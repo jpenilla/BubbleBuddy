@@ -1,7 +1,6 @@
-import { posix } from "node:path";
-
 import { type Attachment, type Embed, type Message } from "discord.js";
 import { Effect } from "effect";
+import { GuestPath } from "incus-api";
 import { Type } from "typebox";
 
 import { defineEffectTool } from "../../pi/effect-tool.ts";
@@ -76,7 +75,8 @@ const saveMessageAssets = Effect.fn("saveMessageAssets")(function* (
   if (assets === undefined) {
     return yield* new AssetSaveError({ message: "Forwarded message snapshot not found." });
   }
-  const directory = posix.join(
+  const guestPath = yield* GuestPath.Service;
+  const directory = guestPath.path.join(
     DISCORD_ASSETS_SEGMENT,
     message.id,
     source === "forwarded" ? "forwarded" : "",
@@ -86,7 +86,7 @@ const saveMessageAssets = Effect.fn("saveMessageAssets")(function* (
     label: `attachment ${index}`,
     save: saveMessageAttachment(
       attachments[index],
-      posix.join(directory, "attachments", String(index)),
+      guestPath.path.join(directory, "attachments", String(index)),
     ),
   }));
   const embedJobs = (indices: readonly number[] | undefined, slot: EmbedAssetSlot) =>
@@ -94,7 +94,7 @@ const saveMessageAssets = Effect.fn("saveMessageAssets")(function* (
       label: `embed ${index} ${slot}`,
       save: saveEmbedAsset(
         assets.embeds[index],
-        posix.join(directory, "embeds", String(index)),
+        guestPath.path.join(directory, "embeds", String(index)),
         slot,
       ),
     }));

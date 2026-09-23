@@ -43,6 +43,7 @@ const filterSessionEnv = (
 
 export const createIncusExtension = Effect.gen(function* () {
   const sessionContainer = yield* SessionContainer.Service;
+  const guestPath = yield* GuestPath.Service;
   const runPromise = yield* FiberSet.makeRuntimePromise();
 
   const withContainer = <A, E>(
@@ -84,7 +85,7 @@ export const createIncusExtension = Effect.gen(function* () {
     readFile: async (path) => {
       const data = await runPromise(
         withContainer((container) =>
-          GuestPath.of(path).pipe(Effect.flatMap(container.files.readBytes)),
+          guestPath.of(path).pipe(Effect.flatMap(container.files.readBytes)),
         ).pipe(Effect.withSpan("IncusExtension.read.readFile", { root: true })),
       );
       return Buffer.from(data);
@@ -95,9 +96,9 @@ export const createIncusExtension = Effect.gen(function* () {
     mkdir: async (dir) => {
       await runPromise(
         withContainer((container) =>
-          GuestPath.of(dir).pipe(
-            Effect.flatMap((path) => container.files.mkdir(path, { recursive: true })),
-          ),
+          guestPath
+            .of(dir)
+            .pipe(Effect.flatMap((path) => container.files.mkdir(path, { recursive: true }))),
         ).pipe(Effect.withSpan("IncusExtension.write.mkdir", { root: true })),
       );
     },
@@ -105,11 +106,13 @@ export const createIncusExtension = Effect.gen(function* () {
       const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
       await runPromise(
         withContainer((container) =>
-          GuestPath.of(path).pipe(
-            Effect.flatMap((path) =>
-              container.files.write(path, Stream.make(bytes), { createParents: true }),
+          guestPath
+            .of(path)
+            .pipe(
+              Effect.flatMap((path) =>
+                container.files.write(path, Stream.make(bytes), { createParents: true }),
+              ),
             ),
-          ),
         ).pipe(Effect.withSpan("IncusExtension.write.writeFile", { root: true })),
       );
     },

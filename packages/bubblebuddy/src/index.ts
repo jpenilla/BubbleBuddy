@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Config, Effect, Layer, References } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { Otlp, OtlpSerialization } from "effect/unstable/observability";
+import { GuestPath } from "incus-api";
 
 import { EnvConfig } from "./config/env.ts";
 import { AppDatabase } from "./database.ts";
@@ -35,6 +36,7 @@ const AppLayer = Layer.mergeAll(
   Layer.provide(AppDatabase.layer),
   Layer.provide(DiscordLayer),
   Layer.provide(NodeServices.layer),
+  Layer.provide(GuestPath.layer),
 );
 
 const ObservabilityLayer = Otlp.layerFromConfig().pipe(

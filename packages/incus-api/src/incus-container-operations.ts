@@ -1,5 +1,6 @@
 import { type Cause, Effect, type Exit } from "effect";
 
+import { type GuestPath } from "./guest-path.ts";
 import { type IncusApi } from "./incus-api.ts";
 import { type IncusContainer } from "./incus-container.ts";
 import { IncusExecSession } from "./incus-exec-session.ts";
@@ -8,9 +9,10 @@ import { IncusFileOperations } from "./incus-file-operations.ts";
 export const create = (
   project: string,
   api: IncusApi.Interface,
+  guestPath: GuestPath.Interface,
 ): IncusContainer.ContainerCollection => ({
   scoped: (options) =>
-    Effect.acquireRelease(acquire(project, api, options), (container, exit) =>
+    Effect.acquireRelease(acquire(project, api, guestPath, options), (container, exit) =>
       release(api, container, exit),
     ),
   exists: (name) => api.instances.exists(name, { project }),
@@ -19,11 +21,12 @@ export const create = (
 const acquire = Effect.fn("IncusContainer.acquire")(function* (
   project: string,
   api: IncusApi.Interface,
+  guestPath: GuestPath.Interface,
   options: IncusContainer.CreateOptions,
 ) {
   const attributes = { containerName: options.name, incusProject: project };
   yield* Effect.annotateCurrentSpan(attributes);
-  const container = createContainer(project, api, options.name);
+  const container = createContainer(project, api, guestPath, options.name);
 
   const operation = yield* api.instances.create(
     {
@@ -132,6 +135,7 @@ const deleteContainer = Effect.fnUntraced(
 const createContainer = (
   project: string,
   api: IncusApi.Interface,
+  guestPath: GuestPath.Interface,
   name: string,
 ): IncusContainer.Container => ({
   name,
@@ -141,7 +145,7 @@ const createContainer = (
   })(function* (command: readonly string[], options?: IncusContainer.ExecOptions) {
     return yield* IncusExecSession.exec(name, project, api, command, options);
   }),
-  files: IncusFileOperations.create(api, name, project),
+  files: IncusFileOperations.create(api, name, project, guestPath),
 });
 
 const source = (image: IncusContainer.ImageSource): IncusApi.InstanceCreateRequest["source"] =>

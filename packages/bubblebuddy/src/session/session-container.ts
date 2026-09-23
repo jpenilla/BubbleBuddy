@@ -28,7 +28,8 @@ export const layer = (options: Options) =>
     Effect.gen(function* () {
       const incus = yield* IncusClient.Service;
       const crypto = yield* Crypto.Crypto;
-      const cwd = yield* GuestPath.of(options.cwd);
+      const guestPath = yield* GuestPath.Service;
+      const cwd = yield* guestPath.of(options.cwd);
       const containerRef = yield* ScopedRef.make<IncusContainer.Container | undefined>(
         () => undefined,
       );

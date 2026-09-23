@@ -17,6 +17,7 @@ const image: IncusContainer.ImageSource = {
 
 const program = Effect.gen(function* () {
   const incus = yield* IncusClient.Service;
+  const guestPath = yield* GuestPath.Service;
   const crypto = yield* Crypto.Crypto;
   const container = yield* incus.project("default").containers.scoped({
     name: `example-${(yield* crypto.randomUUIDv4).slice(0, 8)}`,
@@ -24,7 +25,7 @@ const program = Effect.gen(function* () {
     profiles: ["default"],
   });
 
-  const path = yield* GuestPath.of("/tmp/hello.txt");
+  const path = yield* guestPath.of("/tmp/hello.txt");
   yield* container.files.write(path, Stream.make(new TextEncoder().encode("hello")));
   const file = yield* container.files.readFile(path);
   const text = yield* file.bytes.pipe(Stream.decodeText(), Stream.runFold("", (a, b) => a + b));
@@ -43,6 +44,7 @@ const program = Effect.gen(function* () {
 
 const AppLayer = Layer.effectDiscard(program).pipe(
   Layer.provide(IncusClientLayer),
+  Layer.provide(GuestPath.layer),
   Layer.provide(NodeCrypto.layer),
 );
 
