@@ -34,12 +34,16 @@ const defaultAppHome = Effect.gen(function* () {
       return path.join(homedir(), "Library", "Application Support", "BubbleBuddy");
     case "win32":
       return path.join(
-        process.env.APPDATA ?? path.join(homedir(), "AppData", "Roaming"),
+        yield* Config.String("APPDATA").pipe(
+          Config.withDefault(path.join(homedir(), "AppData", "Roaming")),
+        ),
         "BubbleBuddy",
       );
     default:
       return path.join(
-        process.env.XDG_DATA_HOME ?? path.join(homedir(), ".local", "share"),
+        yield* Config.String("XDG_DATA_HOME").pipe(
+          Config.withDefault(path.join(homedir(), ".local", "share")),
+        ),
         "bubblebuddy",
       );
   }

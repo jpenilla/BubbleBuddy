@@ -231,15 +231,13 @@ export const exec = Effect.fnUntraced(
         return result;
       }),
     ).pipe(
-      Effect.catchIf(
-        (error): error is Socket.SocketError => error instanceof Socket.SocketError,
-        (error) =>
-          Effect.fail(
-            new IncusContainer.ExecTransportError({
-              message: `Websocket error: ${error.message}`,
-              cause: error,
-            }),
-          ),
+      Effect.catchIf(Schema.is(Socket.SocketError), (error) =>
+        Effect.fail(
+          new IncusContainer.ExecTransportError({
+            message: `Websocket error: ${error.message}`,
+            cause: error,
+          }),
+        ),
       ),
     );
   },

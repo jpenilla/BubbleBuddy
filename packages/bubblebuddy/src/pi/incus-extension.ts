@@ -15,7 +15,7 @@ import {
   detectSupportedImageMimeType,
   IMAGE_TYPE_SNIFF_BYTES,
 } from "@earendil-works/pi-coding-agent/utils/mime";
-import { Cause, Effect, Exit, FiberSet, Option, Stream } from "effect";
+import { Cause, Effect, Exit, FiberSet, Option, Schema, Stream } from "effect";
 import { GuestPath, IncusContainer } from "incus-api";
 
 import { SessionContainer } from "../session/session-container.ts";
@@ -153,7 +153,7 @@ export const createIncusExtension = Effect.gen(function* () {
             (cause) => !Cause.hasInterruptsOnly(cause),
             Effect.fnUntraced(function* (cause) {
               const error = Cause.findErrorOption(cause);
-              if (Option.isSome(error) && error.value instanceof IncusContainer.ExecTimeoutError) {
+              if (Option.isSome(error) && Schema.is(IncusContainer.ExecTimeoutError)(error.value)) {
                 return yield* new AgentToolError({
                   message: execOptions.signal?.aborted ? "aborted" : `timeout:${timeoutSec}`,
                 });

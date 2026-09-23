@@ -550,7 +550,7 @@ const projectQuery = (project: string) => {
 };
 
 const isNotFound = (error: unknown): error is StatusCodeError =>
-  error instanceof StatusCodeError && error.status === 404;
+  Schema.is(StatusCodeError)(error) && error.status === 404;
 
 const header = (response: HttpClientResponse.HttpClientResponse, name: string) =>
   Option.getOrUndefined(Headers.get(response.headers, name));
