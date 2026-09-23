@@ -23,6 +23,24 @@ import { AgentToolError } from "./effect-tool.ts";
 
 const shQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
+const SESSION_ENV_KEYS = [
+  "PI_SESSION_ID",
+  "PI_PROVIDER",
+  "PI_MODEL",
+  "PI_REASONING_LEVEL",
+] as const;
+
+const filterSessionEnv = (
+  environment: Readonly<Record<string, string | undefined>> | undefined,
+): Record<string, string> => {
+  const filtered: Record<string, string> = {};
+  for (const key of SESSION_ENV_KEYS) {
+    const value = environment?.[key];
+    if (value !== undefined) filtered[key] = value;
+  }
+  return filtered;
+};
+
 export const createIncusExtension = Effect.gen(function* () {
   const sessionContainer = yield* SessionContainer.Service;
   const runPromise = yield* FiberSet.makeRuntimePromise();
@@ -124,6 +142,7 @@ export const createIncusExtension = Effect.gen(function* () {
         withContainer((container) =>
           container.exec(["/bin/bash", "-c", command], {
             cwd,
+            environment: filterSessionEnv(execOptions.env),
             timeoutSeconds,
             terminationWaitTimeout: "3 seconds",
             onStdout: (chunk) => Effect.sync(() => execOptions.onData(Buffer.from(chunk))),
