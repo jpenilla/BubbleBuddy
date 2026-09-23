@@ -1,6 +1,5 @@
 import { Cause, Context, Crypto, Effect, Layer, ScopedRef, Semaphore } from "effect";
-import { GuestPath, IncusClient, type IncusContainer } from "incus-api";
-import { type IncusApi } from "incus-api";
+import { GuestPath, type IncusApi, IncusClient, type IncusContainer } from "incus-api";
 
 export interface Interface {
   readonly cwd: GuestPath.GuestPath;

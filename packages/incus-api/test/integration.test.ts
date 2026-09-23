@@ -2,8 +2,7 @@ import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
 import { Crypto, Deferred, Effect, Exit, Fiber, Layer, Schema, type Scope, Stream } from "effect";
 
-import { GuestPath } from "../src/guest-path.ts";
-import { IncusApi, IncusClient, IncusContainer } from "../src/index.ts";
+import { GuestPath, IncusApi, IncusClient, IncusContainer } from "../src/index.ts";
 
 const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
