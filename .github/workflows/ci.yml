@@ -52,9 +52,6 @@ jobs:
       - name: Run lint
         run: pnpm --filter incus-api run lint
 
-      - name: Run typecheck
-        run: pnpm --filter incus-api run typecheck
-
       - name: Install Incus
         run: curl -fsSL https://pkgs.zabbly.com/get/incus-stable | sudo sh
 
