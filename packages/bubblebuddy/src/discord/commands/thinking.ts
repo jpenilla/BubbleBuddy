@@ -16,7 +16,7 @@ export const thinkingCommand = createCommand({
     const newValue = yield* settings.toggleShowThinking;
     yield* tryDiscordJsPromise(() =>
       interaction.editReply(
-        `Thinking messages are now ${newValue ? "enabled" : "disabled"} in this channel.`,
+        `Thinking messages are now **${newValue ? "visible" : "hidden"}** in this channel.`,
       ),
     );
   }),
