@@ -50,7 +50,7 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
         }
       }
 
-      const sessions = yield* ChannelSessions;
+      const sessions = yield* ChannelSessions.Service;
       const session = yield* sessions.get(message.channel.id);
       yield* session.activate({
         channel: message.channel,

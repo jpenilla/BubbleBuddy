@@ -6,7 +6,7 @@ import { FileConfig } from "../config/file.ts";
 import { PiContext } from "../pi/context.ts";
 import { LoadedResources } from "../resources.ts";
 import { createChannelSession, type ChannelSession, type ChannelSessionError } from "./channel.ts";
-import { ChannelStateRepository } from "./state.ts";
+import { ChannelStateRepository } from "./state-repository.ts";
 
 const createChannelSessions = Effect.gen(function* () {
   const config = yield* FileConfig;
@@ -31,24 +31,27 @@ const createChannelSessions = Effect.gen(function* () {
     Effect.withSpan("ChannelSessions.get", (channelId) => ({ attributes: { channelId } })),
   );
 
-  return ChannelSessions.of({ get });
+  return Service.of({ get });
 });
 
-export class ChannelSessions extends Context.Service<
-  ChannelSessions,
-  {
-    readonly get: (
-      channelId: string,
-    ) => Effect.Effect<ChannelSession, ChannelSessionError, Scope.Scope>;
-  }
->()("bubblebuddy/session/ChannelSessions") {
-  static readonly layerNoDeps = Layer.effect(ChannelSessions, createChannelSessions);
-  static readonly layer = ChannelSessions.layerNoDeps.pipe(
-    Layer.provide(ChannelStateRepository.layer),
-    Layer.provide(LoadedResources.layer),
-    Layer.provide(PiContext.layer),
-    Layer.provide(FileConfig.layer),
-    Layer.provide(AppHome.layer),
-    Layer.provide(FetchHttpClient.layer),
-  );
+export interface Interface {
+  readonly get: (
+    channelId: string,
+  ) => Effect.Effect<ChannelSession, ChannelSessionError, Scope.Scope>;
 }
+
+export class Service extends Context.Service<Service, Interface>()(
+  "bubblebuddy/session/ChannelSessions",
+) {}
+
+export const layerNoDeps = Layer.effect(Service, createChannelSessions);
+export const layer = layerNoDeps.pipe(
+  Layer.provide(ChannelStateRepository.layer),
+  Layer.provide(LoadedResources.layer),
+  Layer.provide(PiContext.layer),
+  Layer.provide(FileConfig.layer),
+  Layer.provide(AppHome.layer),
+  Layer.provide(FetchHttpClient.layer),
+);
+
+export * as ChannelSessions from "./registry.ts";

@@ -44,7 +44,7 @@ interface Group {
 
 const MAX_TOOLS_PER_GROUP = 8;
 
-export const make = (
+export const create = (
   channel: GuildTextBasedChannel,
   policyFor: (name: string) => Policy,
 ): Effect.Effect<Interface> =>

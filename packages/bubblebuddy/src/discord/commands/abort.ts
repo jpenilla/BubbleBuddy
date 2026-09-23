@@ -11,7 +11,7 @@ export const abortCommand = createCommand({
     .setContexts(InteractionContextType.Guild),
   execute: inGuildTextChannel(function* (interaction) {
     yield* tryDiscordJsPromise(() => interaction.deferReply());
-    const sessions = yield* ChannelSessions;
+    const sessions = yield* ChannelSessions.Service;
     const session = yield* sessions.get(interaction.channelId);
     const result = yield* session.abort;
 

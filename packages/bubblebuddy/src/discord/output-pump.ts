@@ -88,7 +88,7 @@ export const createDiscordOutputPump = (
     let compactionStatusMessage: Message<true> | undefined;
     let retryStatusState: RetryStatusState | undefined;
     let pendingText = "";
-    const toolOutputs = yield* ToolOutput.make(channel, ToolOutputPolicies.forTool);
+    const toolOutputs = yield* ToolOutput.create(channel, ToolOutputPolicies.forTool);
 
     const enqueueHigh = (operation: Effect.Effect<void, unknown>): Effect.Effect<void> =>
       createWorkItem(operation).pipe(

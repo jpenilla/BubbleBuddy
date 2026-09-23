@@ -20,7 +20,8 @@ import {
   type PiSessionServices,
   type SessionStats,
 } from "../pi/session.ts";
-import { ChannelStateRepository, type ReplyMode } from "./state.ts";
+import { ChannelStateRepository } from "./state-repository.ts";
+import { type ReplyMode } from "./state.ts";
 import { ChannelSettings } from "./settings.ts";
 
 export interface ActivateChannelSessionInput {
@@ -75,7 +76,7 @@ interface CreateChannelSessionInput {
 export const createChannelSession = (input: CreateChannelSessionInput) =>
   Effect.gen(function* () {
     const attributes = { channelId: input.channelId };
-    const repository = yield* ChannelStateRepository;
+    const repository = yield* ChannelStateRepository.Service;
     const mapToChannelSessionError = Effect.mapError(
       (cause) => new ChannelSessionError({ channelId: input.channelId, cause }),
     );

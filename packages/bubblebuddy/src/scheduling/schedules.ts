@@ -235,7 +235,7 @@ const recurrenceColumns = (recurrence: Recurrence): RecurrenceColumns =>
     }),
   });
 
-const makeSchedules = Effect.gen(function* () {
+const createSchedules = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const changes = yield* Queue.make<void>({ capacity: 1, strategy: "sliding" });
   const notifyChange = Queue.offer(changes, undefined);
@@ -524,6 +524,6 @@ export class Service extends Context.Service<Service, Interface>()(
   "bubblebuddy/scheduling/Schedules",
 ) {}
 
-export const layer = Layer.effect(Service, makeSchedules);
+export const layer = Layer.effect(Service, createSchedules);
 
 export * as Schedules from "./schedules.ts";

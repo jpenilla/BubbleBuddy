@@ -1,16 +1,17 @@
 import { Context, Duration, Effect, Layer, RcMap, Scope, SynchronizedRef } from "effect";
 
-import { ChannelStateRepository, ChannelStateRepositoryError, type ReplyMode } from "./state.ts";
+import { ChannelStateRepository } from "./state-repository.ts";
+import { type ReplyMode } from "./state.ts";
 
 export interface Entry {
   readonly getShowThinking: Effect.Effect<boolean, never>;
-  readonly toggleShowThinking: Effect.Effect<boolean, ChannelStateRepositoryError>;
+  readonly toggleShowThinking: Effect.Effect<boolean, ChannelStateRepository.Error>;
   readonly getReplyMode: Effect.Effect<ReplyMode, never>;
-  readonly setReplyMode: (value: ReplyMode) => Effect.Effect<void, ChannelStateRepositoryError>;
+  readonly setReplyMode: (value: ReplyMode) => Effect.Effect<void, ChannelStateRepository.Error>;
 }
 
 const load = Effect.fn("ChannelSettings.load")(function* (channelId: string) {
-  const repository = yield* ChannelStateRepository;
+  const repository = yield* ChannelStateRepository.Service;
   const showThinkingRef = yield* SynchronizedRef.make(yield* repository.getShowThinking(channelId));
   const replyModeRef = yield* SynchronizedRef.make(yield* repository.getReplyMode(channelId));
 
@@ -52,7 +53,7 @@ export class Service extends Context.Service<
   {
     readonly get: (
       channelId: string,
-    ) => Effect.Effect<Entry, ChannelStateRepositoryError, Scope.Scope>;
+    ) => Effect.Effect<Entry, ChannelStateRepository.Error, Scope.Scope>;
   }
 >()("bubblebuddy/session/ChannelSettings") {}
 

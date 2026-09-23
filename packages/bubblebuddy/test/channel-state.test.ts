@@ -3,7 +3,7 @@ import { expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, FileSystem, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
-import { ChannelStateRepository } from "../src/session/state.ts";
+import { ChannelStateRepository } from "../src/session/state-repository.ts";
 import { AppHome } from "../src/config/env.ts";
 import { AppDatabase } from "../src/database.ts";
 import { createTestEnvLayer } from "./helpers.ts";
@@ -26,7 +26,7 @@ const withRepo = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 it.layer(NodeServices.layer)("channel state", (it) => {
   it.effect("loads defaults for missing channel", () =>
     Effect.gen(function* () {
-      const repo = yield* ChannelStateRepository;
+      const repo = yield* ChannelStateRepository.Service;
       expect(yield* repo.getActiveSession("123")).toBeUndefined();
       expect(yield* repo.getShowThinking("123")).toBe(false);
     }).pipe(withRepo),
@@ -34,7 +34,7 @@ it.layer(NodeServices.layer)("channel state", (it) => {
 
   it.effect("persists flattened fields", () =>
     Effect.gen(function* () {
-      const repo = yield* ChannelStateRepository;
+      const repo = yield* ChannelStateRepository.Service;
       yield* repo.setActiveSession("456", "session.json");
       yield* repo.setShowThinking("456", true);
 
@@ -45,7 +45,7 @@ it.layer(NodeServices.layer)("channel state", (it) => {
 
   it.effect("clears default-valued fields from storage", () =>
     Effect.gen(function* () {
-      const repo = yield* ChannelStateRepository;
+      const repo = yield* ChannelStateRepository.Service;
       const sql = yield* SqlClient.SqlClient;
       yield* repo.setActiveSession("789", "session.json");
       yield* repo.setShowThinking("789", true);

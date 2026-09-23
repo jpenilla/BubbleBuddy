@@ -7,7 +7,7 @@ import { isGuildTextChannel, tryDiscordJsPromise } from "./utils.ts";
 export const ScheduledActivationsLayer = Layer.effectDiscard(
   Effect.gen(function* () {
     const schedules = yield* Schedules.Service;
-    const sessions = yield* ChannelSessions;
+    const sessions = yield* ChannelSessions.Service;
     const client = yield* DiscordClient.Service;
 
     const dispatch = Effect.fnUntraced(
