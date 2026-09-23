@@ -76,7 +76,7 @@ export interface ResourceLimits {
 }
 
 export interface CreateOptions {
-  readonly name?: string;
+  readonly name: string;
   readonly image: ImageSource;
   readonly profiles?: readonly string[];
   readonly mounts?: readonly MountOptions[];

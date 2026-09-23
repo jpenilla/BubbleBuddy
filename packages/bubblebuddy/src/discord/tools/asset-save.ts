@@ -1,6 +1,6 @@
 import { posix } from "node:path";
 
-import { Effect, Option, Schema } from "effect";
+import { Crypto, Effect, Option, Schema } from "effect";
 import { HttpClient, HttpClientResponse, Mime } from "effect/unstable/http";
 import { GuestPath } from "incus-api";
 
@@ -39,10 +39,9 @@ const writeAsset = Effect.fn("writeAsset")(function* (
   const sessionContainer = yield* SessionContainer.Service;
   const container = yield* sessionContainer.get;
   const destination = yield* GuestPath.resolve(directory, filename);
-  const temporaryPath = yield* GuestPath.resolve(
-    directory,
-    `${filename}.${crypto.randomUUID()}.tmp`,
-  );
+  const crypto = yield* Crypto.Crypto;
+  const uuid = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+  const temporaryPath = yield* GuestPath.resolve(directory, `${filename}.${uuid}.tmp`);
   yield* container.files
     .write(temporaryPath, response.stream)
     .pipe(

@@ -21,14 +21,13 @@ const acquire = Effect.fn("IncusContainer.acquire")(function* (
   api: IncusApi.Interface,
   options: IncusContainer.CreateOptions,
 ) {
-  const name = options.name ?? `incus-api-${crypto.randomUUID().slice(0, 8)}`;
-  const attributes = { containerName: name, incusProject: project };
+  const attributes = { containerName: options.name, incusProject: project };
   yield* Effect.annotateCurrentSpan(attributes);
-  const container = createContainer(project, api, name);
+  const container = createContainer(project, api, options.name);
 
   const operation = yield* api.instances.create(
     {
-      name,
+      name: options.name,
       type: "container",
       ephemeral: true,
       ...(options.profiles === undefined ? {} : { profiles: [...options.profiles] }),

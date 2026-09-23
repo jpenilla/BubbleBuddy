@@ -12,6 +12,7 @@ import { type GuildTextBasedChannel } from "discord.js";
 import {
   Cause,
   Context,
+  type Crypto,
   Effect,
   Exit,
   FiberHandle,
@@ -99,6 +100,7 @@ export class PiSessionOperationError extends Schema.TaggedError<PiSessionOperati
 ) {}
 
 export type PiSessionServices =
+  | Crypto.Crypto
   | Schedules.Service
   | FileConfig
   | FileSystem.FileSystem

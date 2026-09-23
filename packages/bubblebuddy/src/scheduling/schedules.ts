@@ -87,9 +87,9 @@ export const describe = (wakeup: Wakeup): string =>
     `Timing: ${Recurrence.match(wakeup.recurrence, {
       once: () => "once",
       cron: ({ expression, timezone, expiresAt }) =>
-        `cron ${expression} (${timezone})${expiresAt === null ? "" : `, ends ${new Date(expiresAt).toISOString()}`}`,
+        `cron ${expression} (${timezone})${expiresAt === null ? "" : `, ends ${DateTime.formatIso(DateTime.makeUnsafe(expiresAt))}`}`,
     })}`,
-    `Scheduled for: ${new Date(wakeup.nextRunAt).toISOString()}`,
+    `Scheduled for: ${DateTime.formatIso(DateTime.makeUnsafe(wakeup.nextRunAt))}`,
     "",
     "Note:",
     wakeup.note,

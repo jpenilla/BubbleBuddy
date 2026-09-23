@@ -1,4 +1,4 @@
-import { Cause, Clock, Effect, Layer, Stream } from "effect";
+import { Cause, Clock, DateTime, Effect, Layer, Stream } from "effect";
 
 import { Schedules } from "../scheduling/schedules.ts";
 import { ChannelSessions } from "../session/registry.ts";
@@ -27,7 +27,7 @@ export const ScheduledActivationsLayer = Layer.effectDiscard(
         );
         yield* session.activate({
           channel,
-          prompt: `Current time: ${new Date(now).toISOString()}\n\n${Schedules.describe(wakeup)}`,
+          prompt: `Current time: ${DateTime.formatIso(DateTime.makeUnsafe(now))}\n\n${Schedules.describe(wakeup)}`,
         });
       },
       (effect, wakeup) =>

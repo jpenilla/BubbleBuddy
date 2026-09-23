@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Layer, ScopedRef, Semaphore } from "effect";
+import { Cause, Context, Crypto, Effect, Layer, ScopedRef, Semaphore } from "effect";
 import { GuestPath, IncusClient, type IncusContainer } from "incus-api";
 import { type IncusApi } from "incus-api";
 
@@ -17,11 +17,17 @@ export class Service extends Context.Service<Service, Interface>()(
   "bubblebuddy/session/SessionContainer",
 ) {}
 
+const createContainerName = Effect.fnUntraced(function* (crypto: Crypto.Crypto) {
+  const uuid = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+  return `bubblebuddy-${uuid.slice(0, 8)}`;
+});
+
 export const layer = (options: Options) =>
   Layer.effect(
     Service,
     Effect.gen(function* () {
       const incus = yield* IncusClient.Service;
+      const crypto = yield* Crypto.Crypto;
       const cwd = yield* GuestPath.of(options.cwd);
       const containerRef = yield* ScopedRef.make<IncusContainer.Container | undefined>(
         () => undefined,
@@ -39,6 +45,7 @@ export const layer = (options: Options) =>
               Effect.gen(function* () {
                 yield* Effect.logInfo("Starting Incus container");
                 const container = yield* incus.project("default").containers.scoped({
+                  name: yield* createContainerName(crypto),
                   image: {
                     type: "remote",
                     alias: "debian/13",
