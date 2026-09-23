@@ -1,0 +1,26 @@
+{
+  "languages": {
+    "TypeScript": {
+      "language_servers": ["effect-tsgo", "oxlint"]
+    },
+    "TSX": {
+      "language_servers": ["effect-tsgo", "oxlint"]
+    }
+  },
+  "lsp": {
+    "oxlint": {
+      "binary": {
+        "path": "node",
+        "arguments": [
+          "./packages/bubblebuddy/node_modules/oxlint/bin/oxlint",
+          "--lsp"
+        ]
+      },
+      "initialization_options": {
+        "settings": {
+          "run": "onType"
+        }
+      }
+    }
+  }
+}
