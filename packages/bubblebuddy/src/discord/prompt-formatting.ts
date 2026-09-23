@@ -6,6 +6,7 @@ import {
   StickerFormatType,
   type MessageSnapshot,
   type Sticker,
+  InteractionType,
 } from "discord.js";
 
 import { sanitizeAttachmentFilename } from "../shared/workspace.ts";
@@ -99,7 +100,19 @@ export const formatMessageForPrompt = (message: Message<true>): string => {
   const isForward = message.reference?.type === MessageReferenceType.Forward;
   const replyTo = isForward ? undefined : message.reference?.messageId;
   const replyReference = replyTo == null ? "" : ` reply_to=${replyTo}`;
-  const header = `[msg ${message.id} user=${message.author.username} mention=<@${message.author.id}>${replyReference}]`;
+
+  const interactionMetadata = message.interactionMetadata;
+  const isCommandResponse = interactionMetadata?.type == InteractionType.ApplicationCommand;
+  let commandAttributes = "";
+  if (isCommandResponse) {
+    commandAttributes += " command_response";
+    const commandName = message.interaction?.commandName;
+    if (commandName) commandAttributes += ` command=${commandName}`;
+    const invoker = interactionMetadata.user;
+    commandAttributes += ` invoked_by_user=${invoker.username} invoked_by_mention=<@${invoker.id}>`;
+  }
+
+  const header = `[msg ${message.id} user=${message.author.username} mention=<@${message.author.id}>${replyReference}${commandAttributes}]`;
   const lines = [header, formatMessageBody(message)].filter((line) => line.length > 0);
   if (isForward) lines.push(formatForwardedMessage(message));
   return lines.join("\n");
