@@ -1,9 +1,8 @@
-import { randomUUID } from "node:crypto";
-
 import {
   Clock,
   Context,
   Cron,
+  Crypto,
   DateTime,
   Duration,
   Effect,
@@ -238,6 +237,7 @@ const recurrenceColumns = (recurrence: Recurrence): RecurrenceColumns =>
 
 const createSchedules = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const crypto = yield* Crypto.Crypto;
   const changes = yield* Queue.make<void>({ capacity: 1, strategy: "sliding" });
   const notifyChange = Queue.offer(changes, undefined);
 
@@ -251,8 +251,9 @@ const createSchedules = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const { nextRunAt, recurrence } = yield* resolveTiming(decoded.timing, now);
 
+    const id = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
     const wakeup = Wakeup.make({
-      id: randomUUID(),
+      id,
       channelId,
       description,
       note,

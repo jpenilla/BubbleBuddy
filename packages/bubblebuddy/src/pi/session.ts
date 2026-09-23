@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import {
   createAgentSession,
   SessionManager,
@@ -417,7 +415,7 @@ export const createPiSession = (
       isRetrying: () => session.isRetrying,
       getActiveSessionName: () => {
         const sessionFile = sessionManager.getSessionFile();
-        return sessionFile === undefined ? undefined : basename(sessionFile);
+        return sessionFile === undefined ? undefined : path.basename(sessionFile);
       },
       getModelInfo: () => {
         const model = session.model;
