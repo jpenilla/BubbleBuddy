@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { assertInstanceOf } from "@effect/vitest/utils";
-import { Deferred, Effect, Fiber } from "effect";
+import { Deferred, Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import type * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
@@ -32,7 +32,7 @@ describe("Incus operation waits", () => {
 
       const error = errorFrom(failed);
       expect(error).toBeInstanceOf(IncusApi.OperationError);
-      if (error instanceof IncusApi.OperationError) {
+      if (Schema.is(IncusApi.OperationError)(error)) {
         expect(error.operation).toBe("operation-failed");
         expect(error.message).toBe("command failed");
       }

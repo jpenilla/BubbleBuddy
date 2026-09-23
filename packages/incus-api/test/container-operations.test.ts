@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { assertInstanceOf } from "@effect/vitest/utils";
-import { Effect, Ref } from "effect";
+import { Effect, Ref, Schema } from "effect";
 
 import { IncusApi } from "../src/incus-api.ts";
 import { IncusContainerOperations } from "../src/incus-container-operations.ts";
@@ -97,7 +97,7 @@ describe("Incus container operations", () => {
 
       const error = errorFrom(exit);
       expect(error).toBeInstanceOf(IncusApi.OperationError);
-      if (error instanceof IncusApi.OperationError) {
+      if (Schema.is(IncusApi.OperationError)(error)) {
         expect(error.operation).toBe("exec-operation");
         expect(error.metadata).toMatchObject({ websocketSecrets: { "0": "stdin" } });
       }

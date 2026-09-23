@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { assert, describe, expect, it } from "@effect/vitest";
-import { Deferred, Effect, Exit, Fiber, type Scope, Stream } from "effect";
+import { Deferred, Effect, Exit, Fiber, Schema, type Scope, Stream } from "effect";
 
 import { GuestPath } from "../src/guest-path.ts";
 import { IncusApi, IncusClient, IncusContainer } from "../src/index.ts";
@@ -301,7 +301,7 @@ describeIntegration("Incus integration", () => {
               onStdout: () => Effect.fail(callbackFailure),
             })
             .pipe(Effect.flip, Effect.timeout("10 seconds"));
-          assert(callbackError instanceof IncusContainer.ExecCallbackError);
+          assert(Schema.is(IncusContainer.ExecCallbackError)(callbackError));
           expect(callbackError.cause).toBe(callbackFailure);
           yield* assertProcessTerminated(container, failedPidPath);
         }),
