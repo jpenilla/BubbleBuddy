@@ -21,6 +21,9 @@ describe("Incus HTTP adapter", () => {
         status: 503,
         body: "try later",
       });
+      expect(error.message).toBe(
+        "Incus GET /1.0/instances/unavailable?project=default failed with HTTP 503.",
+      );
     }).pipe(
       Effect.provide(
         layerWith((request) =>

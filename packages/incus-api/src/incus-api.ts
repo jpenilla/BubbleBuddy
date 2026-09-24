@@ -74,7 +74,11 @@ export class StatusCodeError extends Schema.TaggedError<StatusCodeError>()(
     status: Schema.Finite,
     body: Schema.String,
   },
-) {}
+) {
+  override get message(): string {
+    return `Incus ${this.method} ${this.path} failed with HTTP ${this.status}.`;
+  }
+}
 
 export class OperationError extends Schema.TaggedError<OperationError>()(
   "IncusApi.OperationError",

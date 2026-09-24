@@ -1,4 +1,4 @@
-import { Collection, MessageFlags, MessageReferenceType, StickerFormatType } from "discord.js";
+import { Collection, MessageReferenceType, StickerFormatType } from "discord.js";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -103,22 +103,22 @@ describe("prompt formatting", () => {
     });
 
     const formatted = formatMessageForPrompt(message);
-    const embedJson = formatted.match(/\[embed 0\]\n([\s\S]*?)\n\[\/embed 0\]/);
+    const embedJson = formatted.match(/\[embeds\]\n([\s\S]*?)\n\[\/embeds\]/);
     expect(embedJson).not.toBeNull();
     const embed: Record<string, unknown> = JSON.parse(embedJson?.[1] ?? "null");
 
     expect(embed).toMatchObject({
       provider: { name: "provider" },
-      author: { name: "author", icon: true },
+      author: { name: "author", icon: { asset: "a1" } },
       title: "title",
       url: "url",
       description: "description",
       fields: [{ name: "field", value: "value" }],
-      footer: { text: "footer", icon: true },
+      footer: { text: "footer", icon: { asset: "a2" } },
       timestamp: "timestamp",
-      image: { width: 640, height: 480 },
-      thumbnail: { width: 320, height: 240 },
-      video: { width: 1280, height: 720 },
+      image: { asset: "a3", width: 640, height: 480 },
+      thumbnail: { asset: "a4", width: 320, height: 240 },
+      video: { asset: "a5", width: 1280, height: 720 },
     });
     for (const media of ["image", "thumbnail", "video"] as const) {
       expect(embed[media]).not.toHaveProperty("url");
@@ -157,7 +157,7 @@ describe("prompt formatting", () => {
 
     expect(formatted).toContain("[forwarded]");
     expect(formatted).toContain("@snapshot-user mention=<@123>");
-    expect(formatted).toContain("[embed 0]");
+    expect(formatted).toContain("[embeds]");
     expect(formatted).toMatch(/"title"\s*:\s*"forwarded embed"/);
     expect(formatted).not.toContain("reply_to=");
   });
@@ -181,18 +181,18 @@ describe("prompt formatting", () => {
 
     const forwardedStart = formatted.indexOf("[forwarded");
     const forwardedEnd = formatted.indexOf("[/forwarded]");
-    const attachmentBlock = "[attachments: [0] notes.txt 42]";
+    const attachmentBlock = "[attachments: notes.txt 42 asset=a1]";
     const attachmentIndex = formatted.indexOf(attachmentBlock);
 
     expect(attachmentIndex).toBeGreaterThan(forwardedStart);
     expect(attachmentIndex).toBeLessThan(forwardedEnd);
   });
 
-  test("keeps forwarded content alongside the Components V2 placeholder", () => {
+  test("keeps forwarded content alongside Components V2", () => {
     const formatted = formatMessageForPrompt(
       createTestMessage({
         content: "",
-        flags: MessageFlags.IsComponentsV2,
+        components: [{ toJSON: () => ({ type: 10, content: "Component text" }) } as never],
         reference: { type: MessageReferenceType.Forward, messageId: "source-message" },
         messageSnapshots: new Map([
           ["source-message", createTestMessageSnapshot({ content: "Forwarded text" })],
@@ -200,8 +200,8 @@ describe("prompt formatting", () => {
       }),
     );
 
-    expect(formatted).toContain("[Discord Components V2 content display not yet implemented]");
+    expect(formatted).toContain("Component text");
     expect(formatted).toContain("Forwarded text");
-    expect(formatted.indexOf("Components V2")).toBeLessThan(formatted.indexOf("Forwarded text"));
+    expect(formatted.indexOf("Component text")).toBeLessThan(formatted.indexOf("Forwarded text"));
   });
 });

@@ -1,4 +1,5 @@
 - Use pnpm exclusively for package management and scripts; run checks through `pnpm run ...`.
+- `pnpm run lint` includes type-checking via oxlint; do not run `tsc` separately. Run it from a package directory, or use `pnpm run check` at the workspace root for formatting, lint, and tests.
 - The app and Vitest tests run on Node.js.
 - This project uses Effect v4 beta APIs; do not assume older Effect APIs apply.
 - Use `refs` when reference repositories would help; use `update-refs` to maintain them.
