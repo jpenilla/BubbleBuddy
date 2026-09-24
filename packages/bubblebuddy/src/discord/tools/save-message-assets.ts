@@ -1,11 +1,11 @@
-import { type Attachment, type Embed, type Message } from "discord.js";
+import { type Message } from "discord.js";
 import { Effect } from "effect";
 import { GuestPath } from "incus-api";
 import { Type } from "typebox";
 
 import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { DISCORD_ASSETS_SEGMENT } from "../../shared/constants.ts";
-import { sanitizeAttachmentFilename } from "../../shared/workspace.ts";
+import { collectMessageAssets } from "../message-assets.ts";
 import { DiscordToolContext } from "../tool-context.ts";
 import { tryDiscordJsPromise } from "../utils.ts";
 import {
@@ -16,122 +16,54 @@ import {
   runAssetJobs,
 } from "./asset-save.ts";
 
-type EmbedAssetSlot = "author-icon" | "footer-icon" | "image" | "thumbnail" | "video";
-type AssetSource = "message" | "forwarded";
-
-const embedAssetUrl = (embed: Embed, slot: EmbedAssetSlot): string | undefined => {
-  switch (slot) {
-    case "image":
-    case "thumbnail":
-    case "video":
-      return embed[slot]?.proxyURL;
-    case "author-icon":
-      return embed.author?.proxyIconURL;
-    case "footer-icon":
-      return embed.footer?.proxyIconURL;
-  }
-};
-
-const saveMessageAttachment = Effect.fn("saveMessageAttachment")(function* (
-  attachment: Attachment | undefined,
-  destination: string,
-) {
-  if (attachment === undefined)
-    return yield* new AssetSaveError({ message: "Attachment not found." });
-  const directory = yield* prepareAssetDirectory(destination);
-  return yield* downloadAsset(
-    attachment.url,
-    directory,
-    sanitizeAttachmentFilename(attachment.name),
-  );
-});
-
-const saveEmbedAsset = Effect.fn("saveEmbedAsset")(function* (
-  embed: Embed | undefined,
-  destination: string,
-  slot: EmbedAssetSlot,
-) {
-  if (embed === undefined) return yield* new AssetSaveError({ message: "Embed not found." });
-  const url = embedAssetUrl(embed, slot);
-  if (!url) return yield* new AssetSaveError({ message: `Embed has no downloadable ${slot}.` });
-  const directory = yield* prepareAssetDirectory(destination);
-  return yield* downloadAssetByContentType(url, directory, slot);
-});
-
 const saveMessageAssets = Effect.fn("saveMessageAssets")(function* (
   message: Message<true>,
-  selections: {
-    readonly source?: AssetSource;
-    readonly attachments?: readonly number[];
-    readonly embedAuthorIcons?: readonly number[];
-    readonly embedFooterIcons?: readonly number[];
-    readonly embedImages?: readonly number[];
-    readonly embedThumbnails?: readonly number[];
-    readonly embedVideos?: readonly number[];
-  },
+  selections: { readonly assets: readonly string[] },
 ) {
-  const source = selections.source ?? "message";
-  const assets = source === "forwarded" ? message.messageSnapshots.first() : message;
-  if (assets === undefined) {
-    return yield* new AssetSaveError({ message: "Forwarded message snapshot not found." });
-  }
   const guestPath = yield* GuestPath.Service;
-  const directory = guestPath.path.join(
-    DISCORD_ASSETS_SEGMENT,
-    message.id,
-    source === "forwarded" ? "forwarded" : "",
-  );
-  const attachments = [...assets.attachments.values()];
-  const attachmentJobs = (selections.attachments ?? []).map((index) => ({
-    label: `attachment ${index}`,
-    save: saveMessageAttachment(
-      attachments[index],
-      guestPath.path.join(directory, "attachments", String(index)),
-    ),
-  }));
-  const embedJobs = (indices: readonly number[] | undefined, slot: EmbedAssetSlot) =>
-    (indices ?? []).map((index) => ({
-      label: `embed ${index} ${slot}`,
-      save: saveEmbedAsset(
-        assets.embeds[index],
-        guestPath.path.join(directory, "embeds", String(index)),
-        slot,
-      ),
-    }));
-
-  return yield* runAssetJobs([
-    ...attachmentJobs,
-    ...embedJobs(selections.embedImages, "image"),
-    ...embedJobs(selections.embedThumbnails, "thumbnail"),
-    ...embedJobs(selections.embedVideos, "video"),
-    ...embedJobs(selections.embedAuthorIcons, "author-icon"),
-    ...embedJobs(selections.embedFooterIcons, "footer-icon"),
-  ]);
-});
-
-const Indices = Type.Array(Type.Integer({ minimum: 0 }), {
-  minItems: 1,
-  uniqueItems: true,
+  const directory = guestPath.path.join(DISCORD_ASSETS_SEGMENT, message.id);
+  const catalog = new Map(collectMessageAssets(message).catalog.map((asset) => [asset.key, asset]));
+  const jobs = [];
+  for (const key of selections.assets) {
+    const asset = catalog.get(key);
+    if (asset === undefined)
+      return yield* new AssetSaveError({ message: `Unknown asset key: ${key}.` });
+    const destination = guestPath.path.join(
+      directory,
+      ...(asset.forwarded ? ["forwarded"] : []),
+      key,
+    );
+    jobs.push({
+      label: key,
+      save: Effect.gen(function* () {
+        if (asset.url === undefined)
+          return yield* new AssetSaveError({ message: "Asset has no downloadable URL." });
+        const folder = yield* prepareAssetDirectory(destination);
+        return asset.attachment
+          ? yield* downloadAsset(asset.url, folder, asset.filename)
+          : yield* downloadAssetByContentType(asset.url, folder, asset.filename);
+      }),
+    });
+  }
+  // Prepare shared directories before these jobs run concurrently; separate calls can still race on .discord-assets.
+  yield* prepareAssetDirectory(directory);
+  if (selections.assets.some((key) => catalog.get(key)?.forwarded)) {
+    yield* prepareAssetDirectory(directory, "forwarded");
+  }
+  return yield* runAssetJobs(jobs);
 });
 
 export const saveMessageAssetsTool = defineEffectTool({
   name: "discord_save_message_assets",
   label: "Save Message Assets",
-  description: "Save message attachments and embed media into the container workspace.",
+  description:
+    "Save message attachments, embed media, and component media into the container workspace using the asset keys shown in the message. Asset keys and media metadata do not show the media itself; save an asset and open the saved file in the workspace to inspect it.",
   parameters: Type.Object({
     messageId: Type.String({ description: "Message ID" }),
-    source: Type.Optional(
-      Type.Union([Type.Literal("message"), Type.Literal("forwarded")], {
-        description:
-          "Use forwarded for attachments and embeds inside the [forwarded] block; otherwise message (default).",
-      }),
-    ),
-    attachments: Type.Optional(Indices),
-    embedAuthorIcons: Type.Optional(Indices),
-    embedFooterIcons: Type.Optional(Indices),
-    embedImages: Type.Optional(Indices),
-    embedThumbnails: Type.Optional(Indices),
-    embedVideos: Type.Optional(Indices),
+    assets: Type.Array(Type.String({ pattern: "^a[1-9][0-9]*$" }), {
+      minItems: 1,
+      uniqueItems: true,
+    }),
   }),
   execute: (_toolCallId, params) =>
     Effect.gen(function* () {

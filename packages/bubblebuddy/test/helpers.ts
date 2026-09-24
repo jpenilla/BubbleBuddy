@@ -1,13 +1,12 @@
 import {
   Collection,
-  MessageFlagsBitField,
-  type MessageFlagsResolvable,
   type MessageReferenceType,
   type Attachment,
   type Embed,
   type Message,
   type MessageSnapshot,
   type Sticker,
+  type TopLevelComponent,
 } from "discord.js";
 import { Layer, Redacted } from "effect";
 
@@ -46,7 +45,7 @@ type TestMessageOptions = {
   readonly attachments?: ReadonlyMap<string, TestAttachment>;
   readonly embeds?: readonly TestEmbed[];
   readonly stickers?: ReadonlyMap<string, TestSticker>;
-  readonly flags?: MessageFlagsResolvable;
+  readonly components?: readonly TopLevelComponent[];
   readonly messageSnapshots?: ReadonlyMap<string, MessageSnapshot>;
 };
 
@@ -70,14 +69,14 @@ export const createTestMessage = (options: TestMessageOptions = {}): Message<tru
     reference: options.reference ?? null,
     attachments: new Collection([...(options.attachments ?? new Map()).entries()]),
     embeds: options.embeds ?? [],
-    flags: new MessageFlagsBitField(options.flags),
+    components: options.components ?? [],
     stickers: new Collection([...(options.stickers ?? new Map()).entries()]),
     messageSnapshots: new Collection([...(options.messageSnapshots ?? new Map()).entries()]),
   }) as unknown as Message<true>;
 
 type TestMessageBodyOptions = Pick<
   TestMessageOptions,
-  "content" | "mentions" | "attachments" | "embeds" | "stickers" | "flags"
+  "content" | "mentions" | "attachments" | "embeds" | "stickers" | "components"
 >;
 
 export const createTestMessageSnapshot = (
@@ -90,7 +89,7 @@ export const createTestMessageSnapshot = (
     mentions: message.mentions,
     attachments: message.attachments,
     embeds: message.embeds,
-    flags: message.flags,
     stickers: message.stickers,
+    components: message.components,
   } as unknown as MessageSnapshot;
 };
