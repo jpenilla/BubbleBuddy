@@ -9,6 +9,7 @@ import { createCommandDispatcher } from "./command.ts";
 import { compactCommand } from "./compact.ts";
 import { discardSessionCommand } from "./discard-session.ts";
 import { replyModeCommand } from "./reply-mode.ts";
+import { settingsCommand } from "./settings.ts";
 import { statusCommand } from "./status.ts";
 import { thinkingCommand } from "./thinking.ts";
 
@@ -21,6 +22,7 @@ export const SlashCommandsLayer = Layer.effectDiscard(
       compactCommand,
       discardSessionCommand,
       replyModeCommand,
+      settingsCommand,
       statusCommand,
       thinkingCommand,
     ]);

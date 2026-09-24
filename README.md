@@ -134,7 +134,8 @@ These commands apply to the current channel or thread:
 - `/compact` — manually compact the current session.
 - `/new` — discard the current session; the next interaction starts fresh.
 - `/reply-mode` — set reply mode: `mention-only` (default) or `automatic`.
-- `/status` — show current session status.
+- `/settings` — show this channel's settings.
+- `/status` — show session status; use `view: detailed` for more information.
 - `/thinking` — toggle thinking messages.
 
 ## Scheduled wakeups

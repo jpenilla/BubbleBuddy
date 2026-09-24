@@ -22,7 +22,6 @@ import {
 } from "../pi/session.ts";
 import { ChannelSettings } from "./settings.ts";
 import { ChannelStateRepository } from "./state-repository.ts";
-import { type ReplyMode } from "./state.ts";
 
 export interface ActivateChannelSessionInput {
   readonly channel: GuildTextBasedChannel;
@@ -38,12 +37,19 @@ export type AbortResult = "aborted" | "idle";
 export type CompactResult = "done" | "no-session" | "rejected-busy" | "rejected-compacting";
 export type DiscardResult = "discarded" | "rejected-busy";
 
-export interface ChannelStatus {
+export interface SessionStatus {
+  readonly activity: "idle" | "working" | "retrying" | "compacting";
   readonly model: PiSessionModelInfo | undefined;
-  readonly showThinking: boolean;
-  readonly replyMode: ReplyMode;
   readonly stats: SessionStats;
 }
+
+const getSessionStatus = (pi: PiSessionHandle): SessionStatus => {
+  let activity: SessionStatus["activity"] = "idle";
+  if (pi.isCompacting()) activity = "compacting";
+  else if (pi.isRetrying()) activity = "retrying";
+  else if (pi.isStreaming()) activity = "working";
+  return { activity, model: pi.getModelInfo(), stats: pi.getSessionStats() };
+};
 
 export class ChannelSessionError extends Schema.TaggedError<ChannelSessionError>()(
   "ChannelSessionError",
@@ -65,7 +71,7 @@ export interface ChannelSession {
   readonly abortAndDiscard: Effect.Effect<void, ChannelSessionError>;
   readonly status: (
     channel: GuildTextBasedChannel,
-  ) => Effect.Effect<ChannelStatus, ChannelSessionError>;
+  ) => Effect.Effect<SessionStatus, ChannelSessionError>;
 }
 
 interface CreateChannelSessionInput {
@@ -235,15 +241,14 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
     const status = Effect.fn("ChannelSession.status", { attributes })(function* (
       channel: GuildTextBasedChannel,
     ) {
+      const current = yield* ScopedRef.get(piRef);
+      if (current !== undefined) return getSessionStatus(current);
+
+      // Loading or creating a cold session may take time; another operation may start while we wait.
       return yield* lock.withPermit(
         Effect.gen(function* () {
           const pi = yield* getOrCreatePiSession(channel);
-          return {
-            model: pi.getModelInfo(),
-            showThinking: yield* settings.getShowThinking,
-            replyMode: yield* settings.getReplyMode,
-            stats: pi.getSessionStats(),
-          };
+          return getSessionStatus(pi);
         }),
       );
     }, Effect.annotateLogs(attributes));

@@ -1,46 +1,51 @@
 import { EmbedBuilder, InteractionContextType, SlashCommandBuilder } from "discord.js";
 
-import { type ChannelStatus } from "../../session/channel.ts";
+import { type SessionStatus } from "../../session/channel.ts";
 import { ChannelSessions } from "../../session/registry.ts";
 import { EMBED_COLOR, tryDiscordJsPromise } from "../utils.ts";
 import { createCommand, inGuildTextChannel } from "./command.ts";
 
 const formatNumber = (value: number): string => value.toLocaleString();
-
 const formatCost = (value: number): string => `$${value.toFixed(value >= 1 ? 2 : 4)}`;
 
-const createStatusEmbed = (status: ChannelStatus): EmbedBuilder => {
-  const usage = status.stats.contextUsage;
-  const usageText = usage
-    ? usage.tokens === null
-      ? "unknown"
-      : `${formatNumber(usage.tokens)}${usage.percent === null ? "" : ` (${Math.round(usage.percent)}%)`}${usage.contextWindow === undefined ? "" : ` / ${formatNumber(usage.contextWindow)}`}`
-    : "unknown";
+const ACTIVITY_LABELS: Record<SessionStatus["activity"], string> = {
+  idle: "💤 Idle",
+  working: "⏳ Working",
+  retrying: "🔄 Retrying",
+  compacting: "🗜️ Compacting",
+};
 
-  return new EmbedBuilder()
-    .setTitle("Channel status")
+const formatContext = (status: SessionStatus): string => {
+  const usage = status.stats.contextUsage;
+  if (usage?.percent == null || usage.tokens == null) {
+    return `[${"░▒".repeat(5)}] ?${usage === undefined ? "" : ` / ${formatNumber(usage.contextWindow)}`}`;
+  }
+  const filled = Math.round(Math.max(0, Math.min(100, usage.percent)) / 10);
+  return `[${"█".repeat(filled)}${"░".repeat(10 - filled)}] ${Math.round(usage.percent)}% · ${formatNumber(usage.tokens)} / ${formatNumber(usage.contextWindow)}`;
+};
+
+const createStatusEmbed = (status: SessionStatus, detailed: boolean): EmbedBuilder => {
+  const model =
+    status.model === undefined
+      ? "unknown"
+      : [
+          status.model.name,
+          status.model.thinkingLevel,
+          ...(detailed ? [status.model.provider] : []),
+        ].join(" · ");
+
+  const embed = new EmbedBuilder()
     .setColor(EMBED_COLOR.neutral)
+    .setTitle("📜 Channel Status")
     .addFields(
-      {
-        name: "Settings",
-        value: [
-          `Thinking messages: ${status.showThinking ? "visible" : "hidden"}`,
-          `Reply mode: ${status.replyMode}`,
-        ].join("\n"),
-        inline: false,
-      },
-      {
-        name: "Model",
-        value:
-          status.model === undefined
-            ? "unknown"
-            : [
-                `Provider: ${status.model.provider}`,
-                `Model: ${status.model.name}`,
-                `Thinking level: ${status.model.thinkingLevel}`,
-              ].join("\n"),
-        inline: false,
-      },
+      { name: "Activity", value: ACTIVITY_LABELS[status.activity] },
+      { name: "Model", value: model },
+      { name: "Context", value: formatContext(status) },
+      { name: "Session Cost", value: `~${formatCost(status.stats.cost)}` },
+    );
+
+  if (detailed) {
+    embed.addFields(
       {
         name: "Messages",
         value: [
@@ -61,28 +66,31 @@ const createStatusEmbed = (status: ChannelStatus): EmbedBuilder => {
         ].join("\n"),
         inline: true,
       },
-      {
-        name: "Context & cost",
-        value: [`Context: ${usageText}`, `Estimated cost: ${formatCost(status.stats.cost)}`].join(
-          "\n",
-        ),
-        inline: false,
-      },
     );
+  }
+  return embed;
 };
 
 export const statusCommand = createCommand({
   data: new SlashCommandBuilder()
     .setName("status")
-    .setDescription("Show this channel's pi session token, cost, and runtime stats.")
-    .setContexts(InteractionContextType.Guild),
+    .setDescription("Show this channel's session status.")
+    .setContexts(InteractionContextType.Guild)
+    .addStringOption((option) =>
+      option
+        .setName("view")
+        .setDescription("Level of detail")
+        .addChoices({ name: "Summary", value: "summary" }, { name: "Detailed", value: "detailed" }),
+    ),
   execute: inGuildTextChannel(function* (interaction) {
     yield* tryDiscordJsPromise(() => interaction.deferReply());
     const sessions = yield* ChannelSessions.Service;
     const session = yield* sessions.get(interaction.channelId);
     const status = yield* session.status(interaction.channel);
     yield* tryDiscordJsPromise(() =>
-      interaction.editReply({ embeds: [createStatusEmbed(status)] }),
+      interaction.editReply({
+        embeds: [createStatusEmbed(status, interaction.options.getString("view") === "detailed")],
+      }),
     );
   }),
 });
