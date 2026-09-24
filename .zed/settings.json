@@ -1,7 +1,10 @@
 {
   "file_scan_exclusions": [
     "...",
-    "**/.refs"
+    "**/.refs",
+    "**/node_modules/.pnpm/node_modules/bubblebuddy",
+    "**/node_modules/.pnpm/node_modules/incus-api",
+    "**/packages/bubblebuddy/node_modules/incus-api"
   ],
   "languages": {
     "TypeScript": {
