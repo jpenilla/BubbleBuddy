@@ -1,5 +1,5 @@
 import { ContainerBuilder, TextDisplayBuilder, time, TimestampStyles } from "discord.js";
-import { Effect, Option, Schema } from "effect";
+import { Duration, Effect, Option, Schema } from "effect";
 
 import { Schedules } from "../scheduling/schedules.ts";
 import { inlineCode } from "../shared/markdown.ts";
@@ -18,7 +18,8 @@ const CRON_EXPRESSION_LIMIT = 240;
 const recurrenceEmoji = (recurrence: Schedules.Recurrence): string =>
   Schedules.Recurrence.match(recurrence, {
     once: () => "🎯",
-    cron: () => "🔁",
+    cron: () => "📅",
+    interval: () => "🔁",
   });
 
 const formatTimingBody = (schedule: Schedules.Wakeup): string =>
@@ -26,6 +27,8 @@ const formatTimingBody = (schedule: Schedules.Wakeup): string =>
     once: () => `Once at ${formatTimestamp(schedule.nextRunAt)}`,
     cron: ({ expression, timezone, expiresAt }) =>
       `Cron ${inlineCode(truncate(expression, CRON_EXPRESSION_LIMIT))} (${inlineCode(timezone)}); next ${formatTimestamp(schedule.nextRunAt)}; ${expiresAt === null ? "no end date" : `ends ${formatTimestamp(expiresAt)}`}`,
+    interval: ({ everyMs, anchorAt, expiresAt }) =>
+      `Every ${Duration.format(Duration.millis(everyMs))} from ${formatTimestamp(anchorAt)}; next ${formatTimestamp(schedule.nextRunAt)}; ${expiresAt === null ? "no end date" : `ends ${formatTimestamp(expiresAt)}`}`,
   });
 
 const formatTiming = (schedule: Schedules.Wakeup): string =>

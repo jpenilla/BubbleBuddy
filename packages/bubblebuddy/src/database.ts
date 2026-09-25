@@ -64,6 +64,40 @@ const replyMode = Effect.gen(function* () {
   yield* sql`ALTER TABLE channel_settings ADD COLUMN reply_mode TEXT`;
 });
 
+const scheduleIntervals = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`CREATE TABLE scheduled_wakeups_intervals (
+    id TEXT PRIMARY KEY NOT NULL,
+    channel_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    expires_at INTEGER,
+    note TEXT NOT NULL,
+    next_run_at INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    cron TEXT,
+    timezone TEXT,
+    interval_every_ms INTEGER,
+    interval_anchor_at INTEGER,
+    CHECK (
+      (kind = 'once' AND cron IS NULL AND timezone IS NULL
+        AND interval_every_ms IS NULL AND interval_anchor_at IS NULL AND expires_at IS NULL)
+      OR (kind = 'cron' AND cron IS NOT NULL AND timezone IS NOT NULL
+        AND interval_every_ms IS NULL AND interval_anchor_at IS NULL)
+      OR (kind = 'interval' AND cron IS NULL AND timezone IS NULL
+        AND interval_every_ms IS NOT NULL AND interval_every_ms > 0
+        AND interval_anchor_at IS NOT NULL)
+    )
+  )`;
+  yield* sql`INSERT INTO scheduled_wakeups_intervals
+    (id, channel_id, description, expires_at, note, next_run_at, kind, cron, timezone)
+    SELECT id, channel_id, description, expires_at, note, next_run_at,
+      CASE WHEN cron IS NULL THEN 'once' ELSE 'cron' END, cron, timezone
+    FROM scheduled_wakeups`;
+  yield* sql`DROP TABLE scheduled_wakeups`;
+  yield* sql`ALTER TABLE scheduled_wakeups_intervals RENAME TO scheduled_wakeups`;
+  yield* sql`CREATE INDEX scheduled_wakeups_due ON scheduled_wakeups (next_run_at)`;
+});
+
 const migrationsLayer = Layer.effectDiscard(
   SqliteMigrator.run({
     loader: SqliteMigrator.fromRecord({
@@ -71,6 +105,7 @@ const migrationsLayer = Layer.effectDiscard(
       "2_scheduled_wakeups": scheduledWakeups,
       "3_schedule_metadata": scheduleMetadata,
       "4_reply_mode": replyMode,
+      "5_schedule_intervals": scheduleIntervals,
     }),
   }).pipe(Effect.withSpan("AppDatabase.migrate")),
 );

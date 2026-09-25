@@ -24,6 +24,7 @@ const DISCORD_GUIDELINES = [
   "Transcript users have mention=<@id>; copy it exactly to ping them. @name is plain text only.",
   "Ordinary assistant text is streamed into new messages and automatically split across as many messages as needed; it does not need to fit in a single Discord message.",
   "For tools that support terminate, set terminate=true when the action completes your response; use false when continuing. Early termination only applies when every tool call in the same batch succeeds and returns terminate=true. Terminating calls may be batched across different tools.",
+  "Treat times and timezones as context-dependent: don’t mistake a timestamp’s timezone for a person’s, and clarify local-time assumptions when they matter.",
 ];
 
 const normalizeSection = (value: string): string | undefined => {

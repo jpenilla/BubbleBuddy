@@ -7,6 +7,7 @@ import {
   Duration,
   Effect,
   Layer,
+  Match,
   Option,
   Queue,
   Schedule,
@@ -32,7 +33,14 @@ export const CronTiming = Schema.Struct({
   expiresAt: Schema.optionalKey(Schema.String),
 });
 
-export const Timing = Schema.Union([AfterTiming, AtTiming, CronTiming]).pipe(
+export const IntervalTiming = Schema.Struct({
+  kind: Schema.tag("interval"),
+  everySeconds: Schema.Finite,
+  anchorAt: Schema.optionalKey(Schema.String),
+  expiresAt: Schema.optionalKey(Schema.String),
+});
+
+export const Timing = Schema.Union([AfterTiming, AtTiming, CronTiming, IntervalTiming]).pipe(
   Schema.toTaggedUnion("kind"),
 );
 export type Timing = typeof Timing.Type;
@@ -46,7 +54,16 @@ export const CronRecurrence = Schema.Struct({
   expiresAt: Schema.NullOr(Schema.Finite),
 });
 
-export const Recurrence = Schema.Union([Once, CronRecurrence]).pipe(Schema.toTaggedUnion("kind"));
+export const IntervalRecurrence = Schema.Struct({
+  kind: Schema.tag("interval"),
+  anchorAt: Schema.Finite,
+  everyMs: Schema.Finite,
+  expiresAt: Schema.NullOr(Schema.Finite),
+});
+
+export const Recurrence = Schema.Union([Once, CronRecurrence, IntervalRecurrence]).pipe(
+  Schema.toTaggedUnion("kind"),
+);
 export type Recurrence = typeof Recurrence.Type;
 
 export const CreateInput = Schema.Struct({
@@ -87,6 +104,8 @@ export const describe = (wakeup: Wakeup): string =>
       once: () => "once",
       cron: ({ expression, timezone, expiresAt }) =>
         `cron ${expression} (${timezone})${expiresAt === null ? "" : `, ends ${DateTime.formatIso(DateTime.makeUnsafe(expiresAt))}`}`,
+      interval: ({ everyMs, anchorAt, expiresAt }) =>
+        `every ${Duration.format(Duration.millis(everyMs))} from ${DateTime.formatIso(DateTime.makeUnsafe(anchorAt))}${expiresAt === null ? "" : `, ends ${DateTime.formatIso(DateTime.makeUnsafe(expiresAt))}`}`,
     })}`,
     `Scheduled for: ${DateTime.formatIso(DateTime.makeUnsafe(wakeup.nextRunAt))}`,
     "",
@@ -101,8 +120,11 @@ const Row = Schema.Struct({
   expires_at: Schema.NullOr(Schema.Finite),
   note: Schema.String,
   next_run_at: Schema.Finite,
+  kind: Schema.Literals(["once", "cron", "interval"]),
   cron: Schema.NullOr(Schema.String),
   timezone: Schema.NullOr(Schema.String),
+  interval_every_ms: Schema.NullOr(Schema.Finite),
+  interval_anchor_at: Schema.NullOr(Schema.Finite),
 });
 
 export class ValidationError extends Schema.TaggedError<ValidationError>()(
@@ -165,6 +187,29 @@ const nextCron = Effect.fn("Schedules.nextCron")(function* (
   });
 });
 
+const nextInterval = (anchorAt: number, everyMs: number, after: number) => {
+  if (anchorAt > after) {
+    return anchorAt;
+  }
+
+  const elapsedIntervals = Math.floor((after - anchorAt) / everyMs);
+  return anchorAt + (elapsedIntervals + 1) * everyMs;
+};
+
+const nextOccurrence = (recurrence: Recurrence, after: number) =>
+  Recurrence.match(recurrence, {
+    once: () => Effect.succeed(null),
+    cron: ({ expression, timezone, expiresAt }) =>
+      nextCron(expression, timezone, after).pipe(
+        Effect.map((next) => (expiresAt !== null && next >= expiresAt ? null : next)),
+      ),
+    interval: ({ anchorAt, everyMs, expiresAt }) =>
+      Effect.sync(() => {
+        const next = nextInterval(anchorAt, everyMs, after);
+        return Number.isSafeInteger(next) && (expiresAt === null || next < expiresAt) ? next : null;
+      }),
+  });
+
 const resolveTiming = Effect.fn("Schedules.resolveTiming")(function* (timing: Timing, now: number) {
   const resolved = yield* Timing.match(timing, {
     after: ({ seconds }) =>
@@ -191,6 +236,29 @@ const resolveTiming = Effect.fn("Schedules.resolveTiming")(function* (timing: Ti
           }),
         };
       }),
+    interval: ({ everySeconds, anchorAt, expiresAt }) =>
+      Effect.gen(function* () {
+        const everyMs = everySeconds * 1000;
+        if (!Number.isSafeInteger(everyMs) || everyMs < 60_000) {
+          return yield* invalid(
+            "Interval must be at least 60 seconds and convert to a safe whole number of milliseconds.",
+          );
+        }
+        const anchor = anchorAt === undefined ? now : yield* parseTimestamp(anchorAt);
+        const expires = expiresAt === undefined ? null : yield* parseTimestamp(expiresAt);
+        const firstOccurrence = nextInterval(anchor, everyMs, now);
+        if (expires !== null && expires <= firstOccurrence) {
+          return yield* invalid("Expiration must be after the next occurrence.");
+        }
+        const recurrence = IntervalRecurrence.make({
+          anchorAt: anchor,
+          everyMs,
+          expiresAt: expires,
+        });
+        const nextRunAt = yield* nextOccurrence(recurrence, now);
+        if (nextRunAt === null) return yield* invalid("Interval has no future occurrence.");
+        return { nextRunAt, recurrence };
+      }),
   });
   if (Option.isNone(DateTime.make(resolved.nextRunAt)) || resolved.nextRunAt <= now) {
     return yield* invalid("Schedule must resolve to a valid future time.");
@@ -198,40 +266,86 @@ const resolveTiming = Effect.fn("Schedules.resolveTiming")(function* (timing: Ti
   return resolved;
 });
 
-const decodeRows = Effect.fn("Schedules.decodeRows")(function* (rows: unknown) {
-  const decoded = yield* Schema.decodeUnknownEffect(Schema.Array(Row))(rows);
-  return decoded.map((row) =>
-    Wakeup.make({
-      id: row.id,
-      channelId: row.channel_id,
-      description: row.description,
-      note: row.note,
-      nextRunAt: row.next_run_at,
-      recurrence:
-        row.cron !== null && row.timezone !== null
-          ? CronRecurrence.make({
+const recurrenceFromRow = (row: typeof Row.Type) =>
+  Match.value(row.kind).pipe(
+    Match.when("once", () => Effect.succeed(Once.make({}))),
+    Match.when("cron", () =>
+      row.cron === null || row.timezone === null
+        ? Effect.die(new Error("Cron schedule is missing its expression or timezone."))
+        : Effect.succeed(
+            CronRecurrence.make({
               expression: row.cron,
               timezone: row.timezone,
               expiresAt: row.expires_at,
-            })
-          : Once.make({}),
-    }),
+            }),
+          ),
+    ),
+    Match.when("interval", () =>
+      row.interval_every_ms === null || row.interval_anchor_at === null
+        ? Effect.die(new Error("Interval schedule is missing its duration or anchor."))
+        : Effect.succeed(
+            IntervalRecurrence.make({
+              everyMs: row.interval_every_ms,
+              anchorAt: row.interval_anchor_at,
+              expiresAt: row.expires_at,
+            }),
+          ),
+    ),
+    Match.exhaustive,
+  );
+
+const decodeRows = Effect.fn("Schedules.decodeRows")(function* (rows: unknown) {
+  const decoded = yield* Schema.decodeUnknownEffect(Schema.Array(Row))(rows);
+  return yield* Effect.forEach(decoded, (row) =>
+    recurrenceFromRow(row).pipe(
+      Effect.map((recurrence) =>
+        Wakeup.make({
+          id: row.id,
+          channelId: row.channel_id,
+          description: row.description,
+          note: row.note,
+          nextRunAt: row.next_run_at,
+          recurrence,
+        }),
+      ),
+    ),
   );
 });
 
 interface RecurrenceColumns {
+  readonly kind: Recurrence["kind"];
   readonly cron: string | null;
   readonly timezone: string | null;
   readonly expiresAt: number | null;
+  readonly intervalEveryMs: number | null;
+  readonly intervalAnchorAt: number | null;
 }
 
 const recurrenceColumns = (recurrence: Recurrence): RecurrenceColumns =>
   Recurrence.match(recurrence, {
-    once: (): RecurrenceColumns => ({ cron: null, timezone: null, expiresAt: null }),
+    once: (): RecurrenceColumns => ({
+      kind: "once",
+      cron: null,
+      timezone: null,
+      expiresAt: null,
+      intervalEveryMs: null,
+      intervalAnchorAt: null,
+    }),
     cron: ({ expression, timezone, expiresAt }): RecurrenceColumns => ({
+      kind: "cron",
       cron: expression,
       timezone,
       expiresAt,
+      intervalEveryMs: null,
+      intervalAnchorAt: null,
+    }),
+    interval: ({ anchorAt, everyMs, expiresAt }): RecurrenceColumns => ({
+      kind: "interval",
+      cron: null,
+      timezone: null,
+      expiresAt,
+      intervalEveryMs: everyMs,
+      intervalAnchorAt: anchorAt,
     }),
   });
 
@@ -264,12 +378,13 @@ const createSchedules = Effect.gen(function* () {
 
     yield* sql`
       INSERT INTO scheduled_wakeups (
-        id, channel_id, description, expires_at, note, next_run_at, cron, timezone
+        id, channel_id, description, expires_at, note, next_run_at, kind, cron, timezone,
+        interval_every_ms, interval_anchor_at
       )
       VALUES (
         ${wakeup.id}, ${channelId}, ${description}, ${storedRecurrence.expiresAt}, ${note}, ${nextRunAt},
-        ${storedRecurrence.cron},
-        ${storedRecurrence.timezone}
+        ${storedRecurrence.kind}, ${storedRecurrence.cron}, ${storedRecurrence.timezone},
+        ${storedRecurrence.intervalEveryMs}, ${storedRecurrence.intervalAnchorAt}
       )
     `.pipe(
       Effect.mapError((cause) => storeError("create", cause)),
@@ -366,8 +481,11 @@ const createSchedules = Effect.gen(function* () {
                 note = ${updated.note},
                 expires_at = ${storedRecurrence.expiresAt},
                 next_run_at = ${updated.nextRunAt},
+                kind = ${storedRecurrence.kind},
                 cron = ${storedRecurrence.cron},
-                timezone = ${storedRecurrence.timezone}
+                timezone = ${storedRecurrence.timezone},
+                interval_every_ms = ${storedRecurrence.intervalEveryMs},
+                interval_anchor_at = ${storedRecurrence.intervalAnchorAt}
             WHERE channel_id = ${channelId} AND id = ${id}
           `;
 
@@ -386,7 +504,7 @@ const createSchedules = Effect.gen(function* () {
 
   const takeDue = Effect.fn("Schedules.takeDue", { root: true })(function* (now: number) {
     // Consume before dispatch: best-effort wakeups, not durable job execution.
-    // Advancing from now coalesces missed cron ticks into one wakeup.
+    // Advancing from now coalesces missed repeating occurrences into one wakeup.
     return yield* sql
       .withTransaction(
         Effect.gen(function* () {
@@ -399,17 +517,8 @@ const createSchedules = Effect.gen(function* () {
           `.pipe(Effect.flatMap(decodeRows));
 
           for (const wakeup of due) {
-            if (Recurrence.guards.once(wakeup.recurrence)) {
-              yield* sql`DELETE FROM scheduled_wakeups WHERE id = ${wakeup.id}`;
-              continue;
-            }
-
-            const nextRunAt = yield* nextCron(
-              wakeup.recurrence.expression,
-              wakeup.recurrence.timezone,
-              now,
-            );
-            if (wakeup.recurrence.expiresAt !== null && nextRunAt >= wakeup.recurrence.expiresAt) {
+            const nextRunAt = yield* nextOccurrence(wakeup.recurrence, now);
+            if (nextRunAt === null) {
               yield* sql`DELETE FROM scheduled_wakeups WHERE id = ${wakeup.id}`;
             } else {
               yield* sql`UPDATE scheduled_wakeups SET next_run_at = ${nextRunAt} WHERE id = ${wakeup.id}`;
