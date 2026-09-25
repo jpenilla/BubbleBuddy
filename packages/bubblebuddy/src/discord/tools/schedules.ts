@@ -52,8 +52,8 @@ const timing = Type.Union([
   Type.Object({
     kind: Type.Literal("interval"),
     everySeconds: Type.Number({
-      exclusiveMinimum: 0,
-      description: "Fixed elapsed duration in seconds; fractions allowed to millisecond precision.",
+      minimum: 60,
+      description: "Seconds between wakeups; fractions supported to millisecond precision.",
     }),
     anchorAt: Type.Optional(
       Type.String({

@@ -63,6 +63,34 @@ it.layer(NodeServices.layer)("schedules", (it) => {
     }),
   );
 
+  it.effect("limits interval frequency without rounding away fractional seconds", () =>
+    Effect.gen(function* () {
+      const directory = yield* temporaryDirectory;
+      yield* TestClock.setTime(Date.parse("2026-01-15T10:00:00Z"));
+      yield* withSchedules(
+        directory,
+        Effect.gen(function* () {
+          const schedules = yield* Schedules.Service;
+          const tooFrequent = yield* schedules
+            .create("123", {
+              description: "Check progress",
+              note: "Check progress.",
+              timing: Schedules.IntervalTiming.make({ everySeconds: 59.999 }),
+            })
+            .pipe(Effect.flip);
+          expect(tooFrequent).toBeInstanceOf(Schedules.ValidationError);
+
+          const schedule = yield* schedules.create("123", {
+            description: "Check progress",
+            note: "Check progress.",
+            timing: Schedules.IntervalTiming.make({ everySeconds: 60.25 }),
+          });
+          expect(schedule.nextRunAt).toBe(Date.parse("2026-01-15T10:01:00.250Z"));
+        }),
+      );
+    }),
+  );
+
   it.effect("reopens an alarm after its deadline and consumes it only once", () =>
     Effect.gen(function* () {
       const directory = yield* temporaryDirectory;

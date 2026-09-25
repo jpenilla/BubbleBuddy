@@ -239,9 +239,9 @@ const resolveTiming = Effect.fn("Schedules.resolveTiming")(function* (timing: Ti
     interval: ({ everySeconds, anchorAt, expiresAt }) =>
       Effect.gen(function* () {
         const everyMs = everySeconds * 1000;
-        if (!Number.isSafeInteger(everyMs) || everyMs <= 0) {
+        if (!Number.isSafeInteger(everyMs) || everyMs < 60_000) {
           return yield* invalid(
-            "Interval seconds must convert to a positive, safe whole number of milliseconds.",
+            "Interval must be at least 60 seconds and convert to a safe whole number of milliseconds.",
           );
         }
         const anchor = anchorAt === undefined ? now : yield* parseTimestamp(anchorAt);
