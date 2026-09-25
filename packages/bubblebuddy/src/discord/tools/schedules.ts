@@ -49,13 +49,26 @@ const timing = Type.Union([
     timezone: Type.String({ description: "Timezone, e.g. America/New_York or UTC" }),
     expiresAt: Type.Optional(expiresAt),
   }),
+  Type.Object({
+    kind: Type.Literal("interval"),
+    everySeconds: Type.Number({
+      exclusiveMinimum: 0,
+      description: "Fixed elapsed duration in seconds; fractions allowed to millisecond precision.",
+    }),
+    anchorAt: Type.Optional(
+      Type.String({
+        description: "ISO timestamp with UTC offset. Omit to anchor at creation/update time.",
+      }),
+    ),
+    expiresAt: Type.Optional(expiresAt),
+  }),
 ]);
 
 export const create = defineEffectTool({
   name: "create_schedule",
   label: "Create schedule",
   description:
-    "Schedule a wakeup in this channel. Survives new sessions and restarts. Displays a confirmation card in this channel. For recurring schedules, ask for the user's time zone when it isn't clear. Each cron occurrence triggers a separate wakeup automatically; do not use sleep or time-checking loops to wait for subsequent occurrences.",
+    "Schedule a wakeup in this channel. Survives new sessions and restarts. Displays a confirmation card in this channel. Each recurrence triggers a separate wakeup automatically; do not use sleep or time-checking loops to wait for subsequent occurrences.",
   parameters: Type.Object({
     description,
     note,
@@ -79,7 +92,7 @@ export const update = defineEffectTool({
   name: "update_schedule",
   label: "Update schedule",
   description:
-    "Update a schedule in this channel. Omitted fields stay unchanged. Supplied timing replaces the full timing configuration and recalculates from now. Displays a confirmation card in this channel. For recurring schedules, ask for the user's time zone when it isn't clear.",
+    "Update a schedule in this channel. Omitted fields stay unchanged. Supplied timing replaces the full timing configuration and recalculates from now. Displays a confirmation card in this channel.",
   parameters: Type.Object({
     id: Type.String(),
     timing: Type.Optional(timing),

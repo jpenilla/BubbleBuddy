@@ -190,6 +190,73 @@ it.layer(NodeServices.layer)("schedules", (it) => {
     }),
   );
 
+  it.effect("coalesces missed anchored interval ticks after reopening", () =>
+    Effect.gen(function* () {
+      const directory = yield* temporaryDirectory;
+      yield* TestClock.setTime(Date.parse("2026-01-15T10:00:00Z"));
+      const schedule = yield* withSchedules(
+        directory,
+        Effect.gen(function* () {
+          const schedules = yield* Schedules.Service;
+          return yield* schedules.create("123", {
+            description: "Check progress",
+            note: "Check progress.",
+            timing: Schedules.IntervalTiming.make({
+              everySeconds: 90,
+              anchorAt: "2026-01-15T10:00:30Z",
+            }),
+          });
+        }),
+      );
+
+      yield* TestClock.setTime(Date.parse("2026-01-15T10:05:10Z"));
+      yield* withSchedules(
+        directory,
+        Effect.gen(function* () {
+          const schedules = yield* Schedules.Service;
+          expect(yield* schedules.due.pipe(Stream.take(1), Stream.runCollect)).toEqual([schedule]);
+          expect(yield* schedules.list("123")).toMatchObject([
+            { id: schedule.id, nextRunAt: Date.parse("2026-01-15T10:06:30Z") },
+          ]);
+        }),
+      );
+    }),
+  );
+
+  it.effect("fires the last interval occurrence before expiration and then removes it", () =>
+    Effect.gen(function* () {
+      const directory = yield* temporaryDirectory;
+      yield* TestClock.setTime(Date.parse("2026-01-15T10:00:00Z"));
+      yield* withSchedules(
+        directory,
+        Effect.gen(function* () {
+          const schedules = yield* Schedules.Service;
+          const schedule = yield* schedules.create("123", {
+            description: "Check progress",
+            note: "Check progress.",
+            timing: Schedules.IntervalTiming.make({
+              everySeconds: 60,
+              anchorAt: "2026-01-15T10:03:00Z",
+              expiresAt: "2026-01-15T10:04:30Z",
+            }),
+          });
+
+          yield* TestClock.setTime(Date.parse("2026-01-15T10:03:00Z"));
+          expect(yield* schedules.due.pipe(Stream.take(1), Stream.runCollect)).toEqual([schedule]);
+          expect(yield* schedules.list("123")).toMatchObject([
+            { id: schedule.id, nextRunAt: Date.parse("2026-01-15T10:04:00Z") },
+          ]);
+
+          yield* TestClock.setTime(Date.parse("2026-01-15T10:04:00Z"));
+          expect(yield* schedules.due.pipe(Stream.take(1), Stream.runCollect)).toMatchObject([
+            { id: schedule.id, nextRunAt: Date.parse("2026-01-15T10:04:00Z") },
+          ]);
+          expect(yield* schedules.list("123")).toEqual([]);
+        }),
+      );
+    }),
+  );
+
   it.effect("wakes an idle feed but fires an alarm only at its deadline", () =>
     Effect.gen(function* () {
       const directory = yield* temporaryDirectory;

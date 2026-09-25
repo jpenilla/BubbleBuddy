@@ -16,7 +16,7 @@ BubbleBuddy is a fun Discord companion that lives in your servers. It gives Disc
 - Mention-based and ping-reply interaction support, with an optional automatic reply mode.
 - [Slash commands](#slash-command-reference) for managing sessions.
 - [MCP server support](#mcp-server-definitions).
-- Alarms and cron schedules with saved instructions.
+- Alarms, anchored repeating intervals, and cron schedules with saved instructions.
 - Sandboxed agentic workspace. When enabled, the assistant can use tools to interact with an Incus container, giving it access to project files and coding capabilities without exposing host credentials or environment variables.
 
 ## Setup
@@ -145,6 +145,7 @@ Ask BubbleBuddy to remind you about something or carry out a task later, once or
 - “Remind me to check the oven in 20 minutes.”
 - “Post a weekday morning briefing at 9 AM, New York time.”
 - “Remind us every Friday to submit timesheets, until the end of August.”
+- “Check every 27 minutes and 34 seconds.”
 
 Schedules stay in the channel or thread where you create them and survive restarts and `/new`. You can ask what’s scheduled, change the timing or instructions, or cancel a schedule.
 
