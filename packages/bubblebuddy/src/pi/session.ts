@@ -29,6 +29,7 @@ import { FileConfig, type McpServerConfigEntry } from "../config/file.ts";
 import { type DiscordOutputPump } from "../discord/output-pump.ts";
 import { DiscordToolContext } from "../discord/tool-context.ts";
 import { makeDiscordTools } from "../discord/tools.ts";
+import { tryDiscordJsPromise } from "../discord/utils.ts";
 import { McpClientFactory } from "../mcp/client-factory.ts";
 import { McpPiTools } from "../mcp/pi-tools.ts";
 import { LoadedResources } from "../resources.ts";
@@ -189,6 +190,12 @@ export const createPiSession = (
 
       return Context.get(context, SessionContainer.Service);
     });
+    let botMember = input.channel.guild.members.me;
+    if (botMember === null) {
+      botMember = yield* tryDiscordJsPromise(() => input.channel.guild.members.fetchMe()).pipe(
+        Effect.orElseSucceed(() => null),
+      );
+    }
     const extensionFactories: ExtensionFactory[] = [
       McpPiTools.createMcpToolResultExtension(),
       createPromptComposerExtension({
@@ -196,7 +203,8 @@ export const createPiSession = (
         discordContextTemplate: resources.discordContextTemplate,
         enableAgenticWorkspace: config.enableAgenticWorkspace,
         promptContext: {
-          botName: input.channel.client.user.username,
+          botUsername: input.channel.client.user.username,
+          botDisplayName: botMember?.displayName ?? input.channel.client.user.displayName,
           channelName: input.channel.name,
           channelStatusText:
             "topic" in input.channel ? input.channel.topic?.trim() || "none" : "none",

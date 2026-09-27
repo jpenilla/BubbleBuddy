@@ -8,31 +8,37 @@ import {
 import { createTestMessage, createTestMessageSnapshot } from "./helpers.ts";
 
 describe("prompt formatting", () => {
-  test("normalizes Discord user mention ids to copyable mention references", () => {
+  test("formats first and repeated user pings", () => {
     const normalized = normalizeIncomingUserMentions(
-      "hey <@123> and <@!456>",
+      "hey <@123> and <@!456> and <@456>",
       new Map([
-        ["123", "alice"],
-        ["456", "bob"],
+        ["123", { id: "123", username: "alice", displayName: "Alice (she/her)" }],
+        ["456", { id: "456", username: "bob", displayName: "Bob" }],
       ]),
+      new Set(["123"]),
     );
 
-    expect(normalized).toBe("hey @alice mention=<@123> and @bob mention=<@456>");
+    expect(normalized).toBe(
+      'hey [ping user_name=alice] and [ping user_name=bob user_display="Bob" user_id=456] and [ping user_name=bob]',
+    );
   });
 
-  test("formats incoming Discord messages with compact copyable mention references", () => {
+  test("formats sender identity and a mentioned user", () => {
     const formatted = formatMessageForPrompt(
       createTestMessage({
         id: "555",
         username: "jmp",
+        memberDisplayName: "☃️",
         authorId: "999",
         content: "<@123> what's my username?",
         mentions: new Map([["123", "bubblebuddy"]]),
+        mentionGlobalDisplayNames: new Map([["123", "Global Bubbles"]]),
+        mentionDisplayNames: new Map([["123", "Bubbles"]]),
       }),
     );
 
     expect(formatted).toBe(
-      "[msg 555 user=jmp mention=<@999>]\n@bubblebuddy mention=<@123> what's my username?",
+      '[msg 555 user_name=jmp user_display="☃️" user_id=999]\n[ping user_name=bubblebuddy user_display="Bubbles" user_id=123] what\'s my username?',
     );
   });
 
@@ -47,7 +53,9 @@ describe("prompt formatting", () => {
       }),
     );
 
-    expect(formatted).toBe("[msg 111 user=alice mention=<@222> reply_to=789]\nHello there");
+    expect(formatted).toBe(
+      '[msg 111 user_name=alice user_display="alice" user_id=222 reply_to=789]\nHello there',
+    );
   });
 
   test("includes reply reference for empty content", () => {
@@ -61,7 +69,9 @@ describe("prompt formatting", () => {
       }),
     );
 
-    expect(formatted).toBe("[msg 111 user=alice mention=<@222> reply_to=789]");
+    expect(formatted).toBe(
+      '[msg 111 user_name=alice user_display="alice" user_id=222 reply_to=789]',
+    );
   });
 
   test("formats embed and sticker metadata as meaningful prompt content", () => {
@@ -156,7 +166,9 @@ describe("prompt formatting", () => {
     );
 
     expect(formatted).toContain("[forwarded]");
-    expect(formatted).toContain("@snapshot-user mention=<@123>");
+    expect(formatted).toContain(
+      '[ping user_name=snapshot-user user_display="snapshot-user" user_id=123]',
+    );
     expect(formatted).toContain("[embeds]");
     expect(formatted).toMatch(/"title"\s*:\s*"forwarded embed"/);
     expect(formatted).not.toContain("reply_to=");

@@ -32,10 +32,13 @@ type TestSticker = Pick<Sticker, "id" | "name" | "format" | "description" | "tag
 type TestMessageOptions = {
   readonly id?: string;
   readonly username?: string;
+  readonly memberDisplayName?: string;
   readonly authorId?: string;
   readonly content?: string;
   readonly channelId?: string;
   readonly mentions?: ReadonlyMap<string, string>;
+  readonly mentionGlobalDisplayNames?: ReadonlyMap<string, string>;
+  readonly mentionDisplayNames?: ReadonlyMap<string, string>;
   readonly reference?: {
     readonly messageId: string;
     readonly channelId?: string;
@@ -54,15 +57,24 @@ export const createTestMessage = (options: TestMessageOptions = {}): Message<tru
     id: options.id ?? "456",
     author: {
       username: options.username ?? "alice",
+      displayName: options.username ?? "alice",
       id: options.authorId ?? "789",
     },
+    member:
+      options.memberDisplayName === undefined ? null : { displayName: options.memberDisplayName },
     content: options.content ?? "Hello world",
     channelId: options.channelId ?? "channel-1",
     mentions: {
       users: new Collection(
         [...(options.mentions ?? new Map()).entries()].map(([id, username]) => [
           id,
-          { id, username },
+          { id, username, displayName: options.mentionGlobalDisplayNames?.get(id) ?? username },
+        ]),
+      ),
+      members: new Collection(
+        [...(options.mentionDisplayNames ?? new Map()).entries()].map(([id, displayName]) => [
+          id,
+          { displayName },
         ]),
       ),
     },

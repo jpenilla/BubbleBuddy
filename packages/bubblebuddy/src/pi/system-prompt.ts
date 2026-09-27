@@ -5,7 +5,8 @@ import {
 import { DateTime } from "effect";
 
 export interface PromptTemplateContext {
-  readonly botName: string;
+  readonly botUsername: string;
+  readonly botDisplayName: string;
   readonly channelName: string;
   readonly channelStatusText: string;
   readonly guildName: string;
@@ -18,10 +19,11 @@ export interface ComposeSystemPromptInput {
   readonly systemPromptOptions: BuildSystemPromptOptions;
 }
 
-const PLACEHOLDER_PATTERN = /\{\{\s*(botName|channelName|channelStatusText|guildName)\s*\}\}/g;
+const PLACEHOLDER_PATTERN =
+  /\{\{\s*(botUsername|botDisplayName|channelName|channelStatusText|guildName)\s*\}\}/g;
 
 const DISCORD_GUIDELINES = [
-  "Transcript users have mention=<@id>; copy it exactly to ping them. @name is plain text only.",
+  "Transcript [ping ...] entries represent pings, whether full or short. To ping someone in your reply, use <@id> with their user_id from a full ping or message sender; plain names do not ping.",
   "Ordinary assistant text is streamed into new messages and automatically split across as many messages as needed; it does not need to fit in a single Discord message.",
   "For tools that support terminate, set terminate=true when the action completes your response; use false when continuing. Early termination only applies when every tool call in the same batch succeeds and returns terminate=true. Terminating calls may be batched across different tools.",
   "Treat times and timezones as context-dependent: don’t mistake a timestamp’s timezone for a person’s, and clarify local-time assumptions when they matter.",
