@@ -50,6 +50,9 @@ const handleGuildMessage = (client: Client<true>, message: Message<true>) =>
         }
       }
 
+      // Embed enrichment can arrive after MessageCreate. Waiting here, before entering the
+      // channel session, keeps other messages responsive but may activate them out of order.
+      resolvedMessage = yield* awaitLikelyEmbed(resolvedMessage);
       const sessions = yield* ChannelSessions.Service;
       const session = yield* sessions.get(message.channel.id);
       yield* session.activate({
@@ -98,6 +101,36 @@ const awaitLoadingResponse = Effect.fn("DiscordActivation.awaitLoadingResponse")
       // Interaction tokens remain valid for 15 minutes: https://docs.discord.com/developers/interactions/receiving-and-responding#interaction-tokens
       return yield* Deferred.await(updated).pipe(
         Effect.timeoutOption("15 minutes"),
+        Effect.map(Option.getOrElse(() => message)),
+      );
+    }),
+  );
+});
+const BARE_URL = /^https?:\/\/\S+$/i;
+
+const awaitLikelyEmbed = Effect.fn("DiscordActivation.awaitLikelyEmbed")(function* (
+  message: Message<true>,
+) {
+  if (
+    message.embeds.length > 0 ||
+    message.attachments.size > 0 ||
+    message.flags.has(MessageFlags.SuppressEmbeds) ||
+    !BARE_URL.test(message.content.trim())
+  ) {
+    return message;
+  }
+
+  const events = yield* DiscordEvents.Service;
+  const updated = yield* Deferred.make<Message<true>>();
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      yield* events.on(Events.MessageUpdate, (_before, after) => {
+        if (after.id === message.id && after.embeds.length > 0 && after.inGuild()) {
+          Deferred.doneUnsafe(updated, Effect.succeed(after));
+        }
+      });
+      return yield* Deferred.await(updated).pipe(
+        Effect.timeoutOption("2 seconds"),
         Effect.map(Option.getOrElse(() => message)),
       );
     }),
