@@ -21,7 +21,7 @@ catalog:
   "@effect/vitest": 4.0.0-rc.118
   typescript: ^7.0.2
   "@types/node": ^26.6.2
-  oxfmt: ^0.70.0
+  oxfmt: ^0.71.0
   oxlint: 1.85.0
   vitest: ^5.0.1
   "@modelcontextprotocol/client": ^2.0.0
