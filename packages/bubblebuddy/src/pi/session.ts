@@ -21,7 +21,7 @@ import {
   Scope,
   Semaphore,
 } from "effect";
-import { type HttpClient } from "effect/unstable/http";
+import { type HttpClient } from "effect/http";
 import { GuestPath, IncusClient } from "incus-api";
 
 import { AppHome } from "../config/env.ts";

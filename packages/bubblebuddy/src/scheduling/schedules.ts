@@ -14,7 +14,7 @@ import {
   Schema,
   Stream,
 } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 
 export const AfterTiming = Schema.Struct({
   kind: Schema.tag("after"),

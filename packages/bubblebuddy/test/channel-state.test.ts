@@ -1,7 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 
 import { AppHome } from "../src/config/env.ts";
 import { AppDatabase } from "../src/database.ts";

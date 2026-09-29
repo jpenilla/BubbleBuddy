@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, RcMap, type Scope } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import { AppHome } from "../config/env.ts";
 import { FileConfig } from "../config/file.ts";

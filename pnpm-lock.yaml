@@ -16,17 +16,17 @@ catalogs:
       specifier: ^0.87.1
       version: 0.87.1
     '@effect/platform-node':
-      specifier: 4.0.0-rc.117
-      version: 4.0.0-rc.117
+      specifier: 4.0.0-rc.118
+      version: 4.0.0-rc.118
     '@effect/sql-sqlite-node':
-      specifier: 4.0.0-rc.117
-      version: 4.0.0-rc.117
+      specifier: 4.0.0-rc.118
+      version: 4.0.0-rc.118
     '@effect/tsgo':
       specifier: 0.46.1
       version: 0.46.1
     '@effect/vitest':
-      specifier: 4.0.0-rc.117
-      version: 4.0.0-rc.117
+      specifier: 4.0.0-rc.118
+      version: 4.0.0-rc.118
     '@modelcontextprotocol/client':
       specifier: ^2.0.0
       version: 2.1.0
@@ -37,8 +37,8 @@ catalogs:
       specifier: ^14.27.0
       version: 14.27.0
     effect:
-      specifier: 4.0.0-rc.117
-      version: 4.0.0-rc.117
+      specifier: 4.0.0-rc.118
+      version: 4.0.0-rc.118
     oxfmt:
       specifier: ^0.70.0
       version: 0.70.0
@@ -88,10 +88,10 @@ importers:
         version: 0.87.1(patch_hash=01873b6b928ec865714436fedab9438351fffedb2802bd03186c22667cf1e9de)(ws@8.22.0)(zod@4.6.5)
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(redis@6.2.1)
+        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1)
       '@effect/sql-sqlite-node':
         specifier: 'catalog:'
-        version: 4.0.0-rc.117(effect@4.0.0-rc.117)
+        version: 4.0.0-rc.118(effect@4.0.0-rc.118)
       '@modelcontextprotocol/client':
         specifier: 'catalog:'
         version: 2.1.0
@@ -100,7 +100,7 @@ importers:
         version: 14.27.0
       effect:
         specifier: 'catalog:'
-        version: 4.0.0-rc.117
+        version: 4.0.0-rc.118
       incus-api:
         specifier: workspace:*
         version: link:../incus-api
@@ -113,7 +113,7 @@ importers:
         version: 0.46.1
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
@@ -134,17 +134,17 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(redis@6.2.1)
+        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1)
       effect:
         specifier: 'catalog:'
-        version: 4.0.0-rc.117
+        version: 4.0.0-rc.118
     devDependencies:
       '@effect/tsgo':
         specifier: 'catalog:'
         version: 0.46.1
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
@@ -310,23 +310,23 @@ packages:
     resolution: {integrity: sha512-YEH2vRyOeiO7hhN6j6AE6YwKSq2Kz2f3XR8bj1TbR+aGE/JsnY1hLPMI2pvaZfRM1n9Y00tejxFQ4zbzvF7nkQ==}
     engines: {node: '>=22.19.0'}
 
-  '@effect/platform-node-shared@4.0.0-rc.117':
-    resolution: {integrity: sha512-GyRkEfLBG49MwJe+/XDPiXYcQ44RA9p2z0AurlsWhR1cd1PqOUMEZU1pORL+/R5hR8aH6ZuqoJYD8lAc6h+wlA==}
+  '@effect/platform-node-shared@4.0.0-rc.118':
+    resolution: {integrity: sha512-pNbmIlxbAUxAthUNsp2xm1NLG9kxoYecsPkoYl9mNF2oxPcKDxAvkOar7tYnLSUpXJeATm4pxYVipdZjQfqO4Q==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.117
+      effect: ^4.0.0-rc.118
 
-  '@effect/platform-node@4.0.0-rc.117':
-    resolution: {integrity: sha512-WbPcvQDkqXFnCeG6LohJ9eVNapCDhZbCpezhYKxm0IsZEk7swakRh7RkC1t2CXzd3hGmszTv2k9e/pXyZuL+wQ==}
+  '@effect/platform-node@4.0.0-rc.118':
+    resolution: {integrity: sha512-qdAxPZ+5bKxVnzkwziqcHZTHRHz2hyfFX6NhwEmm75CBpmaIzXIZR2LRqGd1/8eI3J3cOrXcAYzByhln7T1/EA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.117
+      effect: ^4.0.0-rc.118
       redis: '>=5.0.0 <7.0.0'
 
-  '@effect/sql-sqlite-node@4.0.0-rc.117':
-    resolution: {integrity: sha512-/u0ShTwVKltYZPpulckLV6ZUkMjSr/Kc+bpipX1Ac/OyLtZH6ScOL2AeBTLDiIq5ATnvXABzFSheydzoudBxgQ==}
+  '@effect/sql-sqlite-node@4.0.0-rc.118':
+    resolution: {integrity: sha512-O+TswiXTeP1/9I7GaCalMWWGXrbalzZkFdkXoO/x/3uDdfnYSi3/lkcOvmfFJnmaQPvOR4wG2CkZSdf9n88A4w==}
     peerDependencies:
-      effect: ^4.0.0-rc.117
+      effect: ^4.0.0-rc.118
 
   '@effect/tsgo-darwin-arm64@0.46.1':
     resolution: {integrity: sha512-ErehNqI9p8me4XKO8N4bzdDWgBbSNlJ3CIZGfXoAW6Fo4Oo7x4ZbZV7KNsMSn9aJSiUUOQUoXjGBdslU5OYMdw==}
@@ -367,10 +367,10 @@ packages:
     resolution: {integrity: sha512-DMcBCg5nWLufejRlyqFEkXmbtaLUJ56NKny6L1LTtimvz0U3VNj9H6ZUXV4WeeWvJzVyL0y7G2wsCBAFUgy1jw==}
     hasBin: true
 
-  '@effect/vitest@4.0.0-rc.117':
-    resolution: {integrity: sha512-jJg9M7T3OhTcvoD9Zi28S5+0H+axlSHAYjXM8TYeLJy/FVlPe0B/Vc3ZfaqUF0rwkfQ6ziyCdjiBS46+182H1Q==}
+  '@effect/vitest@4.0.0-rc.118':
+    resolution: {integrity: sha512-O0CPgtFVhkB+pyFtjP4up2XF4uVWsPgUmlv4hMjq8ARLOPKYix+uu3AUFIUKRHjzzQpx+JPce6KPhD6Flkrfag==}
     peerDependencies:
-      effect: ^4.0.0-rc.117
+      effect: ^4.0.0-rc.118
       vitest: '>=5.0.0 <6.0.0'
 
   '@esbuild/aix-ppc64@0.28.2':
@@ -1272,8 +1272,8 @@ packages:
   ecdsa-sig-formatter@1.0.11:
     resolution: {integrity: sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==}
 
-  effect@4.0.0-rc.117:
-    resolution: {integrity: sha512-UUyi9QiOW4nySFIBM3KnYbNMd9EZliOdKfBcyLD0mPMPheO2fkuXS5y0opjWc9oqzlJxPQICEGm8gGw3kh9j/w==}
+  effect@4.0.0-rc.118:
+    resolution: {integrity: sha512-hxhpCd+swzrtu9lnyPpEFre2ODQzJ9qxgyL1oHIEY8NKnW4PxTbM1XzplMZXiAsLD62HO+KJc41Nqxr9T791ZQ==}
 
   es-module-lexer@2.3.2:
     resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
@@ -2142,28 +2142,28 @@ snapshots:
       get-east-asian-width: 1.6.0
       marked: 18.0.11
 
-  '@effect/platform-node-shared@4.0.0-rc.117(effect@4.0.0-rc.117)':
+  '@effect/platform-node-shared@4.0.0-rc.118(effect@4.0.0-rc.118)':
     dependencies:
       '@types/ws': 8.18.1
-      effect: 4.0.0-rc.117
+      effect: 4.0.0-rc.118
       ws: 8.22.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.0-rc.117(effect@4.0.0-rc.117)(redis@6.2.1)':
+  '@effect/platform-node@4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1)':
     dependencies:
-      '@effect/platform-node-shared': 4.0.0-rc.117(effect@4.0.0-rc.117)
-      effect: 4.0.0-rc.117
+      '@effect/platform-node-shared': 4.0.0-rc.118(effect@4.0.0-rc.118)
+      effect: 4.0.0-rc.118
       redis: 6.2.1
       undici: 8.11.2
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/sql-sqlite-node@4.0.0-rc.117(effect@4.0.0-rc.117)':
+  '@effect/sql-sqlite-node@4.0.0-rc.118(effect@4.0.0-rc.118)':
     dependencies:
-      effect: 4.0.0-rc.117
+      effect: 4.0.0-rc.118
 
   '@effect/tsgo-darwin-arm64@0.46.1':
     optional: true
@@ -2196,9 +2196,9 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.46.1
       '@effect/tsgo-win32-x64': 0.46.1
 
-  '@effect/vitest@4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))':
+  '@effect/vitest@4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))':
     dependencies:
-      effect: 4.0.0-rc.117
+      effect: 4.0.0-rc.118
       vitest: 5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
 
   '@esbuild/aix-ppc64@0.28.2':
@@ -2739,7 +2739,7 @@ snapshots:
     dependencies:
       safe-buffer: 5.2.1
 
-  effect@4.0.0-rc.117: {}
+  effect@4.0.0-rc.118: {}
 
   es-module-lexer@2.3.2: {}
 

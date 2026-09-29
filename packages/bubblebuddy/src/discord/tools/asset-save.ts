@@ -1,5 +1,5 @@
 import { Crypto, Effect, Option, Schema } from "effect";
-import { HttpClient, HttpClientResponse, Mime } from "effect/unstable/http";
+import { HttpClient, HttpClientResponse, Mime } from "effect/http";
 import { GuestPath } from "incus-api";
 
 import { SessionContainer } from "../../session/session-container.ts";

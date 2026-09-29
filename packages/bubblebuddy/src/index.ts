@@ -1,8 +1,8 @@
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Config, Effect, Layer, References } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
-import { Otlp, OtlpSerialization } from "effect/unstable/observability";
+import { FetchHttpClient } from "effect/http";
+import { Otlp, OtlpSerialization } from "effect/observability";
 import { GuestPath } from "incus-api";
 
 import { EnvConfig } from "./config/env.ts";

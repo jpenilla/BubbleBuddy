@@ -4,7 +4,7 @@ import {
   type HttpClientError,
   type HttpClientRequest,
   type HttpClientResponse,
-} from "effect/unstable/http";
+} from "effect/http";
 
 import { IncusApi } from "../src/incus-api.ts";
 import { IncusTransport } from "../src/incus-transport.ts";

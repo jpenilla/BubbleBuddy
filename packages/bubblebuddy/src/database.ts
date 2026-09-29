@@ -1,6 +1,6 @@
 import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
 import { Effect, FileSystem, Layer, Path } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 
 import { AppHome } from "./config/env.ts";
 

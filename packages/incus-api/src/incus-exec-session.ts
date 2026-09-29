@@ -1,5 +1,5 @@
 import { type Duration, Effect, Fiber, Schema } from "effect";
-import * as Socket from "effect/unstable/socket/Socket";
+import * as Socket from "effect/socket/Socket";
 
 import { IncusApi } from "./incus-api.ts";
 import { IncusContainer } from "./incus-container.ts";

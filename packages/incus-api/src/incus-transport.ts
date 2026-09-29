@@ -8,9 +8,9 @@ import * as net from "node:net";
 import { NodeHttpClient, NodeSocket } from "@effect/platform-node";
 import { Context, type Duration, Effect, Layer } from "effect";
 import { identity } from "effect/Function";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
-import * as Socket from "effect/unstable/socket/Socket";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import * as Socket from "effect/socket/Socket";
 
 export type Endpoint =
   | { readonly type: "unix"; readonly socketPath?: string }

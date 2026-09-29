@@ -19,8 +19,8 @@ import {
   HttpClientRequest,
   HttpClientResponse,
   type HttpMethod,
-} from "effect/unstable/http";
-import type * as Socket from "effect/unstable/socket/Socket";
+} from "effect/http";
+import type * as Socket from "effect/socket/Socket";
 
 import { type GuestPath } from "./guest-path.ts";
 import { IncusTransport } from "./incus-transport.ts";

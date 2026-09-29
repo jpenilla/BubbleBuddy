@@ -1,9 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
 import { assertInstanceOf } from "@effect/vitest/utils";
 import { Deferred, Effect, Fiber, Schema } from "effect";
+import type * as HttpClientRequest from "effect/http/HttpClientRequest";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { TestClock } from "effect/testing";
-import type * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
-import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 
 import { IncusApi } from "../src/incus-api.ts";
 import { type HttpHandler, layerWith } from "./http-fixtures.ts";
