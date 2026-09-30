@@ -1,9 +1,15 @@
+import { type ConstrainedSamplingConfig } from "@earendil-works/pi-ai";
 import {
   defineTool,
   type AgentToolResult,
   type AgentToolUpdateCallback,
-  type ExtensionContext,
+  type ExtensionToolContext,
+  type ToolAnnotations,
   type ToolExecutionMode,
+  type ToolExposure,
+  type ToolLoadout,
+  type ToolLoadoutChanges,
+  type ToolNamespace,
 } from "@earendil-works/pi-coding-agent";
 import { Cause, Effect, Exit, Schema } from "effect";
 import { type Static, type TSchema } from "typebox";
@@ -13,24 +19,32 @@ export class AgentToolError extends Schema.TaggedError<AgentToolError>()("AgentT
   cause: Schema.optional(Schema.Defect()),
 }) {}
 
-export interface EffectTool<TParams extends TSchema, Details, E, R> {
-  readonly name: string;
-  readonly label: string;
-  readonly description: string;
-  readonly promptSnippet?: string;
-  readonly promptGuidelines?: readonly string[];
-  readonly parameters: TParams;
-  readonly executionMode?: ToolExecutionMode;
+export interface EffectToolDefinition<TParams extends TSchema, Details, E, R> {
+  name: string;
+  label: string;
+  description: string;
+  promptSnippet?: string;
+  promptGuidelines?: string[];
+  parameters: TParams;
+  constrainedSampling?: false | ConstrainedSamplingConfig;
+  prepareArguments?: (args: unknown) => Static<TParams>;
+  outputSchema?: TSchema;
+  exposure?: ToolExposure;
+  namespace?: ToolNamespace;
+  annotations?: ToolAnnotations;
+  defaultActive?: boolean;
+  prepareLoadout?: (loadout: ToolLoadout) => ToolLoadoutChanges | undefined;
+  executionMode?: ToolExecutionMode;
   execute(
     toolCallId: string,
     params: Static<TParams>,
     onUpdate: AgentToolUpdateCallback<Details> | undefined,
-    ctx: ExtensionContext,
+    ctx: ExtensionToolContext,
   ): Effect.Effect<AgentToolResult<Details>, E, R>;
 }
 
 export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
-  tool: EffectTool<TParams, Details, E, R>,
+  tool: EffectToolDefinition<TParams, Details, E, R>,
 ) =>
   Effect.gen(function* () {
     const context = yield* Effect.context<R>();
@@ -39,9 +53,16 @@ export const defineEffectTool = <TParams extends TSchema, Details, E, R>(
       label: tool.label,
       description: tool.description,
       promptSnippet: tool.promptSnippet,
-      promptGuidelines:
-        tool.promptGuidelines === undefined ? undefined : [...tool.promptGuidelines],
+      promptGuidelines: tool.promptGuidelines,
       parameters: tool.parameters,
+      constrainedSampling: tool.constrainedSampling,
+      prepareArguments: tool.prepareArguments,
+      outputSchema: tool.outputSchema,
+      exposure: tool.exposure,
+      namespace: tool.namespace,
+      annotations: tool.annotations,
+      defaultActive: tool.defaultActive,
+      prepareLoadout: tool.prepareLoadout,
       executionMode: tool.executionMode,
       // @effect-diagnostics-next-line asyncFunction:off -- Pi requires a promise-returning tool callback.
       execute: async (toolCallId, input, signal, onUpdate, ctx) => {

@@ -1,4 +1,4 @@
-import { type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { type GuildTextBasedChannel } from "discord.js";
 import { Effect } from "effect";
 import { describe, expect, test } from "vitest";
@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 import { DiscordToolContext } from "../src/discord/tool-context.ts";
 import { reactTool } from "../src/discord/tools/react.ts";
 
-const extensionContext = {} as ExtensionContext;
+const extensionContext = {} as ExtensionToolContext;
 
 const createChannel = (
   fetch: (id: string) => Promise<{ readonly react: (emoji: string) => Promise<void> }>,

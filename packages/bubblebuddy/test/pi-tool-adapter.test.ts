@@ -1,4 +1,4 @@
-import { type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { Effect } from "effect";
 import { Type } from "typebox";
 import { describe, expect, test } from "vitest";
@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 import { DiscordJsError } from "../src/discord/utils.ts";
 import { AgentToolError, defineEffectTool } from "../src/pi/effect-tool.ts";
 
-const mockCtx = {} as ExtensionContext;
+const mockCtx = {} as ExtensionToolContext;
 
 describe("Effect tool adapter", () => {
   test("forwards typed params and preserves structured results", async () => {
