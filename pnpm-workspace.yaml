@@ -17,12 +17,12 @@ catalog:
   effect: 4.0.0-rc.118
   "@effect/platform-node": 4.0.0-rc.118
   "@effect/sql-sqlite-node": 4.0.0-rc.118
-  "@effect/tsgo": 0.46.1
+  "@effect/tsgo": 0.47.1
   "@effect/vitest": 4.0.0-rc.118
   typescript: ^7.0.2
   "@types/node": ^26.6.2
-  oxfmt: ^0.70.0
-  oxlint: 1.85.0
+  oxfmt: ^0.71.0
+  oxlint: 1.86.0
   vitest: ^5.0.1
   "@modelcontextprotocol/client": ^2.0.0
   discord.js: ^14.27.0

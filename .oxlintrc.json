@@ -4,6 +4,7 @@
   "plugins": ["import", "typescript"],
   "options": { "typeCheck": true },
   "rules": {
+    "effecttsgo/unstable-api-usage": "off",
     "typescript/consistent-type-imports": [
       "error",
       { "prefer": "type-imports", "fixStyle": "inline-type-imports" }
