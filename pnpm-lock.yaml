@@ -25,8 +25,8 @@ catalogs:
       specifier: 0.47.1
       version: 0.47.1
     '@effect/vitest':
-      specifier: 4.0.0-rc.118
-      version: 4.0.0-rc.118
+      specifier: 4.0.0
+      version: 4.0.0
     '@modelcontextprotocol/client':
       specifier: ^2.2.0
       version: 2.2.0
@@ -113,7 +113,7 @@ importers:
         version: 0.47.1
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0(effect@4.0.0-rc.118)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
@@ -144,7 +144,7 @@ importers:
         version: 0.47.1
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0(effect@4.0.0-rc.118)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
@@ -375,10 +375,10 @@ packages:
     resolution: {integrity: sha512-LnagHbbdJqjoKxXOf01ofB4j7ywEOjOiQjA1WfpeMaV2/aWcjzJKCna6GY76Zphieem+evygRovVMig8Hzp12g==}
     hasBin: true
 
-  '@effect/vitest@4.0.0-rc.118':
-    resolution: {integrity: sha512-O0CPgtFVhkB+pyFtjP4up2XF4uVWsPgUmlv4hMjq8ARLOPKYix+uu3AUFIUKRHjzzQpx+JPce6KPhD6Flkrfag==}
+  '@effect/vitest@4.0.0':
+    resolution: {integrity: sha512-kGElCPFGtP+CgMCwV/HjJWqtE3zYo6I1+8MSA54l+EI24lPU9p2Efa+TBp1jfkg9j711KKzEqgSAy3VzTsb76Q==}
     peerDependencies:
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
       vitest: '>=5.0.0 <6.0.0'
 
   '@esbuild/aix-ppc64@0.28.2':
@@ -2289,7 +2289,7 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.47.1
       '@effect/tsgo-win32-x64': 0.47.1
 
-  '@effect/vitest@4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))':
+  '@effect/vitest@4.0.0(effect@4.0.0-rc.118)(vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))':
     dependencies:
       effect: 4.0.0-rc.118
       vitest: 5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
