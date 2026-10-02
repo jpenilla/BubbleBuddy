@@ -16,7 +16,7 @@ catalog:
   typebox: 1.3.27
   effect: 4.0.0-rc.118
   "@effect/platform-node": 4.0.0-rc.118
-  "@effect/sql-sqlite-node": 4.0.0-rc.118
+  "@effect/sql-sqlite-node": 4.0.0
   "@effect/tsgo": 0.47.1
   "@effect/vitest": 4.0.0-rc.118
   typescript: ^7.0.2
