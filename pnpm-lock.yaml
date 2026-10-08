@@ -19,8 +19,8 @@ catalogs:
       specifier: 4.0.0
       version: 4.0.0
     '@effect/sql-sqlite-node':
-      specifier: 4.0.0
-      version: 4.0.0
+      specifier: 4.0.2
+      version: 4.0.2
     '@effect/tsgo':
       specifier: 0.48.0
       version: 0.48.0
@@ -91,7 +91,7 @@ importers:
         version: 4.0.0(effect@4.0.0)(redis@6.2.1)
       '@effect/sql-sqlite-node':
         specifier: 'catalog:'
-        version: 4.0.0(effect@4.0.0)
+        version: 4.0.2(effect@4.0.0)
       '@modelcontextprotocol/client':
         specifier: 'catalog:'
         version: 2.2.0
@@ -331,10 +331,10 @@ packages:
       effect: ^4.0.0
       redis: '>=5.0.0 <7.0.0'
 
-  '@effect/sql-sqlite-node@4.0.0':
-    resolution: {integrity: sha512-xyUSLY7v55iMgGxrjFrTo5ngixgQ3jLmOQ+AX8CCazO/caxuMM0oq8zb974FAcvQHRrpMEWU7Vnoo+rxct7PAQ==}
+  '@effect/sql-sqlite-node@4.0.2':
+    resolution: {integrity: sha512-QjhQ6yetczGE08ZV/05Y4Cj7GNGswloRZuk2cZ4tl84C91398Ho0PhDLexihO2RHBTE1YjpUW8Mdl4KH41I/LQ==}
     peerDependencies:
-      effect: ^4.0.0
+      effect: ^4.0.2
 
   '@effect/tsgo-darwin-arm64@0.48.0':
     resolution: {integrity: sha512-MGfjTc/ZLlX045/7br+adgpyo6z/4MJIzMgnISYVWvUgIOzGbGbwdlkINHn4x0ADKZh3f8M2jBzGPv0BPp9m/A==}
@@ -2244,7 +2244,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/sql-sqlite-node@4.0.0(effect@4.0.0)':
+  '@effect/sql-sqlite-node@4.0.2(effect@4.0.0)':
     dependencies:
       effect: 4.0.0
 
