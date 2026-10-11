@@ -1,7 +1,7 @@
 {
   "name": "bubblebuddy-workspace",
   "private": true,
-  "packageManager": "pnpm@11.28.3",
+  "packageManager": "pnpm@12.11.2",
   "engines": {
     "node": ">=26.5.0"
   },
