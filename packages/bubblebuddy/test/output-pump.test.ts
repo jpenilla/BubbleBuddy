@@ -1,46 +1,79 @@
 import { fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-ai";
+import {
+  ROOT_CONVERSATION_ID,
+  type EntryRecord,
+  type SubmissionId,
+} from "@earendil-works/pi-durable";
 import { describe, expect, it } from "@effect/vitest";
 import { type GuildTextBasedChannel } from "discord.js";
 import { Deferred, Effect, Exit, Fiber } from "effect";
 
-import { createDiscordOutputPump, type DiscordOutputPump } from "../src/discord/output-pump.ts";
+import { OutputPump } from "../src/discord/output-pump.ts";
+import { SessionOutput } from "../src/discord/session-output.ts";
+import { type SessionEvent } from "../src/pi/session-events.ts";
 
-type SessionEvent = Parameters<DiscordOutputPump["handleSessionEvent"]>[0];
-
-const embedDescription = (payload: unknown): string => {
-  const embed = (payload as { embeds?: readonly unknown[] }).embeds?.[0];
-  if (
-    typeof embed !== "object" ||
-    embed === null ||
-    !("toJSON" in embed) ||
-    typeof embed.toJSON !== "function"
-  ) {
-    return "";
-  }
-  return (embed.toJSON() as { description?: string }).description ?? "";
-};
+const embedDescription = (request: unknown): string =>
+  (request as { body: { embeds?: ReadonlyArray<{ description?: string }> } }).body.embeds?.[0]
+    ?.description ?? "";
 
 const assistantMessage = (
   stopReason: AssistantMessage["stopReason"],
   errorMessage?: string,
 ): AssistantMessage => fauxAssistantMessage("", { stopReason, errorMessage });
 
-const createOutput = (onDiscordOutput: (description: string) => void) => {
-  const channel = {
-    send: async (payload: unknown) => {
-      onDiscordOutput(embedDescription(payload));
-      return {
-        edit: async (editPayload: unknown) => {
-          onDiscordOutput(embedDescription(editPayload));
-        },
-      };
+const messageEnd = (message: AssistantMessage): SessionEvent => ({
+  type: "message_end",
+  // The pump reads only the message; durable mints entry IDs itself.
+  entry: {
+    id: 1 as EntryRecord["id"],
+    conversationId: ROOT_CONVERSATION_ID,
+    kind: "pi.assistant",
+    model: [message],
+  },
+});
+
+const unansweredRunEnd = (reason: string, detail?: string): SessionEvent => {
+  const input = 1 as SubmissionId;
+  return {
+    type: "run_end",
+    inputs: [input],
+    settled: {
+      id: input,
+      conversationId: ROOT_CONVERSATION_ID,
+      type: "input",
+      status: "unanswered",
+      reason,
+      detail,
     },
   };
-  return createDiscordOutputPump({
-    channel: channel as unknown as GuildTextBasedChannel,
+};
+
+const createOutput = Effect.fnUntraced(function* (onDiscordOutput: (description: string) => void) {
+  let posted = 0;
+  const channel = {
+    id: "channel",
+    client: {
+      options: {},
+      rest: {
+        post: async (_route: string, request: unknown) => {
+          onDiscordOutput(embedDescription(request));
+          posted += 1;
+          return { id: String(posted) };
+        },
+        patch: async (_route: string, request: unknown) => {
+          onDiscordOutput(embedDescription(request));
+        },
+      },
+    },
+  } as unknown as GuildTextBasedChannel;
+  const pump = yield* OutputPump.create(channel);
+  const handleSessionEvent = yield* SessionOutput.create({
+    channel,
+    pump,
     showThinking: Effect.succeed(false),
   });
-};
+  return { pump, handleSessionEvent };
+});
 
 describe("session output pump", () => {
   it.effect("interrupts a running tool Discord action", () =>
@@ -49,7 +82,7 @@ describe("session output pump", () => {
         Effect.gen(function* () {
           const output = yield* createOutput(() => undefined);
           const started = yield* Deferred.make<void>();
-          const fiber = yield* output
+          const fiber = yield* output.pump
             .executeOrdered(
               Effect.gen(function* () {
                 yield* Deferred.succeed(started, undefined);
@@ -70,52 +103,33 @@ describe("session output pump", () => {
 
   it.effect.each([
     {
-      name: "dispatches model request error output for message_end with error stopReason",
+      name: "dispatches model request error output for a run that ends with a model error",
       events: [
-        {
-          type: "message_end",
-          message: assistantMessage("error", "API timeout"),
-        } satisfies SessionEvent,
+        messageEnd(assistantMessage("error", "API timeout")),
+        unansweredRunEnd("model_error", "API timeout"),
       ],
       expected: ["❌ **Model request failed**\nAPI timeout"],
     },
     {
-      name: "dispatches run aborted output for message_end with aborted stopReason",
-      events: [
-        {
-          type: "message_end",
-          message: assistantMessage("aborted"),
-        } satisfies SessionEvent,
-      ],
+      name: "dispatches run aborted output for an aborted run",
+      events: [messageEnd(assistantMessage("aborted")), unansweredRunEnd("aborted")],
       expected: ["🛑 **Run aborted**"],
     },
     {
       name: "edits one retry status card across attempts",
       events: [
-        {
-          type: "auto_retry_start",
-          attempt: 1,
-          maxAttempts: 3,
-          delayMs: 1000,
-          errorMessage: "Rate limited",
-        },
-        {
-          type: "auto_retry_start",
-          attempt: 2,
-          maxAttempts: 3,
-          delayMs: 2000,
-          errorMessage: "Rate limited",
-        },
-        {
-          type: "auto_retry_end",
-          success: true,
-          attempt: 2,
-        },
+        { type: "auto_retry_start", attempt: 1, at: 0, errorMessage: "Rate limited" },
+        messageEnd(assistantMessage("error", "Rate limited")),
+        { type: "auto_retry_end", attempt: 1 },
+        { type: "auto_retry_start", attempt: 2, at: 0, errorMessage: "Overloaded" },
+        messageEnd(assistantMessage("error", "Overloaded")),
+        { type: "auto_retry_end", attempt: 2 },
+        messageEnd(assistantMessage("stop")),
       ] satisfies ReadonlyArray<SessionEvent>,
       expected: [
-        "🔄 **Retrying** (1/3)...",
-        "🔄 **Retrying** (2/3)...",
-        "✅ **Retry succeeded after 2 attempts**",
+        "🔄 **Retrying** (1/3)...\n- Rate limited",
+        "🔄 **Retrying** (2/3)...\n- Rate limited\n- Overloaded",
+        "✅ **Retry succeeded after 2 attempts**\n- Rate limited\n- Overloaded",
       ],
     },
   ])("$name", ({ events, expected }) =>
@@ -126,7 +140,7 @@ describe("session output pump", () => {
           const output = yield* createOutput((description) => outputObserved.push(description));
 
           for (const event of events) {
-            output.handleSessionEvent(event);
+            yield* output.handleSessionEvent(event);
           }
 
           return outputObserved;

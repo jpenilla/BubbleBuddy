@@ -1,12 +1,11 @@
-import { type ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { type GuildTextBasedChannel } from "discord.js";
 import { Effect } from "effect";
 import { describe, expect, test } from "vitest";
 
 import { DiscordToolContext } from "../src/discord/tool-context.ts";
 import { reactTool } from "../src/discord/tools/react.ts";
-
-const extensionContext = {} as ExtensionToolContext;
+import { executeWithoutPosting, toolCall } from "./helpers.ts";
 
 const createChannel = (
   fetch: (id: string) => Promise<{ readonly react: (emoji: string) => Promise<void> }>,
@@ -37,7 +36,7 @@ const createTool = (channel: GuildTextBasedChannel) =>
       DiscordToolContext,
       DiscordToolContext.of({
         channel,
-        executeOrdered: (operation) => operation,
+        executeOrdered: executeWithoutPosting,
       }),
     ),
     Effect.runPromise,
@@ -55,11 +54,9 @@ describe("react tool", () => {
     );
 
     const result = await tool.execute(
-      "tool-call",
       { messageId: "message", emojis: ["👍", "🎉"], terminate: false },
-      undefined,
-      undefined,
-      extensionContext,
+      toolCall,
+      BACKGROUND_CONTEXT,
     );
 
     expect(result.content).toEqual([{ type: "text", text: "Reactions added." }]);
@@ -79,15 +76,13 @@ describe("react tool", () => {
 
     await expect(
       tool.execute(
-        "tool-call",
         {
           messageId: "message",
           emojis: ["👍", "<:wave:12345678901234567>", "🎉"],
           terminate: false,
         },
-        undefined,
-        undefined,
-        extensionContext,
+        toolCall,
+        BACKGROUND_CONTEXT,
       ),
     ).rejects.toThrow("Failed to add reactions:\n🎉: blocked");
     expect(reacted).toEqual(["👍", "wave:12345678901234567"]);

@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { SqlClient } from "effect/sql";
+import { SqlClient, type SqlError } from "effect/sql";
 
 import {
   REPLY_MODE_DEFAULT,
@@ -43,6 +43,23 @@ const createChannelStateRepository = Effect.gen(function* () {
         VALUES (${channelId}, ${value})
         ON CONFLICT(channel_id) DO UPDATE SET active_session = excluded.active_session
       `.pipe(mapToSaveError(channelId)),
+
+    setResume: (channelId, value) =>
+      sql`
+        UPDATE channel_sessions SET resume = ${Number(value)} WHERE channel_id = ${channelId}
+      `.pipe(mapToSaveError(channelId)),
+
+    getResume: (channelId) =>
+      Effect.gen(function* () {
+        const rows = yield* sql<{ resume: number }>`
+          SELECT resume FROM channel_sessions WHERE channel_id = ${channelId}
+        `;
+        return rows[0]?.resume === 1;
+      }).pipe(mapToLoadError(channelId)),
+
+    listResumable: sql<{ channel_id: string }>`
+      SELECT channel_id FROM channel_sessions WHERE resume = 1 AND active_session IS NOT NULL
+    `.pipe(Effect.map((rows) => rows.map((row) => row.channel_id))),
 
     clearActiveSession: (channelId) =>
       Effect.gen(function* () {
@@ -98,6 +115,11 @@ const createChannelStateRepository = Effect.gen(function* () {
 export interface Interface {
   getActiveSession(channelId: string): Effect.Effect<string | undefined, Error>;
   setActiveSession(channelId: string, value: string): Effect.Effect<void, Error>;
+  /** Marks whether the channel's session may have unfinished work to resume at startup. */
+  setResume(channelId: string, value: boolean): Effect.Effect<void, Error>;
+  getResume(channelId: string): Effect.Effect<boolean, Error>;
+  /** Channels whose active session may have unfinished work. */
+  readonly listResumable: Effect.Effect<readonly string[], SqlError.SqlError>;
   clearActiveSession(channelId: string): Effect.Effect<void, Error>;
   getShowThinking(channelId: string): Effect.Effect<boolean, Error>;
   setShowThinking(channelId: string, value: boolean): Effect.Effect<void, Error>;

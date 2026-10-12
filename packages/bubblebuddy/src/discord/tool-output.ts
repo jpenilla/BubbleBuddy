@@ -1,23 +1,25 @@
-import { type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import {
-  MessageFlags,
-  type GuildTextBasedChannel,
-  type Message,
-  type ContainerBuilder,
-} from "discord.js";
+import { type JsonValue } from "@earendil-works/pi-ai";
+import { MessageFlags, type ContainerBuilder, type Snowflake } from "discord.js";
 import { Data, Effect } from "effect";
 
+import { type SessionEventOf } from "../pi/session-events.ts";
+import { OutputPump } from "./output-pump.ts";
 import { createToolStatusComponents, type ToolStatusEntry } from "./tool-status-components.ts";
 import { formatToolDescription } from "./tool-status-formatting.ts";
-import { tryDiscordJsPromise } from "./utils.ts";
 
-export type StartEvent = Extract<AgentSessionEvent, { type: "tool_execution_start" }>;
-export type EndEvent = Extract<AgentSessionEvent, { type: "tool_execution_end" }>;
+type StartEvent = SessionEventOf<"tool_execution_start">;
+type EndEvent = SessionEventOf<"tool_execution_end">;
+
+/** A tool call's outcome; a call without a result failed. */
+export interface Result {
+  readonly isError: boolean;
+  readonly details: JsonValue | undefined;
+}
 
 export interface StandaloneFormatter {
   readonly begin: (event: StartEvent) => {
     readonly initial: ContainerBuilder;
-    readonly complete: (event: EndEvent) => Effect.Effect<ContainerBuilder, unknown>;
+    readonly complete: (result: Result) => Effect.Effect<ContainerBuilder, unknown>;
   };
 }
 
@@ -32,42 +34,40 @@ export const standalonePolicy = (formatter: StandaloneFormatter) =>
   Policy.Standalone({ formatter });
 
 export interface Interface {
-  readonly start: (event: StartEvent) => Effect.Effect<void, unknown>;
-  readonly complete: (event: EndEvent) => Effect.Effect<void, unknown>;
-  readonly boundary: Effect.Effect<void>;
+  readonly start: (event: StartEvent) => Effect.Effect<void, unknown, OutputPump.Posting>;
+  readonly complete: (event: EndEvent) => Effect.Effect<void, unknown, OutputPump.Posting>;
+  /** Forgets the run's tool calls. */
   readonly reset: Effect.Effect<void>;
 }
 
 interface Group {
-  readonly message: Message<true>;
+  readonly id: Snowflake;
   readonly entries: Map<string, ToolStatusEntry>;
 }
 
 const MAX_TOOLS_PER_GROUP = 8;
 
-export const create = (
-  channel: GuildTextBasedChannel,
-  policyFor: (name: string) => Policy,
-): Effect.Effect<Interface> =>
+export const create = (policyFor: (name: string) => Policy): Effect.Effect<Interface> =>
   Effect.sync(() => {
+    // The last group; it takes further grouped calls while it is the latest post.
     let appendable: Group | undefined;
-    const pending = new Map<string, (event: EndEvent) => Effect.Effect<void, unknown>>();
-    const boundary = Effect.sync(() => {
-      appendable = undefined;
-    });
+    const pending = new Map<
+      string,
+      (result: Result) => Effect.Effect<void, unknown, OutputPump.Posting>
+    >();
     const reset = Effect.sync(() => {
       appendable = undefined;
       pending.clear();
     });
 
     const renderGroup = (group: Group) =>
-      tryDiscordJsPromise(() =>
-        group.message.edit({
+      OutputPump.Posting.use((posting) =>
+        posting.edit(group.id, {
           components: [createToolStatusComponents(group.entries.values())],
         }),
-      ).pipe(Effect.asVoid);
+      );
 
-    const completeGroupEntry = (group: Group, toolCallId: string, end: EndEvent) =>
+    const completeGroupEntry = (group: Group, toolCallId: string, result: Result) =>
       Effect.gen(function* () {
         const entry = group.entries.get(toolCallId);
         if (entry === undefined) {
@@ -76,11 +76,12 @@ export const create = (
           );
           return;
         }
-        group.entries.set(toolCallId, { ...entry, phase: end.isError ? "error" : "success" });
+        group.entries.set(toolCallId, { ...entry, phase: result.isError ? "error" : "success" });
         yield* renderGroup(group);
       });
 
     const startGrouped = Effect.fn("ToolOutput.startGrouped")(function* (event: StartEvent) {
+      const posting = yield* OutputPump.Posting;
       const entry: ToolStatusEntry = {
         phase: "running",
         toolCallId: event.toolCallId,
@@ -88,42 +89,46 @@ export const create = (
         description: formatToolDescription(event.toolName, event.args),
       };
       const previous = appendable;
-      if (previous !== undefined && previous.entries.size < MAX_TOOLS_PER_GROUP) {
+      if (
+        previous !== undefined &&
+        posting.isLatest(previous.id) &&
+        previous.entries.size < MAX_TOOLS_PER_GROUP
+      ) {
         const group = previous;
         group.entries.set(entry.toolCallId, entry);
-        pending.set(event.toolCallId, (end) => completeGroupEntry(group, end.toolCallId, end));
+        pending.set(event.toolCallId, (result) =>
+          completeGroupEntry(group, event.toolCallId, result),
+        );
         yield* renderGroup(group);
         return;
       }
 
       const entries = new Map([[entry.toolCallId, entry]]);
-      const message = yield* tryDiscordJsPromise(() =>
-        channel.send({
-          flags: MessageFlags.IsComponentsV2,
-          components: [createToolStatusComponents(entries.values())],
-        }),
-      );
-      const created: Group = { message, entries };
+      const id = yield* posting.send({
+        flags: MessageFlags.IsComponentsV2,
+        components: [createToolStatusComponents(entries.values())],
+      });
+      const created: Group = { id, entries };
       appendable = created;
-      pending.set(event.toolCallId, (end) => completeGroupEntry(created, end.toolCallId, end));
+      pending.set(event.toolCallId, (result) =>
+        completeGroupEntry(created, event.toolCallId, result),
+      );
     });
 
     const startStandalone = Effect.fn("ToolOutput.startStandalone")(function* (
       event: StartEvent,
       formatter: StandaloneFormatter,
     ) {
-      yield* boundary;
+      const posting = yield* OutputPump.Posting;
       const output = formatter.begin(event);
-      const message = yield* tryDiscordJsPromise(() =>
-        channel.send({
-          flags: MessageFlags.IsComponentsV2,
-          components: [output.initial],
-        }),
-      );
-      pending.set(event.toolCallId, (end) =>
+      const id = yield* posting.send({
+        flags: MessageFlags.IsComponentsV2,
+        components: [output.initial],
+      });
+      pending.set(event.toolCallId, (result) =>
         Effect.gen(function* () {
-          const components = yield* output.complete(end);
-          yield* tryDiscordJsPromise(() => message.edit({ components: [components] }));
+          const components = yield* output.complete(result);
+          yield* posting.edit(id, { components: [components] });
         }),
       );
     });
@@ -138,9 +143,12 @@ export const create = (
     const complete = Effect.fn("ToolOutput.complete")(function* (event: EndEvent) {
       const finish = pending.get(event.toolCallId);
       pending.delete(event.toolCallId);
-      if (finish !== undefined) yield* finish(event);
+      if (finish === undefined) return;
+      const message = event.entry?.model?.[0];
+      const result = message?.role === "toolResult" ? message : undefined;
+      yield* finish({ isError: result?.isError ?? true, details: result?.details });
     });
-    return { start, complete, boundary, reset };
+    return { start, complete, reset };
   });
 
 export * as ToolOutput from "./tool-output.ts";

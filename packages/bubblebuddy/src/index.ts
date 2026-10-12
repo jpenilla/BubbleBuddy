@@ -14,6 +14,7 @@ import { DiscordEvents } from "./discord/discord-events.ts";
 import { ScheduledActivationsLayer } from "./discord/scheduled-activations.ts";
 import { Schedules } from "./scheduling/schedules.ts";
 import { ChannelSessions } from "./session/registry.ts";
+import { SessionResumptionLayer } from "./session/resumption.ts";
 import { ChannelSettings } from "./session/settings.ts";
 
 const DiscordClientLayer = Layer.unwrap(
@@ -29,6 +30,7 @@ const AppLayer = Layer.mergeAll(
   ActivationLayer,
   SlashCommandsLayer,
   ScheduledActivationsLayer,
+  SessionResumptionLayer,
 ).pipe(
   Layer.provide(ChannelSessions.layer),
   Layer.provide(ChannelSettings.layer),

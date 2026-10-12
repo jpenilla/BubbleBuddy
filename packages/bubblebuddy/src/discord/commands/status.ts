@@ -1,6 +1,6 @@
 import { EmbedBuilder, InteractionContextType, SlashCommandBuilder } from "discord.js";
 
-import { type SessionStatus } from "../../session/channel.ts";
+import { type MessageCounts, type SessionStatus } from "../../pi/session-status.ts";
 import { ChannelSessions } from "../../session/registry.ts";
 import { EMBED_COLOR, tryDiscordJsPromise } from "../utils.ts";
 import { createCommand, inGuildTextChannel } from "./command.ts";
@@ -16,7 +16,7 @@ const ACTIVITY_LABELS: Record<SessionStatus["activity"], string> = {
 };
 
 const formatContext = (status: SessionStatus): string => {
-  const usage = status.stats.contextUsage;
+  const usage = status.contextUsage;
   if (usage?.percent == null || usage.tokens == null) {
     return `[${"░▒".repeat(5)}] ?${usage === undefined ? "" : ` / ${formatNumber(usage.contextWindow)}`}`;
   }
@@ -24,45 +24,51 @@ const formatContext = (status: SessionStatus): string => {
   return `[${"█".repeat(filled)}${"░".repeat(10 - filled)}] ${Math.round(usage.percent)}% · ${formatNumber(usage.tokens)} / ${formatNumber(usage.contextWindow)}`;
 };
 
-const createStatusEmbed = (status: SessionStatus, detailed: boolean): EmbedBuilder => {
+/** `messages` is given for the detailed view. */
+const createStatusEmbed = (status: SessionStatus, messages?: MessageCounts): EmbedBuilder => {
   const model =
     status.model === undefined
       ? "unknown"
       : [
           status.model.name,
           status.model.thinkingLevel,
-          ...(detailed ? [status.model.provider] : []),
+          ...(messages === undefined ? [] : [status.model.provider]),
         ].join(" · ");
 
   const embed = new EmbedBuilder()
     .setColor(EMBED_COLOR.neutral)
     .setTitle("📜 Channel Status")
     .addFields(
-      { name: "Activity", value: ACTIVITY_LABELS[status.activity] },
+      {
+        name: "Activity",
+        value: status.compactingInBackground
+          ? `${ACTIVITY_LABELS[status.activity]}\n🗜️ *Compacting in background*`
+          : ACTIVITY_LABELS[status.activity],
+      },
       { name: "Model", value: model },
       { name: "Context", value: formatContext(status) },
-      { name: "Session Cost", value: `~${formatCost(status.stats.cost)}` },
+      { name: "Session Cost", value: `~${formatCost(status.cost)}` },
     );
 
-  if (detailed) {
+  if (messages !== undefined) {
     embed.addFields(
       {
         name: "Messages",
         value: [
-          `User: ${formatNumber(status.stats.userMessages)}`,
-          `Assistant: ${formatNumber(status.stats.assistantMessages)}`,
-          `Tools: ${formatNumber(status.stats.toolCalls)} calls / ${formatNumber(status.stats.toolResults)} results`,
-          `Total: ${formatNumber(status.stats.totalMessages)}`,
+          `User: ${formatNumber(messages.user)}`,
+          `Assistant: ${formatNumber(messages.assistant)}`,
+          `Tools: ${formatNumber(messages.toolCalls)} calls / ${formatNumber(messages.toolResults)} results`,
+          `Total: ${formatNumber(messages.total)}`,
         ].join("\n"),
         inline: true,
       },
       {
         name: "Tokens",
         value: [
-          `Input: ${formatNumber(status.stats.tokens.input)}`,
-          `Output: ${formatNumber(status.stats.tokens.output)}`,
-          `Cache read/write: ${formatNumber(status.stats.tokens.cacheRead)} / ${formatNumber(status.stats.tokens.cacheWrite)}`,
-          `Total: ${formatNumber(status.stats.tokens.total)}`,
+          `Input: ${formatNumber(status.tokens.input)}`,
+          `Output: ${formatNumber(status.tokens.output)}`,
+          `Cache read/write: ${formatNumber(status.tokens.cacheRead)} / ${formatNumber(status.tokens.cacheWrite)}`,
+          `Total: ${formatNumber(status.tokens.total)}`,
         ].join("\n"),
         inline: true,
       },
@@ -87,10 +93,12 @@ export const statusCommand = createCommand({
     const sessions = yield* ChannelSessions.Service;
     const session = yield* sessions.get(interaction.channelId);
     const status = yield* session.status(interaction.channel);
+    const messages =
+      interaction.options.getString("view") === "detailed"
+        ? yield* session.messageCounts(interaction.channel)
+        : undefined;
     yield* tryDiscordJsPromise(() =>
-      interaction.editReply({
-        embeds: [createStatusEmbed(status, interaction.options.getString("view") === "detailed")],
-      }),
+      interaction.editReply({ embeds: [createStatusEmbed(status, messages)] }),
     );
   }),
 });

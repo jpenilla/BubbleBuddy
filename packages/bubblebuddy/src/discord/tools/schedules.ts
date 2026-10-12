@@ -66,7 +66,6 @@ const timing = Type.Union([
 
 export const create = defineEffectTool({
   name: "create_schedule",
-  label: "Create schedule",
   description:
     "Schedule a wakeup in this channel. Survives new sessions and restarts. Displays a confirmation card in this channel. Each recurrence triggers a separate wakeup automatically; do not use sleep or time-checking loops to wait for subsequent occurrences.",
   parameters: Type.Object({
@@ -74,7 +73,8 @@ export const create = defineEffectTool({
     note,
     timing,
   }),
-  execute: (_id, input) =>
+  replay: "unsafe",
+  execute: (input) =>
     Effect.gen(function* () {
       const { channel } = yield* DiscordToolContext;
       const schedules = yield* Schedules.Service;
@@ -90,7 +90,6 @@ export const create = defineEffectTool({
 
 export const update = defineEffectTool({
   name: "update_schedule",
-  label: "Update schedule",
   description:
     "Update a schedule in this channel. Omitted fields stay unchanged. Supplied timing replaces the full timing configuration and recalculates from now. Displays a confirmation card in this channel.",
   parameters: Type.Object({
@@ -99,7 +98,8 @@ export const update = defineEffectTool({
     description: Type.Optional(description),
     note: Type.Optional(note),
   }),
-  execute: (_id, input) =>
+  replay: "unsafe",
+  execute: (input) =>
     Effect.gen(function* () {
       const { channel } = yield* DiscordToolContext;
       const schedules = yield* Schedules.Service;
@@ -122,10 +122,10 @@ const NOTE_TERMINATOR = "<<<END_NOTE>>>";
 
 export const list = defineEffectTool({
   name: "list_schedules",
-  label: "List schedules",
   description:
     "List this channel’s active schedules. Results aren’t shown to the user; summarize them when asked.",
   parameters: Type.Object({}),
+  replay: "safe",
   execute: () =>
     Effect.gen(function* () {
       const { channel } = yield* DiscordToolContext;
@@ -143,18 +143,17 @@ export const list = defineEffectTool({
                     .join("\n\n"),
           },
         ],
-        details: undefined,
       };
     }).pipe(Effect.catchTag("Schedules.StoreError", (error) => Effect.die(error))),
 });
 
 export const cancel = defineEffectTool({
   name: "cancel_schedule",
-  label: "Cancel schedule",
   description:
     "Cancel a schedule in this channel. In-flight wakeups are unaffected. Displays a confirmation card in this channel.",
   parameters: Type.Object({ id: Type.String() }),
-  execute: (_id, input) =>
+  replay: "unsafe",
+  execute: (input) =>
     Effect.gen(function* () {
       const { channel } = yield* DiscordToolContext;
       const schedules = yield* Schedules.Service;

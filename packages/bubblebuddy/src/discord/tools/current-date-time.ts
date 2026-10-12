@@ -5,14 +5,14 @@ import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
 
 export const currentDateTimeTool = defineEffectTool({
   name: "current_date_time",
-  label: "Current Date & Time",
   description: "Get the current date and time in UTC and optionally in named timezones.",
   parameters: Type.Object({
     timezones: Type.Optional(
       Type.Array(Type.String({ description: "IANA timezone, e.g. America/New_York" })),
     ),
   }),
-  execute: (_id, { timezones }) =>
+  replay: "safe",
+  execute: ({ timezones }) =>
     Effect.gen(function* () {
       const now = yield* DateTime.now;
       const sections = [
@@ -48,7 +48,6 @@ export const currentDateTimeTool = defineEffectTool({
             text: `unix_seconds: ${DateTime.toEpochSeconds(now)}\n\n${sections.join("\n\n")}`,
           },
         ],
-        details: undefined,
       };
     }),
 });

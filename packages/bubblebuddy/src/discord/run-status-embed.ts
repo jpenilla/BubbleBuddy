@@ -1,14 +1,27 @@
 import { EmbedBuilder } from "discord.js";
 
 import { DISCORD_EMBED_DESCRIPTION_LIMIT } from "../shared/constants.ts";
-import { truncate } from "../shared/text.ts";
+import { collapseWhitespace, truncate } from "../shared/text.ts";
 import { EMBED_COLOR } from "./utils.ts";
 
-export type RetryStatus =
-  | { readonly phase: "retrying"; readonly attempt: number; readonly maxAttempts: number }
-  | { readonly phase: "success"; readonly attempt: number }
-  | { readonly phase: "failure"; readonly attempt: number; readonly finalError?: string }
-  | { readonly phase: "aborted"; readonly attempt: number };
+/** `errors`: each failed attempt's error, oldest first. */
+export type RetryStatus = { readonly attempt: number; readonly errors: readonly string[] } & (
+  | { readonly phase: "retrying"; readonly maxAttempts: number }
+  | { readonly phase: "success" | "failure" | "aborted" }
+);
+
+const RETRY_ERROR_PREFIX = "\n- ";
+
+/** The header, then each error on its own line with an equal share of the space the header leaves. */
+const formatRetryCard = (header: string, errors: readonly string[]): string => {
+  const limit =
+    Math.floor((DISCORD_EMBED_DESCRIPTION_LIMIT - header.length) / Math.max(1, errors.length)) -
+    RETRY_ERROR_PREFIX.length;
+  return (
+    header +
+    errors.map((error) => RETRY_ERROR_PREFIX + truncate(collapseWhitespace(error), limit)).join("")
+  );
+};
 
 const formatAttempts = (attempt: number): string => `${attempt} attempt${attempt === 1 ? "" : "s"}`;
 
@@ -34,30 +47,23 @@ export const createResponseTruncatedEmbed = (): EmbedBuilder =>
     .setColor(EMBED_COLOR.danger)
     .setDescription("❌ **Response was truncated before completion.**");
 
-export const createRetryStatusEmbed = (status: RetryStatus): EmbedBuilder => {
+const retryCardHeader = (status: RetryStatus): readonly [number, string] => {
   switch (status.phase) {
     case "retrying":
-      return new EmbedBuilder()
-        .setColor(EMBED_COLOR.pending)
-        .setDescription(`🔄 **Retrying** (${status.attempt}/${status.maxAttempts})...`);
+      return [EMBED_COLOR.pending, `🔄 **Retrying** (${status.attempt}/${status.maxAttempts})...`];
     case "success":
-      return new EmbedBuilder()
-        .setColor(EMBED_COLOR.success)
-        .setDescription(`✅ **Retry succeeded after ${formatAttempts(status.attempt)}**`);
+      return [
+        EMBED_COLOR.success,
+        `✅ **Retry succeeded after ${formatAttempts(status.attempt)}**`,
+      ];
     case "failure":
-      return new EmbedBuilder()
-        .setColor(EMBED_COLOR.danger)
-        .setDescription(
-          truncate(
-            `❌ **Retry failed after ${formatAttempts(status.attempt)}**${
-              status.finalError ? `\n${status.finalError}` : ""
-            }`,
-            DISCORD_EMBED_DESCRIPTION_LIMIT,
-          ),
-        );
+      return [EMBED_COLOR.danger, `❌ **Retry failed after ${formatAttempts(status.attempt)}**`];
     case "aborted":
-      return new EmbedBuilder()
-        .setColor(EMBED_COLOR.danger)
-        .setDescription(`🛑 **Retry aborted after ${formatAttempts(status.attempt)}**`);
+      return [EMBED_COLOR.danger, `🛑 **Retry aborted after ${formatAttempts(status.attempt)}**`];
   }
+};
+
+export const createRetryStatusEmbed = (status: RetryStatus): EmbedBuilder => {
+  const [color, header] = retryCardHeader(status);
+  return new EmbedBuilder().setColor(color).setDescription(formatRetryCard(header, status.errors));
 };

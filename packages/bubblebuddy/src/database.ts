@@ -98,6 +98,11 @@ const scheduleIntervals = Effect.gen(function* () {
   yield* sql`CREATE INDEX scheduled_wakeups_due ON scheduled_wakeups (next_run_at)`;
 });
 
+const sessionResume = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`ALTER TABLE channel_sessions ADD COLUMN resume INTEGER NOT NULL DEFAULT 0`;
+});
+
 const migrationsLayer = Layer.effectDiscard(
   SqliteMigrator.run({
     loader: SqliteMigrator.fromRecord({
@@ -106,6 +111,7 @@ const migrationsLayer = Layer.effectDiscard(
       "3_schedule_metadata": scheduleMetadata,
       "4_reply_mode": replyMode,
       "5_schedule_intervals": scheduleIntervals,
+      "6_session_resume": sessionResume,
     }),
   }).pipe(Effect.withSpan("AppDatabase.migrate")),
 );

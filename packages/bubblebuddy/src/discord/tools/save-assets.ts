@@ -72,7 +72,6 @@ const saveStickerAsset = Effect.fn("saveStickerAsset")(function* (
 
 export const saveAssetsTool = defineEffectTool({
   name: "discord_save_assets",
-  label: "Save Discord Assets",
   description: "Save custom emojis and stickers into the container workspace.",
   parameters: Type.Object({
     customEmojis: Type.Optional(
@@ -91,7 +90,8 @@ export const saveAssetsTool = defineEffectTool({
       Type.Array(Type.String({ description: "Sticker ID" }), { minItems: 1, uniqueItems: true }),
     ),
   }),
-  execute: (_toolCallId, params) =>
+  replay: "safe",
+  execute: (params) =>
     Effect.gen(function* () {
       const customEmojis = params.customEmojis ?? [];
       const emojiJobs = customEmojis.map((syntax, index) => ({
@@ -102,6 +102,6 @@ export const saveAssetsTool = defineEffectTool({
       const stickerJobs = yield* createStickerJobs(params.stickers ?? []);
 
       const text = yield* runAssetJobs([...emojiJobs, ...stickerJobs]);
-      return { content: [{ type: "text", text }], details: undefined };
+      return { content: [{ type: "text", text }] };
     }),
 });

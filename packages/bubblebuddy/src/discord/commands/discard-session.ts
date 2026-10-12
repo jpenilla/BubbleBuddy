@@ -26,7 +26,7 @@ export const discardSessionCommand = createCommand({
     const result = yield* session.discard;
     if (result === "rejected-busy") {
       yield* tryDiscordJsPromise(() =>
-        interaction.editReply("A response is already in progress for this channel."),
+        interaction.editReply("An operation is already in progress for this channel."),
       );
       return;
     }

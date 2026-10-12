@@ -1,4 +1,4 @@
-import { type ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { type GuildTextBasedChannel } from "discord.js";
 import { Effect } from "effect";
 import { describe, expect, test, vi } from "vitest";
@@ -6,9 +6,7 @@ import { describe, expect, test, vi } from "vitest";
 import { formatMessageForPrompt } from "../src/discord/prompt-formatting.ts";
 import { DiscordToolContext } from "../src/discord/tool-context.ts";
 import { fetchMessageTool } from "../src/discord/tools/fetch-message.ts";
-import { createTestMessage } from "./helpers.ts";
-
-const extensionContext = {} as ExtensionToolContext;
+import { createTestMessage, executeWithoutPosting, toolCall } from "./helpers.ts";
 
 const createChannel = (fetch: (id: string) => Promise<unknown>): GuildTextBasedChannel =>
   ({ messages: { fetch } }) as unknown as GuildTextBasedChannel;
@@ -19,7 +17,7 @@ const createTool = (channel: GuildTextBasedChannel) =>
       DiscordToolContext,
       DiscordToolContext.of({
         channel,
-        executeOrdered: (operation) => operation,
+        executeOrdered: executeWithoutPosting,
       }),
     ),
     Effect.runPromise,
@@ -33,9 +31,9 @@ describe("fetch message tool", () => {
       }),
     );
 
-    await expect(
-      tool.execute("tool-call", { messageId: "123" }, undefined, undefined, extensionContext),
-    ).rejects.toThrow("Discord operation failed.");
+    await expect(tool.execute({ messageId: "123" }, toolCall, BACKGROUND_CONTEXT)).rejects.toThrow(
+      "Discord operation failed.",
+    );
   });
 
   test("passes the requested ID to Discord and returns formatted content", async () => {
@@ -43,11 +41,9 @@ describe("fetch message tool", () => {
     const fetch = vi.fn(async () => message);
     const tool = await createTool(createChannel(fetch));
     const result = await tool.execute(
-      "tool-call",
       { messageId: "requested-message" },
-      undefined,
-      undefined,
-      extensionContext,
+      toolCall,
+      BACKGROUND_CONTEXT,
     );
 
     expect(fetch).toHaveBeenCalledOnce();

@@ -1,4 +1,4 @@
-import { type AgentToolResult } from "@earendil-works/pi-coding-agent";
+import { type ToolExecutionResult } from "@earendil-works/pi-durable";
 import { NodeStream } from "@effect/platform-node";
 import { GuildPremiumTier, type GuildTextBasedChannel } from "discord.js";
 import { Effect, Ref, Stream } from "effect";
@@ -9,8 +9,8 @@ import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
 import { SessionContainer } from "../../session/session-container.ts";
 import { DISCORD_SAFE_MESSAGE_LIMIT } from "../../shared/constants.ts";
 import { listUsableStickers } from "../assets.ts";
+import { OutputPump } from "../output-pump.ts";
 import { DiscordToolContext } from "../tool-context.ts";
-import { sendChunkedMessage, sendMessage } from "../utils.ts";
 
 const MAX_STICKERS = 3;
 const MAX_FILES = 10;
@@ -44,10 +44,9 @@ const replyOptions = (params: { replyTo?: string; ping?: boolean }) =>
             : undefined,
       };
 
-const sentResult = (terminate: boolean): AgentToolResult<undefined> => ({
+const sentResult = (terminate: boolean): ToolExecutionResult => ({
   content: [{ type: "text", text: "Sent message." }],
-  details: undefined,
-  terminate,
+  control: { terminate: terminate ? true : undefined },
 });
 
 type FileSendParams = { readonly filePaths?: readonly string[] };
@@ -58,19 +57,9 @@ export const makeSendTool = Effect.fn("makeSendTool")(function* (options: {
   const enableFiles = options.enableAgenticWorkspace;
   return yield* defineEffectTool({
     name: "discord_send",
-    label: "Send",
     description: enableFiles
       ? "Send a message with a reply reference, stickers, or file attachments. Requires at least one of replyTo, stickerIds, or filePaths."
       : "Send a message with a reply reference or stickers. Requires at least one of replyTo or stickerIds.",
-    promptGuidelines: [
-      enableFiles
-        ? "discord_send adds Discord-specific delivery options: a reply reference with optional author notification, stickers, and file attachments."
-        : "discord_send adds Discord-specific delivery options: a reply reference with optional author notification and stickers.",
-      enableFiles
-        ? "A discord_send call with stickers or files is a single message, so keep its text within the character limit; text-only replies may be any length and are split automatically."
-        : "A discord_send call with stickers is a single message, so keep its text within the character limit; text-only replies may be any length and are split automatically.",
-      "Use discord_send during a turn as needed. For a send that completes the response, include any closing text in content.",
-    ],
     parameters: Type.Object({
       content: Type.Optional(
         Type.String({
@@ -108,8 +97,9 @@ export const makeSendTool = Effect.fn("makeSendTool")(function* (options: {
           }
         : {}),
     }),
+    replay: "unsafe",
     executionMode: "sequential",
-    execute: (_toolCallId, params) =>
+    execute: (params) =>
       Effect.gen(function* () {
         const context = yield* DiscordToolContext;
         const { content, replyTo, ping, stickerIds, terminate } = params;
@@ -147,8 +137,7 @@ export const makeSendTool = Effect.fn("makeSendTool")(function* (options: {
             });
           }
           yield* context.executeOrdered(
-            sendChunkedMessage({
-              channel: context.channel,
+            OutputPump.sendChunked({
               content,
               ...replyOptions({ replyTo, ping }),
             }),
@@ -161,7 +150,7 @@ export const makeSendTool = Effect.fn("makeSendTool")(function* (options: {
         const files = filePaths === undefined ? [] : yield* resolveFiles(context, filePaths);
 
         yield* context.executeOrdered(
-          sendMessage(context.channel, {
+          OutputPump.send({
             content,
             stickers,
             files,

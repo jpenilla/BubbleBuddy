@@ -2,7 +2,6 @@ import { type GuildTextBasedChannel } from "discord.js";
 import {
   Context,
   Effect,
-  Fiber,
   Option,
   Ref,
   Schema,
@@ -12,13 +11,23 @@ import {
   Tracer,
 } from "effect";
 
-import { createDiscordOutputPump } from "../discord/output-pump.ts";
+import { OutputPump } from "../discord/output-pump.ts";
+import { createRunErrorEmbed } from "../discord/run-status-embed.ts";
+import { SessionOutput } from "../discord/session-output.ts";
+import { sendMessage } from "../discord/utils.ts";
+import { PiContext } from "../pi/context.ts";
+import { DurableError, tryDurablePromise } from "../pi/durable.ts";
+import {
+  countMessages,
+  readSessionStatus,
+  type MessageCounts,
+  type SessionStatus,
+} from "../pi/session-status.ts";
 import {
   createPiSession,
-  type PiSessionHandle,
-  type PiSessionModelInfo,
+  type PiSession,
+  PiSessionInitError,
   type PiSessionServices,
-  type SessionStats,
 } from "../pi/session.ts";
 import { ChannelSettings } from "./settings.ts";
 import { ChannelStateRepository } from "./state-repository.ts";
@@ -34,22 +43,8 @@ export interface CompactChannelSessionInput {
 }
 
 export type AbortResult = "aborted" | "idle";
-export type CompactResult = "done" | "no-session" | "rejected-busy" | "rejected-compacting";
+export type CompactResult = "requested" | "no-session";
 export type DiscardResult = "discarded" | "rejected-busy";
-
-export interface SessionStatus {
-  readonly activity: "idle" | "working" | "retrying" | "compacting";
-  readonly model: PiSessionModelInfo | undefined;
-  readonly stats: SessionStats;
-}
-
-const getSessionStatus = (pi: PiSessionHandle): SessionStatus => {
-  let activity: SessionStatus["activity"] = "idle";
-  if (pi.isCompacting()) activity = "compacting";
-  else if (pi.isRetrying()) activity = "retrying";
-  else if (pi.isStreaming()) activity = "working";
-  return { activity, model: pi.getModelInfo(), stats: pi.getSessionStats() };
-};
 
 export class ChannelSessionError extends Schema.TaggedError<ChannelSessionError>()(
   "ChannelSessionError",
@@ -60,10 +55,14 @@ export class ChannelSessionError extends Schema.TaggedError<ChannelSessionError>
 ) {}
 
 export interface ChannelSession {
-  readonly abort: Effect.Effect<AbortResult, ChannelSessionError>;
+  readonly abort: (
+    channel: GuildTextBasedChannel,
+  ) => Effect.Effect<AbortResult, ChannelSessionError>;
   readonly activate: (
     input: ActivateChannelSessionInput,
   ) => Effect.Effect<void, ChannelSessionError>;
+  /** Opens the session so its stored unfinished work continues. */
+  readonly resume: (channel: GuildTextBasedChannel) => Effect.Effect<void, ChannelSessionError>;
   readonly compact: (
     input: CompactChannelSessionInput,
   ) => Effect.Effect<CompactResult, ChannelSessionError>;
@@ -72,7 +71,17 @@ export interface ChannelSession {
   readonly status: (
     channel: GuildTextBasedChannel,
   ) => Effect.Effect<SessionStatus, ChannelSessionError>;
+  readonly messageCounts: (
+    channel: GuildTextBasedChannel,
+  ) => Effect.Effect<MessageCounts, ChannelSessionError>;
 }
+
+/** What the error card of a failed activation says. */
+const describeActivationFailure = (cause: unknown): string => {
+  if (cause instanceof PiSessionInitError) return cause.message;
+  if (cause instanceof DurableError && cause.cause instanceof Error) return cause.cause.message;
+  return "The session failed unexpectedly.";
+};
 
 interface CreateChannelSessionInput {
   readonly channelId: string;
@@ -90,120 +99,197 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
     const settings = yield* settingsService.get(input.channelId).pipe(mapToChannelSessionError);
     // Re-provided at Pi session creation, so drop ParentSpan to keep the invocation's parent.
     const piServices = Context.omit(Tracer.ParentSpan)(yield* Effect.context<PiSessionServices>());
+    const piContext = yield* PiContext;
+    // Serializes opening and discarding the Pi session, and admitting work so a discard sees it; pi-durable orders
+    // everything else.
     const lock = yield* Semaphore.make(1);
     const activeSessionRef = yield* Ref.make(
       yield* repository.getActiveSession(input.channelId).pipe(mapToChannelSessionError),
     );
-    const piRef = yield* ScopedRef.make<PiSessionHandle | undefined>(() => undefined);
+    const piRef = yield* ScopedRef.make<PiSession | undefined>(() => undefined);
 
-    const clearActiveSession = Effect.gen(function* () {
+    /** The conversation's unfinished tasks and submissions. */
+    const inspectWork = (pi: PiSession) =>
+      tryDurablePromise((context) => pi.harness.inspect(context)).pipe(
+        Effect.map((inspection) => ({
+          tasks: inspection.tasks.filter(
+            ({ record }) => record.conversationId === pi.conversation.id,
+          ),
+          submissions: inspection.submissions.filter(
+            (submission) => submission.conversationId === pi.conversation.id,
+          ),
+        })),
+        mapToChannelSessionError,
+      );
+
+    const closeSession = Effect.gen(function* () {
+      // @effect-diagnostics-next-line effectSucceedWithVoid:off
+      yield* ScopedRef.set(piRef, Effect.succeed(undefined));
       yield* repository.clearActiveSession(input.channelId).pipe(mapToChannelSessionError);
       yield* Ref.set(activeSessionRef, undefined);
-    }).pipe(Effect.withSpan("ChannelSession.clearActiveSession", { attributes }));
+    }).pipe(Effect.withSpan("ChannelSession.closeSession", { attributes }));
 
-    const getOrCreatePiSession = Effect.fn("ChannelSession.getOrCreatePiSession", { attributes })(
-      function* (channel: GuildTextBasedChannel) {
-        const current = yield* ScopedRef.get(piRef);
-        if (current !== undefined) return current;
-
-        const activeSession = yield* Ref.get(activeSessionRef);
-        yield* ScopedRef.set(
-          piRef,
-          Effect.gen(function* () {
-            const output = yield* createDiscordOutputPump({
-              channel,
-              showThinking: settings.getShowThinking,
-            });
-            const pi = yield* createPiSession({
-              channel,
-              activeSession,
-              output,
-            });
-            const activeSessionName = pi.getActiveSessionName();
-            if (activeSessionName !== undefined && activeSessionName !== activeSession) {
-              yield* repository.setActiveSession(input.channelId, activeSessionName);
-              yield* Ref.set(activeSessionRef, activeSessionName);
-            }
-            return pi;
-          }),
-        ).pipe(Effect.provide(piServices), mapToChannelSessionError);
-        const pi = yield* ScopedRef.get(piRef);
-        if (pi === undefined) {
-          return yield* Effect.die(new Error("Pi session acquisition produced no session"));
-        }
-
-        return pi;
-      },
-    );
-
-    const abort = Effect.gen(function* () {
-      const pi = yield* ScopedRef.get(piRef);
-      if (pi === undefined || !(pi.isCompacting() || pi.isStreaming() || pi.isRetrying())) {
-        return "idle" as const;
-      }
-
-      yield* pi.abort.pipe(mapToChannelSessionError);
-      return "aborted" as const;
-    }).pipe(
-      Effect.annotateLogs(attributes),
-      Effect.withSpan("ChannelSession.abort", { attributes }),
-    );
-
-    const activate = Effect.fn("ChannelSession.activate", { attributes })(function* (
-      activation: ActivateChannelSessionInput,
+    const openSession = Effect.fn("ChannelSession.openSession", { attributes })(function* (
+      channel: GuildTextBasedChannel,
     ) {
-      yield* lock.withPermit(
+      const current = yield* ScopedRef.get(piRef);
+      if (current !== undefined) return current;
+
+      const activeSession = yield* Ref.get(activeSessionRef);
+      yield* ScopedRef.set(
+        piRef,
         Effect.gen(function* () {
-          const pi = yield* getOrCreatePiSession(activation.channel);
-          yield* pi
-            .activate({
-              prompt: activation.prompt,
-              retainChannelSession: input.retain,
-            })
-            .pipe(mapToChannelSessionError);
+          const pump = yield* OutputPump.create(channel);
+          const handleSessionEvent = yield* SessionOutput.create({
+            channel,
+            pump,
+            showThinking: settings.getShowThinking,
+          });
+          const pi = yield* createPiSession({
+            channel,
+            activeSession,
+            pump,
+            handleSessionEvent,
+            retainChannelSession: input.retain,
+          });
+          if (pi.sessionName !== activeSession) {
+            yield* repository.setActiveSession(input.channelId, pi.sessionName);
+            yield* Ref.set(activeSessionRef, pi.sessionName);
+          }
+          // Marked before any new work is admitted, and cleared only by a close that leaves no unfinished work, so a
+          // crash keeps it.
+          yield* repository.setResume(input.channelId, true);
+          // Runs before the harness closes.
+          yield* Effect.addFinalizer(() =>
+            inspectWork(pi).pipe(
+              Effect.flatMap(({ tasks, submissions }) =>
+                repository.setResume(input.channelId, tasks.length > 0 || submissions.length > 0),
+              ),
+              Effect.ignore({
+                log: "Warn",
+                message: "Failed to record whether the session has unfinished work",
+              }),
+            ),
+          );
+          return pi;
         }),
+      ).pipe(Effect.provide(piServices), mapToChannelSessionError);
+      const pi = yield* ScopedRef.get(piRef);
+      if (pi === undefined) {
+        return yield* Effect.die(new Error("Pi session acquisition produced no session"));
+      }
+      return pi;
+    });
+
+    /** Whether the channel has a session, open or stored. */
+    const hasSession = Effect.gen(function* () {
+      const current = yield* ScopedRef.get(piRef);
+      const activeSession = yield* Ref.get(activeSessionRef);
+      return current !== undefined || activeSession !== undefined;
+    });
+
+    /** An open session needs no lock; opening one waits for other operations. */
+    const getOrOpenSession = Effect.fnUntraced(function* (channel: GuildTextBasedChannel) {
+      const current = yield* ScopedRef.get(piRef);
+      if (current !== undefined) return current;
+      return yield* lock.withPermit(openSession(channel));
+    });
+
+    /** Whether the conversation has live work that `abort` stops: everything but background tasks. */
+    const hasWork = (pi: PiSession) =>
+      inspectWork(pi).pipe(
+        Effect.map(({ tasks }) => tasks.some(({ record }) => !record.background)),
       );
-    }, Effect.annotateLogs(attributes));
 
-    const compact = Effect.fn("ChannelSession.compact", { attributes })(function* (
-      compaction: CompactChannelSessionInput,
+    /** Withdraw queued input and stop all work, background work included, before the session closes. */
+    const abortAll = (pi: PiSession) =>
+      tryDurablePromise((context) => pi.conversation.abort(context, { background: true })).pipe(
+        mapToChannelSessionError,
+      );
+
+    const abort = Effect.fn("ChannelSession.abort", { attributes })(function* (
+      channel: GuildTextBasedChannel,
     ) {
-      const pi = ScopedRef.getUnsafe(piRef);
-      if (pi?.isCompacting()) return "rejected-compacting" as const;
-      if (pi?.isStreaming() || pi?.isRetrying()) return "rejected-busy" as const;
-
-      return yield* lock
-        .withPermitsIfAvailable(1)(
-          Effect.gen(function* () {
-            const currentPi = yield* ScopedRef.get(piRef);
-            if (currentPi?.isCompacting()) return "rejected-compacting" as const;
-            if (currentPi?.isStreaming() || currentPi?.isRetrying()) {
-              return "rejected-busy" as const;
-            }
-
-            const activeSession = yield* Ref.get(activeSessionRef);
-            if (currentPi === undefined && activeSession === undefined)
-              return "no-session" as const;
-
-            const session = yield* getOrCreatePiSession(compaction.channel);
-            yield* session.requestCompaction(compaction.customInstructions).pipe(Effect.ignore);
-            return "done" as const;
-          }),
-        )
-        .pipe(Effect.map(Option.getOrElse(() => "rejected-busy" as const)));
+      let pi = yield* ScopedRef.get(piRef);
+      if (pi === undefined) {
+        // Startup may not have resumed the session's unfinished work yet. Opening does not start that work, so it is
+        // aborted before it runs.
+        const resumable = yield* repository
+          .getResume(input.channelId)
+          .pipe(mapToChannelSessionError);
+        if (!resumable) return "idle" as const;
+        pi = yield* lock.withPermit(openSession(channel));
+      }
+      if (!(yield* hasWork(pi))) return "idle" as const;
+      const conversation = pi.conversation;
+      yield* tryDurablePromise((context) => conversation.abort(context)).pipe(
+        mapToChannelSessionError,
+      );
+      return "aborted" as const;
     }, Effect.annotateLogs(attributes));
+
+    const activate = Effect.fn("ChannelSession.activate", { attributes })(
+      function* (activation: ActivateChannelSessionInput) {
+        const pi = yield* openSession(activation.channel);
+        yield* tryDurablePromise((context) =>
+          pi.conversation.submit(
+            { type: "input", content: activation.prompt, whenBusy: "steer" },
+            context,
+          ),
+        ).pipe(mapToChannelSessionError);
+        yield* pi.retainUntilIdle;
+      },
+      (effect) => lock.withPermit(effect),
+      // Reported straight to the channel: the session, and with it the output pump, may have failed to open.
+      (effect, activation) =>
+        effect.pipe(
+          Effect.tapError((error) =>
+            sendMessage(activation.channel, {
+              embeds: [createRunErrorEmbed(describeActivationFailure(error.cause))],
+            }).pipe(Effect.ignore({ log: "Warn", message: "Failed to report activation failure" })),
+          ),
+        ),
+      Effect.annotateLogs(attributes),
+    );
+
+    const resume = Effect.fn("ChannelSession.resume", { attributes })(
+      function* (channel: GuildTextBasedChannel) {
+        // Discarded since startup listed it.
+        if (!(yield* hasSession)) return;
+        const pi = yield* openSession(channel);
+        // Waiting for idle also starts the stored work.
+        yield* pi.retainUntilIdle;
+      },
+      (effect) => lock.withPermit(effect),
+      Effect.annotateLogs(attributes),
+    );
+
+    const compact = Effect.fn("ChannelSession.compact", { attributes })(
+      function* (compaction: CompactChannelSessionInput) {
+        if (!(yield* hasSession)) {
+          return "no-session" as const;
+        }
+        const pi = yield* openSession(compaction.channel);
+        yield* tryDurablePromise((context) =>
+          pi.conversation.compact(compaction.customInstructions, context),
+        ).pipe(mapToChannelSessionError);
+        yield* pi.retainUntilIdle;
+        return "requested" as const;
+      },
+      (effect) => lock.withPermit(effect),
+      Effect.annotateLogs(attributes),
+    );
 
     const discard = lock
       .withPermitsIfAvailable(1)(
         Effect.gen(function* () {
           const pi = yield* ScopedRef.get(piRef);
-          if (pi?.isStreaming() || pi?.isCompacting() || pi?.isRetrying()) {
-            return "rejected-busy" as const;
+          if (pi !== undefined) {
+            if (yield* hasWork(pi)) return "rejected-busy" as const;
+            // Background work belongs to the session being discarded.
+            yield* abortAll(pi);
           }
-
-          // @effect-diagnostics-next-line effectSucceedWithVoid:off
-          yield* ScopedRef.set(piRef, Effect.succeed(undefined));
-          yield* clearActiveSession;
+          yield* closeSession;
           return "discarded" as const;
         }),
       )
@@ -213,53 +299,46 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
         Effect.withSpan("ChannelSession.discard", { attributes }),
       );
 
-    const abortAndDiscard = Effect.gen(function* () {
-      // Abort can interrupt a compaction holding the lock; do not wait for the lock first.
-      const abortFiber = yield* Effect.forkChild(abort, { startImmediately: true });
-      yield* lock.withPermit(
+    const abortAndDiscard = lock
+      .withPermit(
         Effect.gen(function* () {
-          yield* Fiber.join(abortFiber);
           const pi = yield* ScopedRef.get(piRef);
-          if (pi !== undefined) {
-            // An activation may have started before this lock was acquired.
-            if (pi.isStreaming() || pi.isCompacting() || pi.isRetrying()) {
-              yield* pi.abort.pipe(mapToChannelSessionError);
-            }
-            yield* pi.awaitIdle;
-          }
-
-          // @effect-diagnostics-next-line effectSucceedWithVoid:off
-          yield* ScopedRef.set(piRef, Effect.succeed(undefined));
-          yield* clearActiveSession;
+          if (pi !== undefined) yield* abortAll(pi);
+          yield* closeSession;
         }),
+      )
+      .pipe(
+        Effect.annotateLogs(attributes),
+        Effect.withSpan("ChannelSession.abortAndDiscard", { attributes }),
       );
-    }).pipe(
-      Effect.annotateLogs(attributes),
-      Effect.withSpan("ChannelSession.abortAndDiscard", { attributes }),
-    );
 
     const status = Effect.fn("ChannelSession.status", { attributes })(function* (
       channel: GuildTextBasedChannel,
     ) {
-      const current = yield* ScopedRef.get(piRef);
-      if (current !== undefined) return getSessionStatus(current);
+      const pi = yield* getOrOpenSession(channel);
+      return yield* readSessionStatus({
+        harness: pi.harness,
+        conversation: pi.conversation,
+        models: piContext.modelRuntime,
+      }).pipe(mapToChannelSessionError);
+    }, Effect.annotateLogs(attributes));
 
-      // Loading or creating a cold session may take time; another operation may start while we wait.
-      return yield* lock.withPermit(
-        Effect.gen(function* () {
-          const pi = yield* getOrCreatePiSession(channel);
-          return getSessionStatus(pi);
-        }),
-      );
+    const messageCounts = Effect.fn("ChannelSession.messageCounts", { attributes })(function* (
+      channel: GuildTextBasedChannel,
+    ) {
+      const pi = yield* getOrOpenSession(channel);
+      return yield* countMessages(pi.conversation).pipe(mapToChannelSessionError);
     }, Effect.annotateLogs(attributes));
 
     return {
       abort,
       abortAndDiscard,
       activate,
+      resume,
       compact,
       discard,
       status,
+      messageCounts,
     } satisfies ChannelSession;
   }).pipe(
     // Construction-scoped only; the returned operations carry their own attributes.

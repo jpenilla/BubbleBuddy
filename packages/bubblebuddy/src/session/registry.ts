@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, RcMap, type Scope } from "effect";
 import { FetchHttpClient } from "effect/http";
+import { type SqlError } from "effect/sql";
 
 import { AppHome } from "../config/env.ts";
 import { FileConfig } from "../config/file.ts";
@@ -10,6 +11,7 @@ import { ChannelStateRepository } from "./state-repository.ts";
 
 const createChannelSessions = Effect.gen(function* () {
   const config = yield* FileConfig;
+  const repository = yield* ChannelStateRepository.Service;
   let sessions: RcMap.RcMap<string, ChannelSession, ChannelSessionError>;
 
   const retain = (channelId: string) =>
@@ -31,13 +33,15 @@ const createChannelSessions = Effect.gen(function* () {
     Effect.withSpan("ChannelSessions.get", (channelId) => ({ attributes: { channelId } })),
   );
 
-  return Service.of({ get });
+  return Service.of({ get, resumable: repository.listResumable });
 });
 
 export interface Interface {
   readonly get: (
     channelId: string,
   ) => Effect.Effect<ChannelSession, ChannelSessionError, Scope.Scope>;
+  /** Channels whose session may have unfinished work from before a restart. */
+  readonly resumable: Effect.Effect<readonly string[], SqlError.SqlError>;
 }
 
 export class Service extends Context.Service<Service, Interface>()(

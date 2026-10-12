@@ -2,12 +2,12 @@ import {
   MessagePayload,
   Routes,
   type GuildTextBasedChannel,
-  type Message,
   type MessageCreateOptions,
+  type MessageEditOptions,
   type MessageMentionOptions,
   type ReplyOptions,
+  type Snowflake,
 } from "discord.js";
-import { type EmbedBuilder } from "discord.js";
 import { Effect, Schema } from "effect";
 
 import { splitDiscordMessage } from "./response-formatting.ts";
@@ -48,17 +48,43 @@ export const isGuildTextChannel = (channel: unknown): channel is GuildTextBasedC
   typeof channel.isSendable === "function" &&
   channel.isSendable();
 
-export const sendOrEditStatusCard = Effect.fnUntraced(function* (
+// Requests go through the REST client so an interrupted upload is aborted.
+const resolvePayload = Effect.fnUntraced(function* (
   channel: GuildTextBasedChannel,
-  existing: Message<true> | undefined,
-  embed: EmbedBuilder,
+  options: MessageCreateOptions | MessageEditOptions,
 ) {
-  if (existing !== undefined) {
-    yield* tryDiscordJsPromise(() => existing.edit({ embeds: [embed] }));
-    return existing;
-  }
+  const payload = yield* tryDiscordJsOperation(() =>
+    MessagePayload.create(channel, options).resolveBody(),
+  );
+  const { body, files } = yield* tryDiscordJsPromise(() => payload.resolveFiles());
+  return { body, files: files ?? undefined };
+});
 
-  return yield* tryDiscordJsPromise(() => channel.send({ embeds: [embed] }));
+const decodeSentMessage = Schema.decodeUnknownSync(Schema.Struct({ id: Schema.String }));
+
+/** Sends a message and returns its ID. */
+export const sendMessage = Effect.fn("sendMessage")(function* (
+  channel: GuildTextBasedChannel,
+  options: MessageCreateOptions,
+) {
+  const payload = yield* resolvePayload(channel, options);
+  const { id } = yield* tryDiscordJsPromise(async (signal) =>
+    decodeSentMessage(
+      await channel.client.rest.post(Routes.channelMessages(channel.id), { ...payload, signal }),
+    ),
+  );
+  return id;
+});
+
+export const editMessage = Effect.fn("editMessage")(function* (
+  channel: GuildTextBasedChannel,
+  id: Snowflake,
+  options: MessageEditOptions,
+) {
+  const payload = yield* resolvePayload(channel, options);
+  yield* tryDiscordJsPromise((signal) =>
+    channel.client.rest.patch(Routes.channelMessage(channel.id, id), { ...payload, signal }),
+  );
 });
 
 export const sendChunkedMessage = Effect.fn("sendChunkedMessage")(function* (opts: {
@@ -66,12 +92,18 @@ export const sendChunkedMessage = Effect.fn("sendChunkedMessage")(function* (opt
   content: string;
   reply?: ReplyOptions;
   allowedMentions?: MessageMentionOptions;
+  /** Called with each chunk's message ID once it is sent. */
+  onSent?: (id: Snowflake) => Effect.Effect<void>;
 }) {
   const chunks = splitDiscordMessage(opts.content);
+  const send = (options: MessageCreateOptions) =>
+    sendMessage(opts.channel, options).pipe(
+      Effect.tap((id) => (opts.onSent === undefined ? Effect.void : opts.onSent(id))),
+    );
 
   for (const [index, chunk] of chunks.entries()) {
     if (index === 0 && opts.reply !== undefined) {
-      yield* sendMessage(opts.channel, {
+      yield* send({
         content: chunk,
         reply: opts.reply,
         allowedMentions: opts.allowedMentions,
@@ -79,26 +111,9 @@ export const sendChunkedMessage = Effect.fn("sendChunkedMessage")(function* (opt
       continue;
     }
 
-    yield* sendMessage(opts.channel, {
+    yield* send({
       content: chunk,
       allowedMentions: opts.allowedMentions,
     });
   }
-});
-
-export const sendMessage = Effect.fn("sendMessage")(function* (
-  channel: GuildTextBasedChannel,
-  options: MessageCreateOptions,
-) {
-  const payload = yield* tryDiscordJsOperation(() =>
-    MessagePayload.create(channel, options).resolveBody(),
-  );
-  const { body, files } = yield* tryDiscordJsPromise(() => payload.resolveFiles());
-  yield* tryDiscordJsPromise((signal) =>
-    channel.client.rest.post(Routes.channelMessages(channel.id), {
-      body,
-      files: files ?? undefined,
-      signal,
-    }),
-  );
 });
