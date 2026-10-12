@@ -1,8 +1,8 @@
-import {
-  formatSkillsForPrompt,
-  type BuildSystemPromptOptions,
-} from "@earendil-works/pi-coding-agent";
+import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
+import { section, type PromptSection } from "@earendil-works/pi-durable";
 import { DateTime } from "effect";
+
+import { type WorkspaceResources } from "./workspace-resources.ts";
 
 export interface PromptTemplateContext {
   readonly botUsername: string;
@@ -12,11 +12,13 @@ export interface PromptTemplateContext {
   readonly guildName: string;
 }
 
-export interface ComposeSystemPromptInput {
-  readonly botProfile: string;
-  readonly discordContext: string;
-  readonly includeWorkingDirectory: boolean;
-  readonly systemPromptOptions: BuildSystemPromptOptions;
+export interface SystemPromptInput {
+  readonly botProfileTemplate: string;
+  readonly discordContextTemplate: string;
+  readonly promptContext: PromptTemplateContext;
+  readonly enableAgenticWorkspace: boolean;
+  readonly cwd: string;
+  readonly resources: WorkspaceResources;
 }
 
 const PLACEHOLDER_PATTERN =
@@ -29,40 +31,32 @@ const DISCORD_GUIDELINES = [
   "Treat times and timezones as context-dependent: don’t mistake a timestamp’s timezone for a person’s, and clarify local-time assumptions when they matter.",
 ];
 
+const toolGuidelines = (enableFiles: boolean) => [
+  enableFiles
+    ? "discord_send adds Discord-specific delivery options: a reply reference with optional author notification, stickers, and file attachments."
+    : "discord_send adds Discord-specific delivery options: a reply reference with optional author notification and stickers.",
+  enableFiles
+    ? "A discord_send call with stickers or files is a single message, so keep its text within the character limit; text-only replies may be any length and are split automatically."
+    : "A discord_send call with stickers is a single message, so keep its text within the character limit; text-only replies may be any length and are split automatically.",
+  "Use discord_send during a turn as needed. For a send that completes the response, include any closing text in content.",
+  "Use stay_silent when the user's message does not need a response. It must be called in its own tool-call batch.",
+  "When a message replies to or otherwise references a message ID you do not recognize, you may attempt to fetch it",
+];
+
 const normalizeSection = (value: string): string | undefined => {
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
 };
 
-const formatAvailableToolsSection = ({
-  selectedTools,
-  toolSnippets,
-}: BuildSystemPromptOptions): string | undefined => {
-  const lines = (selectedTools ?? [])
-    .map((toolName) => {
-      const snippet = toolSnippets?.[toolName]?.trim();
-      return snippet === undefined || snippet.length === 0
-        ? undefined
-        : `- ${toolName}: ${snippet}`;
-    })
-    .filter((line): line is string => line !== undefined);
+const formatGuidelinesSection = (enableAgenticWorkspace: boolean): string =>
+  `Guidelines:\n${[...DISCORD_GUIDELINES, ...toolGuidelines(enableAgenticWorkspace)]
+    .map((line) => `- ${line}`)
+    .join("\n")}`;
 
-  return lines.length === 0 ? undefined : `Available tools:\n${lines.join("\n")}`;
-};
-
-const formatGuidelinesSection = ({ promptGuidelines }: BuildSystemPromptOptions): string => {
-  const guidelines = [...DISCORD_GUIDELINES, ...(promptGuidelines ?? [])];
-  const normalizedGuidelines = guidelines.map((line) => line.trim()).filter(Boolean);
-  const uniqueGuidelines = [...new Set(normalizedGuidelines)];
-  const lines = uniqueGuidelines.map((line) => `- ${line}`);
-
-  return `Guidelines:\n${lines.join("\n")}`;
-};
-
-const formatContextFilesSection = ({
-  contextFiles,
-}: BuildSystemPromptOptions): string | undefined => {
-  if (contextFiles === undefined || contextFiles.length === 0) {
+const formatContextFilesSection = (
+  contextFiles: WorkspaceResources["contextFiles"],
+): string | undefined => {
+  if (contextFiles.length === 0) {
     return undefined;
   }
 
@@ -74,26 +68,41 @@ const formatContextFilesSection = ({
 export const renderPromptTemplate = (template: string, context: PromptTemplateContext): string =>
   template.replaceAll(PLACEHOLDER_PATTERN, (_, key: keyof PromptTemplateContext) => context[key]);
 
-export const composeSystemPrompt = ({
-  botProfile,
-  discordContext,
-  includeWorkingDirectory,
-  systemPromptOptions,
-}: ComposeSystemPromptInput): string => {
-  const sections = [
-    normalizeSection(botProfile),
-    normalizeSection(discordContext),
-    formatAvailableToolsSection(systemPromptOptions),
-    formatGuidelinesSection(systemPromptOptions),
-    formatContextFilesSection(systemPromptOptions),
-    systemPromptOptions.skills?.length
-      ? normalizeSection(formatSkillsForPrompt(systemPromptOptions.skills))
-      : undefined,
-    `Current date: ${DateTime.formatIsoDateUtc(DateTime.nowUnsafe())}`,
-    includeWorkingDirectory
-      ? `Current working directory: ${systemPromptOptions.cwd.replaceAll("\\", "/")}`
-      : undefined,
-  ].filter((section): section is string => section !== undefined);
-
-  return sections.join("\n\n");
-};
+/** The system prompt as pi-durable sections, rendered in order before each request; `undefined` omits a section. */
+export const createPromptSections = (input: SystemPromptInput): PromptSection[] => [
+  section(
+    "profile",
+    () => normalizeSection(renderPromptTemplate(input.botProfileTemplate, input.promptContext)),
+    { tag: false },
+  ),
+  section(
+    "discord",
+    () => normalizeSection(renderPromptTemplate(input.discordContextTemplate, input.promptContext)),
+    { tag: false },
+  ),
+  section("guidelines", () => formatGuidelinesSection(input.enableAgenticWorkspace), {
+    tag: false,
+  }),
+  section("project_context", () => formatContextFilesSection(input.resources.contextFiles), {
+    tag: false,
+  }),
+  section(
+    "skills",
+    () =>
+      input.resources.skills.length > 0
+        ? normalizeSection(formatSkillsForPrompt([...input.resources.skills]))
+        : undefined,
+    { tag: false },
+  ),
+  section("date", () => `Current date: ${DateTime.formatIsoDateUtc(DateTime.nowUnsafe())}`, {
+    tag: false,
+  }),
+  section(
+    "cwd",
+    () =>
+      input.enableAgenticWorkspace
+        ? `Current working directory: ${input.cwd.replaceAll("\\", "/")}`
+        : undefined,
+    { tag: false },
+  ),
+];

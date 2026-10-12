@@ -1,20 +1,29 @@
 import { Buffer } from "node:buffer";
 
+import { type ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { type Api, type Model } from "@earendil-works/pi-ai";
 import {
   createBashToolDefinition,
   createEditToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
+  type AgentToolResult,
   type BashOperations,
   type EditOperations,
-  type ExtensionFactory,
+  type ExtensionToolContext,
   type ReadOperations,
+  type ToolDefinition,
   type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
 import {
   detectSupportedImageMimeType,
   IMAGE_TYPE_SNIFF_BYTES,
 } from "@earendil-works/pi-coding-agent/utils/mime";
+import {
+  type ToolExecutionApi,
+  type ToolExecutionResult,
+  type ToolRegistration,
+} from "@earendil-works/pi-durable";
 import { Cause, Effect, Exit, FiberSet, Option, Schema, Stream } from "effect";
 import { GuestPath, IncusContainer } from "incus-api";
 
@@ -41,7 +50,48 @@ const filterSessionEnv = (
   return filtered;
 };
 
-export const createIncusExtension = Effect.gen(function* () {
+export interface IncusToolContext {
+  readonly model: Model<Api>;
+  readonly thinkingLevel: ThinkingLevel;
+  readonly sessionId: string;
+}
+
+// Like pi-coding-agent's own tool registry, accept definitions of any parameters, details, and render state.
+// oxlint-disable-next-line typescript/no-explicit-any
+type AnyToolDefinition = ToolDefinition<any, any, any>;
+
+const toExecutionResult = (result: AgentToolResult<unknown>): ToolExecutionResult => ({
+  content: result.content,
+  details: result.details === undefined ? undefined : JSON.parse(JSON.stringify(result.details)),
+  isError: result.isError,
+});
+
+/**
+ * Run one of pi-coding-agent's coding tools as a pi-durable tool until pi-durable's own tools replace them. The tool
+ * context carries only what those tools read: the working directory, the model (image handling), and the session
+ * identity (`PI_*` bash environment). Interrupted calls are never replayed.
+ */
+const toDurableTool = (
+  definition: AnyToolDefinition,
+  ctx: ExtensionToolContext,
+  forCall?: (api: ToolExecutionApi) => AnyToolDefinition,
+): ToolRegistration => ({
+  name: definition.name,
+  description: definition.description,
+  parameters: definition.parameters,
+  constrainedSampling: definition.constrainedSampling,
+  replay: "unsafe",
+  executionMode: definition.executionMode,
+  prepareArguments: definition.prepareArguments,
+  execute: (args, api, context) =>
+    (forCall?.(api) ?? definition)
+      .execute(api.callId, args, context.abortSignal, undefined, ctx)
+      .then(toExecutionResult),
+});
+
+export const createIncusTools = Effect.fn("createIncusTools")(function* (
+  toolContext: IncusToolContext,
+) {
   const sessionContainer = yield* SessionContainer.Service;
   const guestPath = yield* GuestPath.Service;
   const runPromise = yield* FiberSet.makeRuntimePromise();
@@ -187,12 +237,34 @@ export const createIncusExtension = Effect.gen(function* () {
     },
   };
 
-  return ((pi) => {
-    pi.registerTool(createBashToolDefinition(sessionContainer.cwd, { operations: bashOperations }));
-    pi.registerTool(createReadToolDefinition(sessionContainer.cwd, { operations: readOperations }));
-    pi.registerTool(
-      createWriteToolDefinition(sessionContainer.cwd, { operations: writeOperations }),
-    );
-    pi.registerTool(createEditToolDefinition(sessionContainer.cwd, { operations: editOperations }));
-  }) satisfies ExtensionFactory;
+  const cwd = sessionContainer.cwd;
+  const ctx = {
+    cwd,
+    model: toolContext.model,
+    thinkingLevel: toolContext.thinkingLevel,
+    sessionManager: {
+      getSessionId: () => toolContext.sessionId,
+      getSessionFile: () => undefined,
+    },
+  } as unknown as ExtensionToolContext;
+  const bashTool = (operations: BashOperations) => createBashToolDefinition(cwd, { operations });
+
+  return [
+    toDurableTool(bashTool(bashOperations), ctx, (api) =>
+      // Commit running output as it arrives, so an interrupted call reports what it printed.
+      bashTool({
+        exec: (command, execCwd, execOptions) =>
+          bashOperations.exec(command, execCwd, {
+            ...execOptions,
+            onData: (data) => {
+              execOptions.onData(data);
+              api.output(data);
+            },
+          }),
+      }),
+    ),
+    toDurableTool(createReadToolDefinition(cwd, { operations: readOperations }), ctx),
+    toDurableTool(createWriteToolDefinition(cwd, { operations: writeOperations }), ctx),
+    toDurableTool(createEditToolDefinition(cwd, { operations: editOperations }), ctx),
+  ];
 });

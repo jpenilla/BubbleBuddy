@@ -2,16 +2,15 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer, Path } from "effect";
 import { GuestPath } from "incus-api";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-import { createChannelWorkspaceResourceLoader } from "../src/pi/workspace-resource-loader.ts";
+import { loadWorkspaceResources } from "../src/pi/workspace-resources.ts";
 import { createMountedWorkspace } from "../src/shared/workspace.ts";
 
-describe("channel workspace resource loader", () => {
+describe("channel workspace resources", () => {
   let tempDir = "";
   let agentDir = "";
   let workspaceDir = "";
@@ -42,23 +41,14 @@ describe("channel workspace resource loader", () => {
       }).pipe(Effect.provide(Layer.merge(NodeServices.layer, GuestPath.layer))),
     );
 
-  const createLoader = (enableAgenticWorkspace: boolean) =>
-    createChannelWorkspaceResourceLoader({
-      agentDir,
-      enableAgenticWorkspace,
-      extensionFactories: [],
-      settingsManager: SettingsManager.create(workspaceDir, agentDir),
-      workspace: workspace(),
-    });
+  const load = (enableAgenticWorkspace: boolean) =>
+    loadWorkspaceResources({ agentDir, enableAgenticWorkspace, workspace: workspace() });
 
   test("loads only the channel workspace AGENTS.md", async () => {
     await writeFile(join(tempDir, "AGENTS.md"), "outer instructions\n", "utf8");
     await writeFile(join(workspaceDir, "AGENTS.md"), "inner\r\nworkspace\r\n", "utf8");
 
-    const loader = createLoader(true);
-    await loader.reload();
-
-    expect(loader.getAgentsFiles().agentsFiles).toEqual([
+    expect(load(true).contextFiles).toEqual([
       {
         content: "inner\nworkspace\n",
         path: "/scope-root/AGENTS.md",
@@ -78,19 +68,12 @@ describe("channel workspace resource loader", () => {
       ["---", "description: Use the ancestor skill.", "---", "# Ancestor Skill"].join("\n"),
     );
 
-    const loader = createLoader(true);
-    await loader.reload();
-
-    expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["workspace-skill"]);
+    expect(load(true).skills.map((skill) => skill.name)).toEqual(["workspace-skill"]);
   });
 
   test("omits workspace context when agentic workspace is off", async () => {
     await writeFile(join(workspaceDir, "AGENTS.md"), "workspace instructions\n", "utf8");
 
-    const loader = createLoader(false);
-    await loader.reload();
-
-    expect(loader.getAgentsFiles().agentsFiles).toEqual([]);
-    expect(loader.getSkills().skills).toEqual([]);
+    expect(load(false)).toEqual({ contextFiles: [], skills: [] });
   });
 });

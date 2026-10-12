@@ -8,15 +8,12 @@ import { tryDiscordJsPromise } from "../utils.ts";
 
 export const fetchMessageTool = defineEffectTool({
   name: "discord_fetch_message",
-  label: "Fetch Message",
   description: "Fetch a message in the current Discord channel.",
-  promptGuidelines: [
-    "When a message replies to or otherwise references a message ID you do not recognize, you may attempt to fetch it",
-  ],
   parameters: Type.Object({
     messageId: Type.String({ description: "Message ID" }),
   }),
-  execute: (_toolCallId, params) =>
+  replay: "safe",
+  execute: (params) =>
     Effect.gen(function* () {
       const context = yield* DiscordToolContext;
       const message = yield* tryDiscordJsPromise(() =>
@@ -24,7 +21,6 @@ export const fetchMessageTool = defineEffectTool({
       );
       return {
         content: [{ type: "text", text: formatMessageForPrompt(message) }],
-        details: undefined,
       };
     }),
 });

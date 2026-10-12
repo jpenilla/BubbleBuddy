@@ -1,16 +1,18 @@
+import { type CompactionReason } from "@earendil-works/pi-durable";
 import { EmbedBuilder } from "discord.js";
 
 import { DISCORD_EMBED_DESCRIPTION_LIMIT } from "../shared/constants.ts";
 import { truncate } from "../shared/text.ts";
 import { EMBED_COLOR } from "./utils.ts";
 
-type CompactionReason = "manual" | "threshold" | "overflow";
-
-export type CompactionStatus =
-  | { readonly phase: "start"; readonly reason: CompactionReason }
-  | { readonly phase: "success"; readonly reason: CompactionReason; readonly tokensBefore?: number }
-  | { readonly phase: "error"; readonly reason: CompactionReason; readonly errorMessage?: string }
-  | { readonly phase: "aborted"; readonly reason: CompactionReason };
+export type CompactionStatus = {
+  readonly reason: CompactionReason;
+  /** Runs while the conversation keeps working, instead of holding it up. */
+  readonly background: boolean;
+} & (
+  | { readonly phase: "start" | "success" | "aborted" }
+  | { readonly phase: "error"; readonly errorMessage?: string }
+);
 
 const phaseColor = (phase: CompactionStatus["phase"]): number => {
   switch (phase) {
@@ -29,7 +31,25 @@ const formatErrorDetail = (errorMessage: string | undefined): string | undefined
   return detail && detail.length > 0 ? detail : undefined;
 };
 
+const formatBackgroundDescription = (status: CompactionStatus): string => {
+  switch (status.phase) {
+    case "start":
+      return status.reason === "manual"
+        ? "⏳ 🗜️ **Compacting context in the background**"
+        : "⏳ 🗜️ **Auto-compacting context in the background**";
+    case "success":
+      return "✅ 🗜️ **Background compaction completed**";
+    case "error": {
+      const detail = formatErrorDetail(status.errorMessage);
+      return `❌ 🗜️ **Background compaction failed**${detail === undefined ? "" : `\n${detail}`}`;
+    }
+    case "aborted":
+      return "❌ 🗜️ **Background compaction cancelled**";
+  }
+};
+
 const formatDescription = (status: CompactionStatus): string => {
+  if (status.background) return formatBackgroundDescription(status);
   switch (status.phase) {
     case "start":
       if (status.reason === "manual") {
@@ -39,9 +59,7 @@ const formatDescription = (status: CompactionStatus): string => {
         ? "⏳ 🗜️ **Context overflow detected; auto-compacting**"
         : "⏳ 🗜️ **Auto-compacting context**";
     case "success":
-      return status.tokensBefore === undefined
-        ? "✅ 🗜️ **Compaction completed**"
-        : `✅ 🗜️ **Compaction completed**\nCompacted from ${status.tokensBefore.toLocaleString()} tokens.`;
+      return "✅ 🗜️ **Compaction completed**";
     case "error": {
       const detail = formatErrorDetail(status.errorMessage);
       return `❌ 🗜️ **Compaction failed**${detail === undefined ? "" : `\n${detail}`}`;

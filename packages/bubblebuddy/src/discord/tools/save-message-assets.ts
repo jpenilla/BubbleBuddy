@@ -55,7 +55,6 @@ const saveMessageAssets = Effect.fn("saveMessageAssets")(function* (
 
 export const saveMessageAssetsTool = defineEffectTool({
   name: "discord_save_message_assets",
-  label: "Save Message Assets",
   description:
     "Save message attachments, embed media, and component media into the container workspace using the asset keys shown in the message. Asset keys and media metadata do not show the media itself; save an asset and open the saved file in the workspace to inspect it.",
   parameters: Type.Object({
@@ -65,13 +64,14 @@ export const saveMessageAssetsTool = defineEffectTool({
       uniqueItems: true,
     }),
   }),
-  execute: (_toolCallId, params) =>
+  replay: "safe",
+  execute: (params) =>
     Effect.gen(function* () {
       const context = yield* DiscordToolContext;
       const message = yield* tryDiscordJsPromise(() =>
         context.channel.messages.fetch(params.messageId),
       );
       const text = yield* saveMessageAssets(message, params);
-      return { content: [{ type: "text", text }], details: undefined };
+      return { content: [{ type: "text", text }] };
     }),
 });

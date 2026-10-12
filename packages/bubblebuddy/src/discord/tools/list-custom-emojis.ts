@@ -8,9 +8,9 @@ import { DiscordToolContext } from "../tool-context.ts";
 
 export const listCustomEmojisTool = defineEffectTool({
   name: "discord_list_custom_emojis",
-  label: "List Custom Emojis",
   description: "List custom emojis usable here.",
   parameters: Type.Object({}),
+  replay: "safe",
   execute: () =>
     Effect.gen(function* () {
       const context = yield* DiscordToolContext;
@@ -18,7 +18,6 @@ export const listCustomEmojisTool = defineEffectTool({
       if (emojis.length === 0)
         return {
           content: [{ type: "text", text: "No custom emojis are available here." }],
-          details: undefined,
         };
       return {
         content: [
@@ -30,7 +29,6 @@ export const listCustomEmojisTool = defineEffectTool({
             ].join("\n"),
           },
         ],
-        details: undefined,
       };
     }),
 });

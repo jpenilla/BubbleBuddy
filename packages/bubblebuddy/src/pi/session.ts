@@ -1,32 +1,32 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
-  createAgentSession,
-  SessionManager,
-  SettingsManager,
-  type ExtensionFactory,
-  type SessionStats,
-  type ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
+  type Conversation,
+  createRegistry,
+  defineExtension,
+  Harness,
+  type Registry,
+} from "@earendil-works/pi-durable";
+import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { type GuildTextBasedChannel } from "discord.js";
 import {
   Cause,
   Context,
-  type Crypto,
+  Crypto,
   Effect,
   Exit,
-  FiberHandle,
+  FiberSet,
   FileSystem,
   Layer,
   Path,
   Schema,
   Scope,
-  Semaphore,
 } from "effect";
 import { type HttpClient } from "effect/http";
 import { GuestPath, IncusClient } from "incus-api";
 
 import { AppHome } from "../config/env.ts";
 import { FileConfig, type McpServerConfigEntry } from "../config/file.ts";
-import { type DiscordOutputPump } from "../discord/output-pump.ts";
+import { type OutputPump } from "../discord/output-pump.ts";
 import { DiscordToolContext } from "../discord/tool-context.ts";
 import { makeDiscordTools } from "../discord/tools.ts";
 import { tryDiscordJsPromise } from "../discord/utils.ts";
@@ -35,66 +35,49 @@ import { McpPiTools } from "../mcp/pi-tools.ts";
 import { LoadedResources } from "../resources.ts";
 import { type Schedules } from "../scheduling/schedules.ts";
 import { SessionContainer } from "../session/session-container.ts";
-import { SHUTDOWN_ABORT_TIMEOUT, WORKSPACE_CWD } from "../shared/constants.ts";
+import { WORKSPACE_CWD } from "../shared/constants.ts";
 import { channelHostSessionsDir, createChannelMountedWorkspace } from "../shared/workspace.ts";
 import { PiContext } from "./context.ts";
-import { createIncusExtension } from "./incus-extension.ts";
-import { createPromptComposerExtension } from "./prompt-extension.ts";
-import { subscribe, type SessionEvent } from "./session-events.ts";
-import { createChannelWorkspaceResourceLoader } from "./workspace-resource-loader.ts";
+import { tryDurablePromise } from "./durable.ts";
+import { createIncusTools } from "./incus-tools.ts";
+import { type SessionEvent, watchSessionEvents } from "./session-events.ts";
+import {
+  importLegacySession,
+  LEGACY_SESSION_FILE_EXTENSION,
+  removeUnfinishedImport,
+} from "./session-import.ts";
+import { createPromptSections } from "./system-prompt.ts";
+import { loadWorkspaceResources } from "./workspace-resources.ts";
 
 const IncusClientLayer = IncusClient.layer({ endpoint: { type: "unix" } });
 
-export interface PiSessionModelInfo {
-  readonly id: string;
-  readonly name: string;
-  readonly provider: string;
-  readonly thinkingLevel: string;
-}
+const SESSION_FILE_EXTENSION = ".sqlite";
 
-export interface PiSessionHandle {
-  readonly isCompacting: () => boolean;
-  readonly isStreaming: () => boolean;
-  readonly isRetrying: () => boolean;
-  readonly getActiveSessionName: () => string | undefined;
-  readonly getModelInfo: () => PiSessionModelInfo | undefined;
-  readonly getSessionStats: () => SessionStats;
-  readonly abort: Effect.Effect<void, PiSessionOperationError>;
-  readonly awaitIdle: Effect.Effect<void>;
-  readonly activate: (
-    input: ActivatePiSessionInput,
-  ) => Effect.Effect<void, PiSessionOperationError>;
-  readonly requestCompaction: (
-    customInstructions?: string,
-  ) => Effect.Effect<void, PiSessionOperationError>;
-}
-
-export interface ActivatePiSessionInput {
-  readonly prompt: string;
-  readonly retainChannelSession: Effect.Effect<void, never, Scope.Scope>;
+export interface PiSession {
+  readonly sessionName: string;
+  readonly harness: Harness;
+  readonly conversation: Conversation;
+  /**
+   * Keep the channel session open until the conversation's work, background work included, is done; use after each
+   * request for progress.
+   */
+  readonly retainUntilIdle: Effect.Effect<void>;
 }
 
 export interface CreatePiSessionInput {
   readonly channel: GuildTextBasedChannel;
   readonly activeSession?: string;
-  readonly output: DiscordOutputPump;
+  readonly pump: OutputPump.Interface;
+  readonly handleSessionEvent: (event: SessionEvent) => Effect.Effect<void>;
+  /** Keeps the channel session open. */
+  readonly retainChannelSession: Effect.Effect<void, never, Scope.Scope>;
 }
-
-export type { SessionStats };
 
 export class PiSessionInitError extends Schema.TaggedError<PiSessionInitError>()(
   "PiSessionInitError",
   {
     message: Schema.String,
     cause: Schema.optional(Schema.Defect()),
-  },
-) {}
-
-export class PiSessionOperationError extends Schema.TaggedError<PiSessionOperationError>()(
-  "PiSessionOperationError",
-  {
-    operation: Schema.Literals(["abort", "activate", "compact"]),
-    cause: Schema.Defect(),
   },
 ) {}
 
@@ -110,9 +93,115 @@ export type PiSessionServices =
   | PiContext
   | AppHome;
 
+const initError = (message: string) =>
+  Effect.mapError((cause: unknown) => new PiSessionInitError({ message, cause }));
+
+interface SessionFile {
+  readonly name: string;
+  readonly path: string;
+  /** pi-coding-agent session file to import into `path`. */
+  readonly legacy?: string;
+}
+
+/** The file of the channel's session: a new one, the active one, or a new one to import the active legacy session into. */
+const resolveSessionFile = Effect.fnUntraced(function* (
+  sessionsDir: string,
+  activeSession: string | undefined,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const crypto = yield* Crypto.Crypto;
+
+  if (activeSession === undefined) {
+    const name = `${yield* crypto.randomUUIDv7.pipe(initError("Failed to name session"))}${SESSION_FILE_EXTENSION}`;
+    return { name, path: path.join(sessionsDir, name) } satisfies SessionFile;
+  }
+  if (activeSession.endsWith(LEGACY_SESSION_FILE_EXTENSION)) {
+    // A pi-coding-agent session is imported into a new file of the same name; the old file stays as a backup.
+    const name = `${path.basename(activeSession, LEGACY_SESSION_FILE_EXTENSION)}${SESSION_FILE_EXTENSION}`;
+    const file = path.join(sessionsDir, name);
+    const legacy = path.join(sessionsDir, activeSession);
+    yield* removeUnfinishedImport(file).pipe(
+      initError("Failed to remove an unfinished session import"),
+    );
+    // pi-coding-agent writes a session file only once it has an answer, so a missing one has no history.
+    if (!(yield* fs.exists(legacy).pipe(initError("Failed to check session file")))) {
+      yield* Effect.logInfo("pi-coding-agent session was never written; starting it empty");
+      return { name, path: file } satisfies SessionFile;
+    }
+    return { name, path: file, legacy } satisfies SessionFile;
+  }
+  const file = path.join(sessionsDir, activeSession);
+  // Opening storage creates a missing file, which would silently start the session over.
+  if (!(yield* fs.exists(file).pipe(initError("Failed to check session file")))) {
+    return yield* new PiSessionInitError({ message: `Session file ${file} is missing` });
+  }
+  return { name: activeSession, path: file } satisfies SessionFile;
+});
+
+/**
+ * Opens the session's harness, importing a legacy session first. Closing keeps unfinished work in storage; it continues
+ * when the channel is next opened.
+ */
+const openHarness = Effect.fnUntraced(function* (input: {
+  readonly channelId: string;
+  readonly sessionFile: SessionFile;
+  readonly registry: Registry;
+}) {
+  const piContext = yield* PiContext;
+  const runFork = Effect.runForkWith(yield* Effect.context());
+
+  // Closing the harness also closes its storage, which tolerates closing twice.
+  const storage = yield* Effect.acquireRelease(
+    tryDurablePromise(() => openNodeSqliteStorage(input.sessionFile.path)),
+    (storage) =>
+      tryDurablePromise((context) => storage.close(context)).pipe(
+        Effect.ignore({ log: "Warn", message: "Failed to close session storage" }),
+      ),
+  ).pipe(initError("Failed to open session storage"));
+  const harness = yield* Effect.acquireRelease(
+    tryDurablePromise((context) =>
+      Harness.open(
+        storage,
+        {
+          models: piContext.modelRuntime,
+          registry: input.registry,
+          settings: { steeringMode: "all", followUpMode: "all" },
+          onReport: (error) =>
+            runFork(
+              Effect.logWarning("pi-durable extension failure", error).pipe(
+                Effect.annotateLogs({ channelId: input.channelId }),
+              ),
+            ),
+        },
+        context,
+      ),
+    ),
+    (harness) =>
+      tryDurablePromise(() => harness.close(BACKGROUND_CONTEXT)).pipe(
+        Effect.ignore({ log: "Warn", message: "Failed to close pi-durable harness" }),
+      ),
+  ).pipe(initError("Failed to open session storage"));
+
+  const legacySession = input.sessionFile.legacy;
+  if (legacySession !== undefined) {
+    yield* importLegacySession(harness, legacySession).pipe(
+      initError("Failed to import pi-coding-agent session"),
+    );
+    yield* Effect.logInfo("Imported pi-coding-agent session").pipe(
+      Effect.annotateLogs({
+        channelId: input.channelId,
+        legacySession,
+        sessionFile: input.sessionFile.path,
+      }),
+    );
+  }
+  return harness;
+});
+
 export const createPiSession = (
   input: CreatePiSessionInput,
-): Effect.Effect<PiSessionHandle, PiSessionInitError, PiSessionServices | Scope.Scope> =>
+): Effect.Effect<PiSession, PiSessionInitError, PiSessionServices | Scope.Scope> =>
   Effect.gen(function* () {
     const config = yield* FileConfig;
     const resources = yield* LoadedResources;
@@ -121,7 +210,6 @@ export const createPiSession = (
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const guestPath = yield* GuestPath.Service;
-    const runFork = Effect.runForkWith(yield* Effect.context());
     const sessionsDir = channelHostSessionsDir(path, appHome, input.channel.id);
     const workspace = createChannelMountedWorkspace(
       path,
@@ -133,47 +221,13 @@ export const createPiSession = (
 
     yield* fs
       .makeDirectory(sessionsDir, { recursive: true })
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new PiSessionInitError({ message: "Failed to create session directory", cause }),
-        ),
-      );
+      .pipe(initError("Failed to create session directory"));
     yield* fs
       .makeDirectory(workspace.root.host, { recursive: true })
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new PiSessionInitError({ message: "Failed to create workspace directory", cause }),
-        ),
-      );
+      .pipe(initError("Failed to create workspace directory"));
 
-    const activeSession = input.activeSession;
-    const sessionManager =
-      activeSession === undefined
-        ? SessionManager.create(WORKSPACE_CWD, sessionsDir)
-        : yield* Effect.try({
-            try: () =>
-              SessionManager.open(
-                path.join(sessionsDir, activeSession),
-                sessionsDir,
-                WORKSPACE_CWD,
-              ),
-            catch: (cause) =>
-              new PiSessionInitError({ message: "Failed to resume persisted session", cause }),
-          }).pipe(
-            Effect.tapError((error) =>
-              Effect.logWarning(
-                "Persisted session resume failed; starting a new session",
-                error,
-              ).pipe(Effect.annotateLogs({ channelId: input.channel.id })),
-            ),
-            Effect.orElseSucceed(() => SessionManager.create(WORKSPACE_CWD, sessionsDir)),
-          );
-    const settingsManager = SettingsManager.inMemory({
-      steeringMode: "all",
-      followUpMode: "all",
-    });
+    const sessionFile = yield* resolveSessionFile(sessionsDir, input.activeSession);
+
     const sessionContainer = yield* Effect.gen(function* () {
       const context = yield* Layer.build(
         SessionContainer.layer({
@@ -181,12 +235,7 @@ export const createPiSession = (
           cwd: workspace.root.container,
           workspaceDir: workspace.root.host,
         }).pipe(Layer.provide(IncusClientLayer), Layer.provide(GuestPath.layer)),
-      ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new PiSessionInitError({ message: "Invalid container working directory", cause }),
-        ),
-      );
+      ).pipe(initError("Invalid container working directory"));
 
       return Context.get(context, SessionContainer.Service);
     });
@@ -196,53 +245,26 @@ export const createPiSession = (
         Effect.orElseSucceed(() => null),
       );
     }
-    const extensionFactories: ExtensionFactory[] = [
-      McpPiTools.createMcpToolResultExtension(),
-      createPromptComposerExtension({
-        botProfile: resources.botProfile,
-        discordContextTemplate: resources.discordContextTemplate,
-        enableAgenticWorkspace: config.enableAgenticWorkspace,
-        promptContext: {
-          botUsername: input.channel.client.user.username,
-          botDisplayName: botMember?.displayName ?? input.channel.client.user.displayName,
-          channelName: input.channel.name,
-          channelStatusText:
-            "topic" in input.channel ? input.channel.topic?.trim() || "none" : "none",
-          guildName: input.channel.guild.name,
-        },
-      }),
-    ];
 
-    if (config.enableAgenticWorkspace) {
-      extensionFactories.push(
-        yield* createIncusExtension.pipe(
-          Effect.provideService(SessionContainer.Service, sessionContainer),
-        ),
-      );
-    }
-
-    const resourceLoader = createChannelWorkspaceResourceLoader({
-      agentDir: piContext.agentDir,
-      enableAgenticWorkspace: config.enableAgenticWorkspace,
-      extensionFactories,
-      settingsManager,
-      workspace,
-    });
-    yield* Effect.tryPromise({
-      try: () => resourceLoader.reload(),
+    const workspaceResources = yield* Effect.try({
+      try: () =>
+        loadWorkspaceResources({
+          agentDir: piContext.agentDir,
+          enableAgenticWorkspace: config.enableAgenticWorkspace,
+          workspace,
+        }),
       catch: (error) =>
         new PiSessionInitError({
-          message: "Failed to reload channel workspace resources",
+          message: "Failed to load channel workspace resources",
           cause: error,
         }),
     });
 
-    const output = input.output;
     const toolContextLayer = Layer.succeed(
       DiscordToolContext,
       DiscordToolContext.of({
         channel: input.channel,
-        executeOrdered: output.executeOrdered,
+        executeOrdered: input.pump.executeOrdered,
       }),
     );
 
@@ -259,193 +281,110 @@ export const createPiSession = (
       { concurrency: 3 },
     ).pipe(Effect.map((tools) => tools.flat()));
 
-    const allTools = yield* ensureUniqueToolNames([...discordTools, ...mcpTools]);
+    const incusTools = config.enableAgenticWorkspace
+      ? yield* createIncusTools({
+          model: piContext.model,
+          thinkingLevel: config.thinkingLevel,
+          sessionId: path.basename(sessionFile.name, SESSION_FILE_EXTENSION),
+        }).pipe(Effect.provideService(SessionContainer.Service, sessionContainer))
+      : [];
 
-    const { session } = yield* Effect.acquireRelease(
-      Effect.tryPromise({
-        try: () =>
-          createAgentSession({
-            agentDir: piContext.agentDir,
-            customTools: allTools,
-            cwd: workspace.root.container,
-            model: piContext.model,
-            modelRuntime: piContext.modelRuntime,
-            resourceLoader,
-            sessionManager,
-            settingsManager,
-            thinkingLevel: config.thinkingLevel,
-          }),
-        catch: (error) =>
-          new PiSessionInitError({ message: "Failed to create agent session", cause: error }),
+    const registry = createRegistry();
+    const extension = defineExtension({
+      name: "bubblebuddy",
+      tools: [...incusTools, ...discordTools, ...mcpTools],
+      sections: createPromptSections({
+        botProfileTemplate: resources.botProfile,
+        discordContextTemplate: resources.discordContextTemplate,
+        enableAgenticWorkspace: config.enableAgenticWorkspace,
+        promptContext: {
+          botUsername: input.channel.client.user.username,
+          botDisplayName: botMember?.displayName ?? input.channel.client.user.displayName,
+          channelName: input.channel.name,
+          channelStatusText:
+            "topic" in input.channel ? input.channel.topic?.trim() || "none" : "none",
+          guildName: input.channel.guild.name,
+        },
+        cwd: workspace.root.container,
+        resources: workspaceResources,
       }),
-      ({ session }) => Effect.sync(() => session.dispose()),
+    });
+    yield* Effect.try({
+      try: () => registry.install(extension),
+      catch: (error) =>
+        new PiSessionInitError({ message: "Failed to install extension", cause: error }),
+    });
+
+    const harness = yield* openHarness({ channelId: input.channel.id, sessionFile, registry });
+
+    const root = yield* tryDurablePromise((context) => harness.root(context)).pipe(
+      initError("Failed to open conversation"),
+    );
+    yield* tryDurablePromise((context) =>
+      root.configure(
+        {
+          model: { provider: piContext.model.provider, modelId: piContext.model.id },
+          thinkingLevel: config.thinkingLevel,
+        },
+        context,
+      ),
+    ).pipe(initError("Failed to configure conversation"));
+
+    yield* watchSessionEvents(harness, root.id, input.handleSessionEvent).pipe(
+      initError("Failed to watch session events"),
     );
 
-    if (!config.enableAgenticWorkspace) {
-      session.setActiveToolsByName(allTools.map((tool) => tool.name));
-    }
+    // A run starts its background compaction in the same commit as other run work, so once the conversation is idle,
+    // every background task the run started is live.
+    const waitForBackgroundWork = tryDurablePromise((context) => harness.inspect(context)).pipe(
+      Effect.flatMap((inspection) =>
+        Effect.forEach(
+          inspection.tasks.filter(
+            ({ record }) => record.conversationId === root.id && record.background,
+          ),
+          ({ record }) => tryDurablePromise((context) => harness.waitForTask(record.id, context)),
+          { concurrency: "unbounded", discard: true },
+        ),
+      ),
+    );
 
-    const operationLock = yield* Semaphore.make(1);
-    const activationFiber = yield* FiberHandle.make<void, never>();
-    let pendingQueue: string[] = [];
-
-    const isActivating = () => FiberHandle.getUnsafe(activationFiber)._tag === "Some";
-
-    const abort = Effect.gen(function* () {
-      pendingQueue = [];
-      yield* Effect.try({
-        try: () => session.abortCompaction(),
-        catch: (cause) => new PiSessionOperationError({ operation: "abort", cause }),
-      });
-      yield* Effect.tryPromise({
-        try: () => session.abort(),
-        catch: (cause) => new PiSessionOperationError({ operation: "abort", cause }),
-      });
-    });
-
-    const prepareForClose = () =>
-      abort.pipe(
-        Effect.timeout(SHUTDOWN_ABORT_TIMEOUT),
-        Effect.onError((cause) =>
-          Effect.logWarning("Session abort for shutdown failed", cause).pipe(
-            Effect.annotateLogs({ channelId: input.channel.id }),
+    const retention = yield* FiberSet.make<void, never>();
+    const retainUntilIdle = Effect.gen(function* () {
+      // The work outlives the request for it, so it gets its own trace and a link back to the span that triggered it.
+      // Each request waits on its own: one started earlier may be ending as this request's work is admitted.
+      const triggerSpan = yield* Effect.currentSpan.pipe(Effect.orDie);
+      yield* FiberSet.run(
+        retention,
+        Effect.scoped(
+          input.retainChannelSession.pipe(
+            Effect.andThen(tryDurablePromise((context) => root.waitForIdle(context))),
+            Effect.andThen(waitForBackgroundWork),
+            Effect.onError((cause) =>
+              Cause.hasInterruptsOnly(cause)
+                ? Effect.logDebug("Waiting for idle interrupted", cause)
+                : Effect.logError("Waiting for idle failed", cause),
+            ),
+            Effect.withSpan("PiSession.retainUntilIdle", {
+              root: true,
+              attributes: {
+                channelId: input.channel.id,
+                modelId: piContext.model.id,
+                modelProvider: piContext.model.provider,
+              },
+            }),
+            Effect.linkSpans(triggerSpan, { relationship: "triggered_by" }),
+            Effect.ignoreCause(),
           ),
         ),
-        Effect.withSpan("PiSession.prepareForClose", {
-          root: true,
-          attributes: { channelId: input.channel.id },
-        }),
-        Effect.ignoreCause(),
       );
-
-    const handleCompactionEnd = (event: SessionEvent<"compaction_end">): void => {
-      const messages = pendingQueue;
-      pendingQueue = [];
-      if (messages.length === 0) return;
-
-      for (const text of messages) {
-        void session.steer(text).catch((cause: unknown) => {
-          runFork(
-            Effect.logWarning("Failed to steer agent after compaction", cause).pipe(
-              Effect.annotateLogs({ channelId: input.channel.id }),
-            ),
-          );
-        });
-      }
-
-      if (event.result === undefined && !event.willRetry) {
-        void session.agent.continue().catch((cause: unknown) => {
-          runFork(
-            Effect.logWarning("Failed to continue agent after compaction", cause).pipe(
-              Effect.annotateLogs({ channelId: input.channel.id }),
-            ),
-          );
-        });
-      }
-    };
-
-    const activate = (activation: ActivatePiSessionInput) =>
-      operationLock
-        .withPermit(
-          Effect.gen(function* () {
-            if (session.isStreaming || isActivating()) {
-              yield* Effect.tryPromise({
-                try: () => session.steer(activation.prompt),
-                catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
-              });
-              return;
-            }
-
-            if (session.isCompacting) {
-              pendingQueue.push(activation.prompt);
-              return;
-            }
-
-            if (session.isRetrying) {
-              yield* Effect.tryPromise({
-                try: () => session.steer(activation.prompt),
-                catch: (cause) => new PiSessionOperationError({ operation: "activate", cause }),
-              });
-              return;
-            }
-
-            // The prompt outlives this activation, so it gets its own trace and a link
-            // back to the span that triggered it.
-            const triggerSpan = yield* Effect.currentSpan.pipe(Effect.orDie);
-
-            yield* FiberHandle.run(
-              activationFiber,
-              Effect.scoped(
-                activation.retainChannelSession.pipe(
-                  Effect.andThen(
-                    Effect.tryPromise({
-                      try: () => session.prompt(activation.prompt),
-                      catch: (cause) =>
-                        new PiSessionOperationError({ operation: "activate", cause }),
-                    }).pipe(Effect.tapError((error) => output.reportUnexpectedError(error.cause))),
-                  ),
-                  Effect.onError((cause) =>
-                    Cause.hasInterruptsOnly(cause)
-                      ? Effect.logDebug("Session activation interrupted", cause)
-                      : Effect.logError("Session activation failed", cause),
-                  ),
-                  Effect.withSpan("PiSession.prompt", {
-                    root: true,
-                    attributes: {
-                      channelId: input.channel.id,
-                      modelId: piContext.model.id,
-                      modelProvider: piContext.model.provider,
-                    },
-                  }),
-                  Effect.linkSpans(triggerSpan, { relationship: "triggered_by" }),
-                  Effect.ignoreCause(),
-                ),
-              ),
-            );
-          }),
-        )
-        .pipe(Effect.withSpan("PiSession.activate"));
-
-    const requestCompaction = (customInstructions?: string) =>
-      operationLock.withPermit(
-        Effect.tryPromise({
-          try: () => session.compact(customInstructions),
-          catch: (cause) => new PiSessionOperationError({ operation: "compact", cause }),
-        }).pipe(Effect.asVoid),
-      );
-
-    yield* subscribe(session, (event) => {
-      output.handleSessionEvent(event);
-      if (event.type === "compaction_end") handleCompactionEnd(event);
     });
 
-    yield* Effect.addFinalizer(prepareForClose);
-
     return {
-      abort,
-      awaitIdle: FiberHandle.awaitEmpty(activationFiber),
-      activate,
-      requestCompaction,
-      isCompacting: () => session.isCompacting,
-      isStreaming: () => session.isStreaming || isActivating(),
-      isRetrying: () => session.isRetrying,
-      getActiveSessionName: () => {
-        const sessionFile = sessionManager.getSessionFile();
-        return sessionFile === undefined ? undefined : path.basename(sessionFile);
-      },
-      getModelInfo: () => {
-        const model = session.model;
-        return model === undefined
-          ? undefined
-          : {
-              id: model.id,
-              name: model.name,
-              provider: model.provider,
-              thinkingLevel: session.thinkingLevel,
-            };
-      },
-      getSessionStats: () => session.getSessionStats(),
-    };
+      sessionName: sessionFile.name,
+      harness,
+      conversation: root,
+      retainUntilIdle,
+    } satisfies PiSession;
   });
 
 const loadMcpServerTools = Effect.fnUntraced(
@@ -473,17 +412,3 @@ const loadMcpServerTools = Effect.fnUntraced(
     attributes: { mcpServerName: name },
   })),
 );
-
-const ensureUniqueToolNames = Effect.fnUntraced(function* <T extends ToolDefinition>(tools: T[]) {
-  const counts = new Map<string, number>();
-  for (const tool of tools) {
-    counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1);
-  }
-  const duplicateCounts = [...counts].filter(([_name, count]) => count > 1);
-  if (duplicateCounts.length > 0) {
-    return yield* new PiSessionInitError({
-      message: `Duplicate tool names detected: ${duplicateCounts.map(([name, count]) => `"${name}" (${count}x)`).join(", ")}`,
-    });
-  }
-  return tools;
-});

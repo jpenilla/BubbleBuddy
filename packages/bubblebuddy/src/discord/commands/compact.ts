@@ -20,26 +20,14 @@ export const compactCommand = createCommand({
     yield* tryDiscordJsPromise(() => interaction.deferReply());
     const sessions = yield* ChannelSessions.Service;
     const session = yield* sessions.get(interaction.channelId);
-    yield* tryDiscordJsPromise(() => interaction.editReply("Compaction requested."));
     const result = yield* session.compact({
       channel: interaction.channel,
       customInstructions,
     });
-
-    if (result !== "done") {
-      let reply: string;
-      switch (result) {
-        case "no-session":
-          reply = "No active session for this channel.";
-          break;
-        case "rejected-busy":
-          reply = "A response is already in progress for this channel.";
-          break;
-        case "rejected-compacting":
-          reply = "Compaction is already in progress for this channel.";
-          break;
-      }
-      yield* tryDiscordJsPromise(() => interaction.editReply(reply));
-    }
+    yield* tryDiscordJsPromise(() =>
+      interaction.editReply(
+        result === "requested" ? "Compaction requested." : "No active session for this channel.",
+      ),
+    );
   }),
 });

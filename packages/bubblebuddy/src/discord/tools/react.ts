@@ -9,7 +9,6 @@ import { tryDiscordJsPromise } from "../utils.ts";
 
 export const reactTool = defineEffectTool({
   name: "discord_react",
-  label: "React",
   description: "React to a message in the current channel.",
   parameters: Type.Object({
     emojis: Type.Array(
@@ -26,7 +25,8 @@ export const reactTool = defineEffectTool({
       description: "End the turn after these reactions succeed.",
     }),
   }),
-  execute: (_toolCallId, params) =>
+  replay: "unsafe",
+  execute: (params) =>
     Effect.gen(function* () {
       const context = yield* DiscordToolContext;
       const targetMessage = yield* tryDiscordJsPromise(() =>
@@ -63,8 +63,7 @@ export const reactTool = defineEffectTool({
       }
       return {
         content: [{ type: "text", text: "Reactions added." }],
-        details: undefined,
-        terminate: params.terminate,
+        control: { terminate: params.terminate ? true : undefined },
       };
     }),
 });

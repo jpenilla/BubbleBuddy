@@ -13,7 +13,7 @@ export const abortCommand = createCommand({
     yield* tryDiscordJsPromise(() => interaction.deferReply());
     const sessions = yield* ChannelSessions.Service;
     const session = yield* sessions.get(interaction.channelId);
-    const result = yield* session.abort;
+    const result = yield* session.abort(interaction.channel);
 
     switch (result) {
       case "aborted":

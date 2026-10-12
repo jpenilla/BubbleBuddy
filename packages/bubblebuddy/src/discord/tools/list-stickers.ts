@@ -7,9 +7,9 @@ import { DiscordToolContext } from "../tool-context.ts";
 
 export const listStickersTool = defineEffectTool({
   name: "discord_list_stickers",
-  label: "List Stickers",
   description: "List stickers usable here.",
   parameters: Type.Object({}),
+  replay: "safe",
   execute: () =>
     Effect.gen(function* () {
       const context = yield* DiscordToolContext;
@@ -17,7 +17,6 @@ export const listStickersTool = defineEffectTool({
       if (stickers.length === 0)
         return {
           content: [{ type: "text", text: "No stickers are available here." }],
-          details: undefined,
         };
       return {
         content: [
@@ -34,7 +33,6 @@ export const listStickersTool = defineEffectTool({
             ].join("\n"),
           },
         ],
-        details: undefined,
       };
     }),
 });

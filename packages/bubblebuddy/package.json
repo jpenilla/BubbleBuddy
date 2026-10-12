@@ -13,9 +13,11 @@
     "fmt:check": "oxfmt src test --check"
   },
   "dependencies": {
+    "@earendil-works/chord": "catalog:",
     "@earendil-works/pi-agent-core": "catalog:",
     "@earendil-works/pi-ai": "catalog:",
     "@earendil-works/pi-coding-agent": "catalog:",
+    "@earendil-works/pi-durable": "catalog:",
     "@effect/platform-node": "catalog:",
     "@effect/sql-sqlite-node": "catalog:",
     "@modelcontextprotocol/client": "catalog:",

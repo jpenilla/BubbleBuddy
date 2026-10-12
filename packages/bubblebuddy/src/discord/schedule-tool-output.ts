@@ -72,7 +72,7 @@ const card = (title: string, color: number, details: TextDisplayBuilder[]) =>
 
 const decodeCreate = Schema.decodeUnknownOption(Schema.Struct({ description: Schema.String }));
 const decodeExisting = Schema.decodeUnknownOption(Schema.Struct({ id: Schema.String }));
-const decodeResult = Schema.decodeUnknownEffect(Schema.Struct({ details: ScheduleTools.Details }));
+const decodeDetails = Schema.decodeUnknownEffect(ScheduleTools.Details);
 
 // Start events contain raw arguments, even when tool validation later fails, so bound what we echo back.
 const IDENTIFICATION_LIMIT = 240;
@@ -108,10 +108,10 @@ const formatter = (options: {
     const details = identified === undefined ? [] : [identified];
     return {
       initial: card(options.pendingTitle, EMBED_COLOR.pending, details),
-      complete: Effect.fn("ScheduleToolOutput.complete")(function* (end: ToolOutput.EndEvent) {
-        if (end.isError) return card(options.failedTitle, EMBED_COLOR.danger, details);
-        const result = yield* decodeResult(end.result);
-        return renderSuccess(result.details);
+      complete: Effect.fn("ScheduleToolOutput.complete")(function* (result: ToolOutput.Result) {
+        if (result.isError) return card(options.failedTitle, EMBED_COLOR.danger, details);
+        const scheduleDetails = yield* decodeDetails(result.details);
+        return renderSuccess(scheduleDetails);
       }),
     };
   },
