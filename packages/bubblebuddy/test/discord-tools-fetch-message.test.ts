@@ -48,6 +48,6 @@ describe("fetch message tool", () => {
 
     expect(fetch).toHaveBeenCalledOnce();
     expect(fetch).toHaveBeenCalledWith("requested-message");
-    expect(result.content).toEqual([{ type: "text", text: formatMessageForPrompt(message) }]);
+    expect(result.output).toEqual([{ type: "text", text: formatMessageForPrompt(message) }]);
   });
 });

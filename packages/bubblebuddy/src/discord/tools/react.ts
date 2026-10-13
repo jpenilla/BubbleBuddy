@@ -62,7 +62,7 @@ export const reactTool = defineEffectTool({
         });
       }
       return {
-        content: [{ type: "text", text: "Reactions added." }],
+        output: [{ type: "text", text: "Reactions added." }],
         control: { terminate: params.terminate ? true : undefined },
       };
     }),

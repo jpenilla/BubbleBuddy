@@ -42,7 +42,7 @@ export const currentDateTimeTool = defineEffectTool({
         }
       }
       return {
-        content: [
+        output: [
           {
             type: "text" as const,
             text: `unix_seconds: ${DateTime.toEpochSeconds(now)}\n\n${sections.join("\n\n")}`,

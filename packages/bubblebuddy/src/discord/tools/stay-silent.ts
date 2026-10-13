@@ -11,7 +11,7 @@ export const staySilentTool = defineEffectTool({
   executionMode: "sequential",
   execute: () =>
     Effect.succeed({
-      content: [{ type: "text", text: "Staying silent." }],
+      output: [{ type: "text", text: "Staying silent." }],
       control: { terminate: true },
     }),
 });

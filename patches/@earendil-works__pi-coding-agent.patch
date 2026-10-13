@@ -9,7 +9,7 @@ index 882ba74b3acacf17452c0a2e28d1d3e9af3298e6..b4d4b245e4d7a6853e2b30d99072b8ea
  //# sourceMappingURL=mime.d.ts.map
 \ No newline at end of file
 diff --git a/dist/utils/mime.js b/dist/utils/mime.js
-index 4b516598edb18a19abc76092b03a8f5caa511fd5..fb679663871cff80093f47647fbc2b29d62ddfb0 100644
+index 4f7309d2223788a8d7f3555500da9d5aad538729..e883d744a256b60b134ec6402ccd873d0d1d3942 100644
 --- a/dist/utils/mime.js
 +++ b/dist/utils/mime.js
 @@ -1,5 +1,5 @@
@@ -20,17 +20,17 @@ index 4b516598edb18a19abc76092b03a8f5caa511fd5..fb679663871cff80093f47647fbc2b29
  export function detectSupportedImageMimeType(buffer) {
      if (startsWith(buffer, [0xff, 0xd8, 0xff])) {
 diff --git a/package.json b/package.json
-index 572af1e947bf8b827389ecafae428a13b4957fa9..77b512e73e8b21cbf77f116a3d6503bb8fae0d52 100644
+index e6daaaeea17c25b443213b522bec619495c5563a..e4bbc9c9fc1bb8b1e12e0919f98a760ecebe212e 100644
 --- a/package.json
 +++ b/package.json
-@@ -22,6 +22,10 @@
- 		"./client": {
- 			"source": "./src/client/index.ts"
+@@ -18,6 +18,10 @@
  		},
+ 		"./rpc-entry": {
+ 			"import": "./dist/bundle/rpc-entry.js"
++		},
 +		"./utils/mime": {
 +			"types": "./dist/utils/mime.d.ts",
 +			"import": "./dist/utils/mime.js"
-+		},
- 		"./experimental/plugin": {
- 			"source": "./src/experimental/plugin.ts"
  		}
+ 	},
+ 	"files": [

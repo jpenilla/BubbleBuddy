@@ -59,7 +59,7 @@ describe("react tool", () => {
       BACKGROUND_CONTEXT,
     );
 
-    expect(result.content).toEqual([{ type: "text", text: "Reactions added." }]);
+    expect(result.output).toEqual([{ type: "text", text: "Reactions added." }]);
     expect(reacted).toEqual(["👍", "🎉"]);
   });
 

@@ -16,10 +16,10 @@ export const listStickersTool = defineEffectTool({
       const stickers = yield* listUsableStickers(context);
       if (stickers.length === 0)
         return {
-          content: [{ type: "text", text: "No stickers are available here." }],
+          output: [{ type: "text", text: "No stickers are available here." }],
         };
       return {
-        content: [
+        output: [
           {
             type: "text",
             text: [

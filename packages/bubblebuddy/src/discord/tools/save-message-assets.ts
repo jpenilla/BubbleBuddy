@@ -72,6 +72,6 @@ export const saveMessageAssetsTool = defineEffectTool({
         context.channel.messages.fetch(params.messageId),
       );
       const text = yield* saveMessageAssets(message, params);
-      return { content: [{ type: "text", text }] };
+      return { output: [{ type: "text", text }] };
     }),
 });

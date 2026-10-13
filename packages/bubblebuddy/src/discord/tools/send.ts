@@ -45,7 +45,7 @@ const replyOptions = (params: { replyTo?: string; ping?: boolean }) =>
       };
 
 const sentResult = (terminate: boolean): ToolExecutionResult => ({
-  content: [{ type: "text", text: "Sent message." }],
+  output: [{ type: "text", text: "Sent message." }],
   control: { terminate: terminate ? true : undefined },
 });
 

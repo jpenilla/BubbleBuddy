@@ -102,6 +102,6 @@ export const saveAssetsTool = defineEffectTool({
       const stickerJobs = yield* createStickerJobs(params.stickers ?? []);
 
       const text = yield* runAssetJobs([...emojiJobs, ...stickerJobs]);
-      return { content: [{ type: "text", text }] };
+      return { output: [{ type: "text", text }] };
     }),
 });

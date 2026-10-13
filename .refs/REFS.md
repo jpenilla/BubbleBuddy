@@ -10,6 +10,6 @@ Gitlinks pin exact commits; `Ref` names the intended release or update branch.
 | `.refs/executor` | `main` | Effect patterns for MCP, tool registries, services, and agent infrastructure. |
 | `.refs/incus` | `main` | Incus REST routes, operations, container files, and WebSocket exec behavior. |
 | `.refs/opencode` | `v2` | Alternative Effect architecture for agents, services, persistence, and tools. |
-| `.refs/pi` | `v1.1.0` | Pi agent sessions, resource loading, tools, models, and SDK internals. |
+| `.refs/pi` | `v1.2.0` | Pi agent sessions, resource loading, tools, models, and SDK internals. |
 | `.refs/t3code` | `main` | Effect patterns for agent lifecycle, process control, SQLite, and services. |
 | `.refs/mcp-typescript-sdk` | `@modelcontextprotocol/client@2.3.1` | MCP client and core protocol types, transports, capabilities, and lifecycle behavior. |

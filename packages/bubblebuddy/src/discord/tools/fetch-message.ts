@@ -20,7 +20,7 @@ export const fetchMessageTool = defineEffectTool({
         context.channel.messages.fetch(params.messageId),
       );
       return {
-        content: [{ type: "text", text: formatMessageForPrompt(message) }],
+        output: [{ type: "text", text: formatMessageForPrompt(message) }],
       };
     }),
 });

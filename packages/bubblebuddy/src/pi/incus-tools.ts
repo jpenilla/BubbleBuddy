@@ -61,7 +61,7 @@ export interface IncusToolContext {
 type AnyToolDefinition = ToolDefinition<any, any, any>;
 
 const toExecutionResult = (result: AgentToolResult<unknown>): ToolExecutionResult => ({
-  content: result.content,
+  output: result.content,
   details: result.details === undefined ? undefined : JSON.parse(JSON.stringify(result.details)),
   isError: result.isError,
 });

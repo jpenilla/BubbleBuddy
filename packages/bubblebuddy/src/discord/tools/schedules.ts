@@ -80,7 +80,7 @@ export const create = defineEffectTool({
       const schedules = yield* Schedules.Service;
       const schedule = yield* schedules.create(channel.id, input);
       return {
-        content: [
+        output: [
           { type: "text" as const, text: `Schedule created:\n\n${Schedules.describe(schedule)}` },
         ],
         details: CreatedDetails.make({ schedule }),
@@ -107,7 +107,7 @@ export const update = defineEffectTool({
       const updated = yield* schedules.update(channel.id, id, fields);
 
       return {
-        content: [
+        output: [
           {
             type: "text" as const,
             text: `Schedule updated (current state):\n\n${Schedules.describe(updated.after)}`,
@@ -132,7 +132,7 @@ export const list = defineEffectTool({
       const schedules = yield* Schedules.Service;
       const active = yield* schedules.list(channel.id);
       return {
-        content: [
+        output: [
           {
             type: "text" as const,
             text:
@@ -159,7 +159,7 @@ export const cancel = defineEffectTool({
       const schedules = yield* Schedules.Service;
       const schedule = yield* schedules.cancel(channel.id, input.id);
       return {
-        content: [
+        output: [
           {
             type: "text" as const,
             text: `Schedule cancelled (removed from active schedules):\n\n${Schedules.describe(schedule)}`,

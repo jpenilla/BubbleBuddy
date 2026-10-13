@@ -17,10 +17,10 @@ export const listCustomEmojisTool = defineEffectTool({
       const emojis = listUsableCustomEmojis(context);
       if (emojis.length === 0)
         return {
-          content: [{ type: "text", text: "No custom emojis are available here." }],
+          output: [{ type: "text", text: "No custom emojis are available here." }],
         };
       return {
-        content: [
+        output: [
           {
             type: "text",
             text: [
