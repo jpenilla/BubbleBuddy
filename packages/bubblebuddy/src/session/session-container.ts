@@ -17,7 +17,7 @@ export class Service extends Context.Service<Service, Interface>()(
 ) {}
 
 const createContainerName = Effect.fnUntraced(function* (crypto: Crypto.Crypto) {
-  const uuid = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+  const uuid = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
   return `bubblebuddy-${uuid.slice(0, 8)}`;
 });
 

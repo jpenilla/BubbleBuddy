@@ -365,7 +365,7 @@ const createSchedules = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const { nextRunAt, recurrence } = yield* resolveTiming(decoded.timing, now);
 
-    const id = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+    const id = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
     const wakeup = Wakeup.make({
       id,
       channelId,

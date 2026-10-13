@@ -113,7 +113,7 @@ const resolveSessionFile = Effect.fnUntraced(function* (
   const crypto = yield* Crypto.Crypto;
 
   if (activeSession === undefined) {
-    const name = `${yield* crypto.randomUUIDv7.pipe(initError("Failed to name session"))}${SESSION_FILE_EXTENSION}`;
+    const name = `${yield* crypto.randomUUIDv7().pipe(initError("Failed to name session"))}${SESSION_FILE_EXTENSION}`;
     return { name, path: path.join(sessionsDir, name) } satisfies SessionFile;
   }
   if (activeSession.endsWith(LEGACY_SESSION_FILE_EXTENSION)) {

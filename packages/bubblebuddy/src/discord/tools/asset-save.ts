@@ -40,7 +40,7 @@ const writeAsset = Effect.fn("writeAsset")(function* (
   const container = yield* sessionContainer.get;
   const destination = yield* guestPath.resolve(directory, filename);
   const crypto = yield* Crypto.Crypto;
-  const uuid = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+  const uuid = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
   const temporaryPath = yield* guestPath.resolve(directory, `${filename}.${uuid}.tmp`);
   yield* container.files
     .write(temporaryPath, response.stream)
