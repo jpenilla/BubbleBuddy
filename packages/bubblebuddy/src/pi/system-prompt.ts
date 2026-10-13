@@ -15,7 +15,7 @@ export interface PromptTemplateContext {
 export interface SystemPromptInput {
   readonly botProfileTemplate: string;
   readonly discordContextTemplate: string;
-  readonly promptContext: PromptTemplateContext;
+  readonly promptContext: () => PromptTemplateContext;
   readonly enableAgenticWorkspace: boolean;
   readonly cwd: string;
   readonly resources: WorkspaceResources;
@@ -72,12 +72,13 @@ export const renderPromptTemplate = (template: string, context: PromptTemplateCo
 export const createPromptSections = (input: SystemPromptInput): PromptSection[] => [
   section(
     "profile",
-    () => normalizeSection(renderPromptTemplate(input.botProfileTemplate, input.promptContext)),
+    () => normalizeSection(renderPromptTemplate(input.botProfileTemplate, input.promptContext())),
     { tag: false },
   ),
   section(
     "discord",
-    () => normalizeSection(renderPromptTemplate(input.discordContextTemplate, input.promptContext)),
+    () =>
+      normalizeSection(renderPromptTemplate(input.discordContextTemplate, input.promptContext())),
     { tag: false },
   ),
   section("guidelines", () => formatGuidelinesSection(input.enableAgenticWorkspace), {

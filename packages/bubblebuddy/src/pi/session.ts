@@ -239,11 +239,9 @@ export const createPiSession = (
 
       return Context.get(context, SessionContainer.Service);
     });
-    let botMember = input.channel.guild.members.me;
-    if (botMember === null) {
-      botMember = yield* tryDiscordJsPromise(() => input.channel.guild.members.fetchMe()).pipe(
-        Effect.orElseSucceed(() => null),
-      );
+    // Warm the member cache so the prompt can read the bot's guild display name.
+    if (input.channel.guild.members.me === null) {
+      yield* tryDiscordJsPromise(() => input.channel.guild.members.fetchMe()).pipe(Effect.ignore);
     }
 
     const workspaceResources = yield* Effect.try({
@@ -297,14 +295,15 @@ export const createPiSession = (
         botProfileTemplate: resources.botProfile,
         discordContextTemplate: resources.discordContextTemplate,
         enableAgenticWorkspace: config.enableAgenticWorkspace,
-        promptContext: {
+        promptContext: () => ({
           botUsername: input.channel.client.user.username,
-          botDisplayName: botMember?.displayName ?? input.channel.client.user.displayName,
+          botDisplayName:
+            input.channel.guild.members.me?.displayName ?? input.channel.client.user.displayName,
           channelName: input.channel.name,
           channelStatusText:
             "topic" in input.channel ? input.channel.topic?.trim() || "none" : "none",
           guildName: input.channel.guild.name,
-        },
+        }),
         cwd: workspace.root.container,
         resources: workspaceResources,
       }),

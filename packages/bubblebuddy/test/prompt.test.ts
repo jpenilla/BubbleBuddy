@@ -30,7 +30,7 @@ const renderSections = async (input: SystemPromptInput) =>
 const input = (enableAgenticWorkspace: boolean): SystemPromptInput => ({
   botProfileTemplate: "Profile for {{botDisplayName}}",
   discordContextTemplate: "Discord section",
-  promptContext,
+  promptContext: () => promptContext,
   enableAgenticWorkspace,
   cwd: "/workspace",
   resources: { contextFiles: [], skills: [] },
