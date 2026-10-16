@@ -43,8 +43,8 @@ catalogs:
       specifier: ^14.27.0
       version: 14.27.0
     effect:
-      specifier: 4.0.3
-      version: 4.0.3
+      specifier: 4.0.5
+      version: 4.0.5
     oxfmt:
       specifier: ^0.72.0
       version: 0.72.0
@@ -100,10 +100,10 @@ importers:
         version: 1.2.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.22.0)(zod@4.6.5)
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.3(effect@4.0.3)(redis@6.2.1)
+        version: 4.0.3(effect@4.0.5)(redis@6.2.1)
       '@effect/sql-sqlite-node':
         specifier: 'catalog:'
-        version: 4.0.3(effect@4.0.3)
+        version: 4.0.3(effect@4.0.5)
       '@modelcontextprotocol/client':
         specifier: 'catalog:'
         version: 2.3.1
@@ -112,7 +112,7 @@ importers:
         version: 14.27.0
       effect:
         specifier: 'catalog:'
-        version: 4.0.3
+        version: 4.0.5
       incus-api:
         specifier: workspace:*
         version: link:../incus-api
@@ -125,7 +125,7 @@ importers:
         version: 0.51.1
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.3(effect@4.0.3)(vitest@5.0.3(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.3(effect@4.0.5)(vitest@5.0.3(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -146,17 +146,17 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.3(effect@4.0.3)(redis@6.2.1)
+        version: 4.0.3(effect@4.0.5)(redis@6.2.1)
       effect:
         specifier: 'catalog:'
-        version: 4.0.3
+        version: 4.0.5
     devDependencies:
       '@effect/tsgo':
         specifier: 'catalog:'
         version: 0.51.1
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.3(effect@4.0.3)(vitest@5.0.3(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.3(effect@4.0.5)(vitest@5.0.3(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -1302,8 +1302,8 @@ packages:
   ecdsa-sig-formatter@1.0.11:
     resolution: {integrity: sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==}
 
-  effect@4.0.3:
-    resolution: {integrity: sha512-LoWn/Uwwx0JjHSDmBAAahx8sB+klzM6vsZovnbYowBNw6B4QScJLRLBByO61plvNiycx7HPN8FnsWUCu0eXW5w==}
+  effect@4.0.5:
+    resolution: {integrity: sha512-BY4/28NlpOd99yzmV741xbVGmp+1U7tks4oB7F/Png64bTa5tm5eCA6W0RiXsnuLDDoJpjfVSo4Dnq4BZb/89Q==}
 
   es-module-lexer@2.3.2:
     resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
@@ -2268,28 +2268,28 @@ snapshots:
       get-east-asian-width: 1.6.0
       marked: 18.0.11
 
-  '@effect/platform-node-shared@4.0.3(effect@4.0.3)':
+  '@effect/platform-node-shared@4.0.3(effect@4.0.5)':
     dependencies:
       '@types/ws': 8.18.2
-      effect: 4.0.3
+      effect: 4.0.5
       ws: 8.22.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.3(effect@4.0.3)(redis@6.2.1)':
+  '@effect/platform-node@4.0.3(effect@4.0.5)(redis@6.2.1)':
     dependencies:
-      '@effect/platform-node-shared': 4.0.3(effect@4.0.3)
-      effect: 4.0.3
+      '@effect/platform-node-shared': 4.0.3(effect@4.0.5)
+      effect: 4.0.5
       redis: 6.2.1
       undici: 8.11.2
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/sql-sqlite-node@4.0.3(effect@4.0.3)':
+  '@effect/sql-sqlite-node@4.0.3(effect@4.0.5)':
     dependencies:
-      effect: 4.0.3
+      effect: 4.0.5
 
   '@effect/tsgo-darwin-arm64@0.51.1':
     optional: true
@@ -2322,9 +2322,9 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.51.1
       '@effect/tsgo-win32-x64': 0.51.1
 
-  '@effect/vitest@4.0.3(effect@4.0.3)(vitest@5.0.3(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))':
+  '@effect/vitest@4.0.3(effect@4.0.5)(vitest@5.0.3(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)))':
     dependencies:
-      effect: 4.0.3
+      effect: 4.0.5
       vitest: 5.0.3(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
 
   '@esbuild/aix-ppc64@0.28.2':
@@ -2871,7 +2871,7 @@ snapshots:
     dependencies:
       safe-buffer: 5.2.1
 
-  effect@4.0.3: {}
+  effect@4.0.5: {}
 
   es-module-lexer@2.3.2: {}
 
