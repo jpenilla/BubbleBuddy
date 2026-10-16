@@ -20,7 +20,7 @@ catalog:
   "@effect/platform-node": 4.0.3
   "@effect/sql-sqlite-node": 4.0.3
   "@effect/tsgo": 0.51.1
-  "@effect/vitest": 4.0.3
+  "@effect/vitest": 4.0.5
   typescript: ^7.0.2
   "@types/node": ^26.6.4
   oxfmt: ^0.72.0
