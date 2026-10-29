@@ -19,7 +19,7 @@ catalog:
   effect: 4.0.5
   "@effect/platform-node": 4.0.5
   "@effect/sql-sqlite-node": 4.0.5
-  "@effect/tsgo": 0.53.3
+  "@effect/tsgo": 0.63.0
   "@effect/vitest": 4.0.5
   typescript: ^7.0.2
   "@types/node": ^26.6.5
