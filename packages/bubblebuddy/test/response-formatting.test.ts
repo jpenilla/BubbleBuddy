@@ -1,18 +1,8 @@
 import { describe, expect, test } from "vitest";
 
-import {
-  formatThinkingStatus,
-  splitDiscordMessage,
-  splitThinkingStatus,
-} from "../src/discord/response-formatting.ts";
+import { splitDiscordMessage, splitThinkingStatus } from "../src/discord/response-formatting.ts";
 
 describe("status formatting", () => {
-  test("formats thinking output with prefix and suffix", () => {
-    expect(formatThinkingStatus("Considering options")).toBe(
-      "🧠 _Thinking..._\n\nConsidering options\n\n-# ──",
-    );
-  });
-
   test("adds the prefix only to the first thinking chunk and the suffix only to the last", () => {
     const chunks = splitThinkingStatus("alpha beta gamma delta", 30);
 

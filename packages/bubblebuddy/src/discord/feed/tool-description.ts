@@ -1,6 +1,6 @@
 import { Option, Schema } from "effect";
 
-import { collapseWhitespace, truncate } from "../shared/text.ts";
+import { collapseWhitespace, truncate } from "../../shared/text.ts";
 
 const DESCRIPTION_LIMIT = 180;
 

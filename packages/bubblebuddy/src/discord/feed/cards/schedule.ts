@@ -1,12 +1,12 @@
 import { ContainerBuilder, TextDisplayBuilder, time, TimestampStyles } from "discord.js";
-import { Duration, Effect, Option, Schema } from "effect";
+import { Duration, Option, Schema } from "effect";
 
-import { Schedules } from "../scheduling/schedules.ts";
-import { inlineCode } from "../shared/markdown.ts";
-import { collapseWhitespace, truncate } from "../shared/text.ts";
-import { type ToolOutput } from "./tool-output.ts";
-import { ScheduleTools } from "./tools/schedules.ts";
-import { EMBED_COLOR } from "./utils.ts";
+import { Schedules } from "../../../scheduling/schedules.ts";
+import { inlineCode } from "../../../shared/markdown.ts";
+import { collapseWhitespace, truncate } from "../../../shared/text.ts";
+import { ScheduleTools } from "../../tools/schedules.ts";
+import { EMBED_COLOR } from "../../utils.ts";
+import { type ToolResult } from "../state.ts";
 
 const formatTimestamp = (milliseconds: number): string =>
   // @effect-diagnostics-next-line globalDate:off -- discord.js time() requires a Date.
@@ -72,9 +72,9 @@ const card = (title: string, color: number, details: TextDisplayBuilder[]) =>
 
 const decodeCreate = Schema.decodeUnknownOption(Schema.Struct({ description: Schema.String }));
 const decodeExisting = Schema.decodeUnknownOption(Schema.Struct({ id: Schema.String }));
-const decodeDetails = Schema.decodeUnknownEffect(ScheduleTools.Details);
+const decodeDetails = Schema.decodeUnknownOption(ScheduleTools.Details);
 
-// Start events contain raw arguments, even when tool validation later fails, so bound what we echo back.
+// Tool calls carry the model's raw arguments, even when validation later fails, so bound what we echo back.
 const IDENTIFICATION_LIMIT = 240;
 
 const identification = (label: string, value: string | undefined): TextDisplayBuilder | undefined =>
@@ -85,38 +85,40 @@ const identification = (label: string, value: string | undefined): TextDisplayBu
 const existingIdentification = (args: unknown) =>
   identification("Schedule ID", Option.getOrUndefined(decodeExisting(args))?.id);
 
-const renderSuccess = (details: ScheduleTools.Details) =>
+const successDetails = (details: ScheduleTools.Details) =>
   ScheduleTools.Details.match(details, {
-    Created: ({ schedule }) =>
-      card("✅ ⏰ **Schedule created**", EMBED_COLOR.success, unchangedDetails(schedule)),
-    Updated: ({ update }) =>
-      card("✅ ⏰ **Schedule updated**", EMBED_COLOR.success, updateDetails(update)),
-    Cancelled: ({ schedule }) =>
-      card("✅ ⏰ **Schedule cancelled**", EMBED_COLOR.success, unchangedDetails(schedule)),
+    Created: ({ schedule }) => unchangedDetails(schedule),
+    Updated: ({ update }) => updateDetails(update),
+    Cancelled: ({ schedule }) => unchangedDetails(schedule),
   });
 
-const formatter = (options: {
-  readonly pendingTitle: string;
-  readonly failedTitle: string;
-  readonly identify: (args: unknown) => TextDisplayBuilder | undefined;
-}): ToolOutput.StandaloneFormatter => ({
-  begin: (event) => {
-    const identified = options.identify(event.args);
+const formatter =
+  (options: {
+    readonly pendingTitle: string;
+    readonly failedTitle: string;
+    readonly succeededTitle: string;
+    readonly identify: (args: unknown) => TextDisplayBuilder | undefined;
+  }) =>
+  (args: unknown, result: ToolResult | undefined) => {
+    const identified = options.identify(args);
     const details = identified === undefined ? [] : [identified];
-    return {
-      initial: card(options.pendingTitle, EMBED_COLOR.pending, details),
-      complete: Effect.fn("ScheduleToolOutput.complete")(function* (result: ToolOutput.Result) {
-        if (result.isError) return card(options.failedTitle, EMBED_COLOR.danger, details);
-        const scheduleDetails = yield* decodeDetails(result.details);
-        return renderSuccess(scheduleDetails);
+    if (result === undefined) return card(options.pendingTitle, EMBED_COLOR.pending, details);
+    if (result.isError) return card(options.failedTitle, EMBED_COLOR.danger, details);
+    // A result whose details the card cannot read shows what the call identified.
+    return card(
+      options.succeededTitle,
+      EMBED_COLOR.success,
+      Option.match(decodeDetails(result.details), {
+        onNone: () => details,
+        onSome: successDetails,
       }),
-    };
-  },
-});
+    );
+  };
 
 export const create = formatter({
   pendingTitle: "⏳ ⏰ **Creating schedule**",
   failedTitle: "❌ ⏰ **Could not create schedule**",
+  succeededTitle: "✅ ⏰ **Schedule created**",
   identify: (args) =>
     identification("Schedule", Option.getOrUndefined(decodeCreate(args))?.description),
 });
@@ -124,13 +126,15 @@ export const create = formatter({
 export const update = formatter({
   pendingTitle: "⏳ ⏰ **Updating schedule**",
   failedTitle: "❌ ⏰ **Could not update schedule**",
+  succeededTitle: "✅ ⏰ **Schedule updated**",
   identify: existingIdentification,
 });
 
 export const cancel = formatter({
   pendingTitle: "⏳ ⏰ **Cancelling schedule**",
   failedTitle: "❌ ⏰ **Could not cancel schedule**",
+  succeededTitle: "✅ ⏰ **Schedule cancelled**",
   identify: existingIdentification,
 });
 
-export * as ScheduleToolOutput from "./schedule-tool-output.ts";
+export * as ScheduleCard from "./schedule.ts";

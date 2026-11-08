@@ -2,9 +2,9 @@ import { isDeepStrictEqual } from "node:util";
 
 import { type ToolResultMessage } from "@earendil-works/pi-ai";
 import { type ToolExecutionResult } from "@earendil-works/pi-durable";
+import { type Schema } from "@earendil-works/pi-schema";
 import { type CallToolResult, type ContentBlock, type Tool } from "@modelcontextprotocol/client";
 import { Effect, Match } from "effect";
-import { Type } from "typebox";
 
 import { defineEffectTool } from "../pi/effect-tool.ts";
 import { type McpClient } from "./client.ts";
@@ -109,7 +109,8 @@ const createPiTool = Effect.fn("McpPiTools.createPiTool")(function* (
 ) {
   const source = { server, tool: tool.name };
   const name = yield* formatToolName(server, tool.name);
-  const parameters = Type.Unsafe<Record<string, unknown>>(tool.inputSchema);
+  // The server's JSON Schema, used as is: its type is not checked.
+  const parameters: Schema<Record<string, unknown>> = tool.inputSchema;
   return yield* defineEffectTool({
     name,
     description: tool.description ?? tool.title ?? tool.annotations?.title ?? tool.name,
