@@ -1,15 +1,13 @@
+import { arr, obj, opt, str } from "@earendil-works/pi-schema";
 import { DateTime, Effect, Option } from "effect";
-import { Type } from "typebox";
 
 import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
 
 export const currentDateTimeTool = defineEffectTool({
   name: "current_date_time",
   description: "Get the current date and time in UTC and optionally in named timezones.",
-  parameters: Type.Object({
-    timezones: Type.Optional(
-      Type.Array(Type.String({ description: "IANA timezone, e.g. America/New_York" })),
-    ),
+  parameters: obj({
+    timezones: opt(arr(str({ description: "IANA timezone, e.g. America/New_York" }))),
   }),
   replay: "safe",
   execute: ({ timezones }) =>

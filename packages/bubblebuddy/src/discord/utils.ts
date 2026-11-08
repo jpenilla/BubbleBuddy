@@ -87,33 +87,22 @@ export const editMessage = Effect.fn("editMessage")(function* (
   );
 });
 
-export const sendChunkedMessage = Effect.fn("sendChunkedMessage")(function* (opts: {
-  channel: GuildTextBasedChannel;
-  content: string;
-  reply?: ReplyOptions;
-  allowedMentions?: MessageMentionOptions;
-  /** Called with each chunk's message ID once it is sent. */
-  onSent?: (id: Snowflake) => Effect.Effect<void>;
-}) {
-  const chunks = splitDiscordMessage(opts.content);
-  const send = (options: MessageCreateOptions) =>
-    sendMessage(opts.channel, options).pipe(
-      Effect.tap((id) => (opts.onSent === undefined ? Effect.void : opts.onSent(id))),
-    );
+export interface SendChunkedOptions {
+  readonly content: string;
+  readonly reply?: ReplyOptions;
+  readonly allowedMentions?: MessageMentionOptions;
+}
 
-  for (const [index, chunk] of chunks.entries()) {
-    if (index === 0 && opts.reply !== undefined) {
-      yield* send({
-        content: chunk,
-        reply: opts.reply,
-        allowedMentions: opts.allowedMentions,
-      });
-      continue;
-    }
-
-    yield* send({
+/** Sends text split across as many messages as it needs, replying with the first. */
+export const sendChunkedMessage = Effect.fn("sendChunkedMessage")(function* (
+  channel: GuildTextBasedChannel,
+  { content, reply, allowedMentions }: SendChunkedOptions,
+) {
+  for (const [index, chunk] of splitDiscordMessage(content).entries()) {
+    yield* sendMessage(channel, {
       content: chunk,
-      allowedMentions: opts.allowedMentions,
+      allowedMentions,
+      ...(index === 0 && reply !== undefined ? { reply } : {}),
     });
   }
 });

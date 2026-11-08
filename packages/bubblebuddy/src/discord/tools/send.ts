@@ -1,15 +1,15 @@
 import { type ToolExecutionResult } from "@earendil-works/pi-durable";
+import { arr, bool, obj, opt, str } from "@earendil-works/pi-schema";
 import { NodeStream } from "@effect/platform-node";
 import { GuildPremiumTier, type GuildTextBasedChannel } from "discord.js";
 import { Effect, Ref, Stream } from "effect";
 import { GuestPath } from "incus-api";
-import { Type } from "typebox";
 
 import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
 import { SessionContainer } from "../../session/session-container.ts";
 import { DISCORD_SAFE_MESSAGE_LIMIT } from "../../shared/constants.ts";
 import { listUsableStickers } from "../assets.ts";
-import { OutputPump } from "../output-pump.ts";
+import { Posting } from "../posting.ts";
 import { DiscordToolContext } from "../tool-context.ts";
 
 const MAX_STICKERS = 3;
@@ -60,35 +60,35 @@ export const makeSendTool = Effect.fn("makeSendTool")(function* (options: {
     description: enableFiles
       ? "Send a message with a reply reference, stickers, or file attachments. Requires at least one of replyTo, stickerIds, or filePaths."
       : "Send a message with a reply reference or stickers. Requires at least one of replyTo or stickerIds.",
-    parameters: Type.Object({
-      content: Type.Optional(
-        Type.String({
+    parameters: obj({
+      content: opt(
+        str({
           description: enableFiles
             ? "Message text; required unless sending stickers or files"
             : "Message text; required unless sending stickers",
         }),
       ),
-      replyTo: Type.Optional(Type.String({ description: "ID of the message to reply to" })),
-      ping: Type.Optional(
-        Type.Boolean({
+      replyTo: opt(str({ description: "ID of the message to reply to" })),
+      ping: opt(
+        bool({
           description:
             "Notify the author of the replied-to message (default true; only applies with replyTo). Explicit mentions in content are unaffected.",
         }),
       ),
-      stickerIds: Type.Optional(
-        Type.Array(Type.String(), {
+      stickerIds: opt(
+        arr(str(), {
           minItems: 1,
           maxItems: MAX_STICKERS,
           description: `Sticker IDs (up to ${MAX_STICKERS})`,
         }),
       ),
-      terminate: Type.Boolean({
+      terminate: bool({
         description: "End the turn after this send succeeds.",
       }),
       ...(enableFiles
         ? {
-            filePaths: Type.Optional(
-              Type.Array(Type.String(), {
+            filePaths: opt(
+              arr(str(), {
                 minItems: 1,
                 maxItems: MAX_FILES,
                 description: `Paths of files in the container to upload (up to ${MAX_FILES}); may be absolute or relative to /workspace`,
@@ -137,7 +137,7 @@ export const makeSendTool = Effect.fn("makeSendTool")(function* (options: {
             });
           }
           yield* context.executeOrdered(
-            OutputPump.sendChunked({
+            Posting.sendChunked({
               content,
               ...replyOptions({ replyTo, ping }),
             }),
@@ -150,7 +150,7 @@ export const makeSendTool = Effect.fn("makeSendTool")(function* (options: {
         const files = filePaths === undefined ? [] : yield* resolveFiles(context, filePaths);
 
         yield* context.executeOrdered(
-          OutputPump.send({
+          Posting.send({
             content,
             stickers,
             files,

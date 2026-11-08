@@ -1,5 +1,5 @@
+import { lit, num, obj, opt, str, union } from "@earendil-works/pi-schema";
 import { Effect, Schema } from "effect";
-import { Type } from "typebox";
 
 import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { Schedules } from "../../scheduling/schedules.ts";
@@ -19,48 +19,48 @@ export const Details = Schema.Union([CreatedDetails, UpdatedDetails, CancelledDe
 );
 export type Details = typeof Details.Type;
 
-const description = Type.String({
+const description = str({
   minLength: 1,
   maxLength: 120,
   description: "Short task summary.",
 });
 
-const note = Type.String({
+const note = str({
   minLength: 1,
   description:
     "Complete instructions a fresh session can act on, including relevant user/message IDs.",
 });
 
-const expiresAt = Type.String({
+const expiresAt = str({
   description: "End date as an ISO timestamp with UTC offset. Omit to repeat indefinitely.",
 });
 
-const timing = Type.Union([
-  Type.Object({ kind: Type.Literal("after"), seconds: Type.Number({ exclusiveMinimum: 0 }) }),
-  Type.Object({
-    kind: Type.Literal("at"),
-    timestamp: Type.String({ description: "ISO timestamp with explicit UTC offset" }),
+const timing = union([
+  obj({ kind: lit("after"), seconds: num({ exclusiveMinimum: 0 }) }),
+  obj({
+    kind: lit("at"),
+    timestamp: str({ description: "ISO timestamp with explicit UTC offset" }),
   }),
-  Type.Object({
-    kind: Type.Literal("cron"),
-    expression: Type.String({
+  obj({
+    kind: lit("cron"),
+    expression: str({
       description: "Cron expression. Must not repeat more often than once a minute.",
     }),
-    timezone: Type.String({ description: "Timezone, e.g. America/New_York or UTC" }),
-    expiresAt: Type.Optional(expiresAt),
+    timezone: str({ description: "Timezone, e.g. America/New_York or UTC" }),
+    expiresAt: opt(expiresAt),
   }),
-  Type.Object({
-    kind: Type.Literal("interval"),
-    everySeconds: Type.Number({
+  obj({
+    kind: lit("interval"),
+    everySeconds: num({
       minimum: 60,
       description: "Seconds between wakeups; fractions supported to millisecond precision.",
     }),
-    anchorAt: Type.Optional(
-      Type.String({
+    anchorAt: opt(
+      str({
         description: "ISO timestamp with UTC offset. Omit to anchor at creation/update time.",
       }),
     ),
-    expiresAt: Type.Optional(expiresAt),
+    expiresAt: opt(expiresAt),
   }),
 ]);
 
@@ -68,7 +68,7 @@ export const create = defineEffectTool({
   name: "create_schedule",
   description:
     "Schedule a wakeup in this channel. Survives new sessions and restarts. Displays a confirmation card in this channel. Each recurrence triggers a separate wakeup automatically; do not use sleep or time-checking loops to wait for subsequent occurrences.",
-  parameters: Type.Object({
+  parameters: obj({
     description,
     note,
     timing,
@@ -92,11 +92,11 @@ export const update = defineEffectTool({
   name: "update_schedule",
   description:
     "Update a schedule in this channel. Omitted fields stay unchanged. Supplied timing replaces the full timing configuration and recalculates from now. Displays a confirmation card in this channel.",
-  parameters: Type.Object({
-    id: Type.String(),
-    timing: Type.Optional(timing),
-    description: Type.Optional(description),
-    note: Type.Optional(note),
+  parameters: obj({
+    id: str(),
+    timing: opt(timing),
+    description: opt(description),
+    note: opt(note),
   }),
   replay: "unsafe",
   execute: (input) =>
@@ -124,7 +124,7 @@ export const list = defineEffectTool({
   name: "list_schedules",
   description:
     "List this channel’s active schedules. Results aren’t shown to the user; summarize them when asked.",
-  parameters: Type.Object({}),
+  parameters: obj({}),
   replay: "safe",
   execute: () =>
     Effect.gen(function* () {
@@ -151,7 +151,7 @@ export const cancel = defineEffectTool({
   name: "cancel_schedule",
   description:
     "Cancel a schedule in this channel. In-flight wakeups are unaffected. Displays a confirmation card in this channel.",
-  parameters: Type.Object({ id: Type.String() }),
+  parameters: obj({ id: str() }),
   replay: "unsafe",
   execute: (input) =>
     Effect.gen(function* () {

@@ -7,31 +7,31 @@ import {
   type ToolExecutionResult,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
+import type * as PiSchema from "@earendil-works/pi-schema";
 import { Cause, Effect, Exit, Schema } from "effect";
-import { type Static, type TSchema } from "typebox";
 
 export class AgentToolError extends Schema.TaggedError<AgentToolError>()("AgentToolError", {
   message: Schema.String,
   cause: Schema.optional(Schema.Defect()),
 }) {}
 
-export interface EffectToolDefinition<TParams extends TSchema, Details extends JsonValue, E, R> {
+export interface EffectToolDefinition<Args, Details extends JsonValue, E, R> {
   name: string;
   description: string;
-  parameters: TParams;
+  parameters: PiSchema.Schema<Args>;
   constrainedSampling?: false | ConstrainedSamplingConfig;
   replay?: "safe" | "unsafe";
   executionMode?: ToolExecutionMode;
-  prepareArguments?: (args: unknown) => Static<TParams>;
+  prepareArguments?: (args: unknown) => Args;
   outputLimits?: ToolRegistration["outputLimits"];
   execute(
-    params: Static<TParams>,
+    params: Args,
     api: ToolExecutionApi<Details>,
   ): Effect.Effect<ToolExecutionResult<Details>, E, R>;
 }
 
-export const defineEffectTool = <TParams extends TSchema, Details extends JsonValue, E, R>(
-  tool: EffectToolDefinition<TParams, Details, E, R>,
+export const defineEffectTool = <Args, Details extends JsonValue, E, R>(
+  tool: EffectToolDefinition<Args, Details, E, R>,
 ) =>
   Effect.gen(function* () {
     const context = yield* Effect.context<R>();

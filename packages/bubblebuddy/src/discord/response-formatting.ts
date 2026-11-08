@@ -4,9 +4,6 @@ import { splitAiResponse } from "../shared/text-split.ts";
 const THINKING_PREFIX = "🧠 _Thinking..._\n\n";
 const THINKING_SUFFIX = "\n\n-# ──";
 
-export const formatThinkingStatus = (thinking: string): string =>
-  `${THINKING_PREFIX}${thinking}${THINKING_SUFFIX}`;
-
 export const splitThinkingStatus = (
   thinking: string,
   limit = DISCORD_SAFE_MESSAGE_LIMIT,
