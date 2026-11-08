@@ -1,4 +1,5 @@
-import { Crypto, Effect, Option, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { HttpClient, HttpClientResponse, Mime } from "effect/http";
 import { GuestPath } from "incus-api";
 
@@ -39,8 +40,8 @@ const writeAsset = Effect.fn("writeAsset")(function* (
   const sessionContainer = yield* SessionContainer.Service;
   const container = yield* sessionContainer.get;
   const destination = yield* guestPath.resolve(directory, filename);
-  const crypto = yield* Crypto.Crypto;
-  const uuid = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+  const random = yield* SecureRandom.SecureRandom;
+  const uuid = yield* random.uuidV4();
   const temporaryPath = yield* guestPath.resolve(directory, `${filename}.${uuid}.tmp`);
   yield* container.files
     .write(temporaryPath, response.stream)

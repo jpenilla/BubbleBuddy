@@ -11,7 +11,6 @@ import { type GuildTextBasedChannel } from "discord.js";
 import {
   Cause,
   Context,
-  Crypto,
   Effect,
   Exit,
   FiberSet,
@@ -21,6 +20,7 @@ import {
   Schema,
   Scope,
 } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { type HttpClient } from "effect/http";
 import { GuestPath, IncusClient } from "incus-api";
 
@@ -82,7 +82,7 @@ export class PiSessionInitError extends Schema.TaggedError<PiSessionInitError>()
 ) {}
 
 export type PiSessionServices =
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | Schedules.Service
   | FileConfig
   | FileSystem.FileSystem
@@ -110,10 +110,10 @@ const resolveSessionFile = Effect.fnUntraced(function* (
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
 
   if (activeSession === undefined) {
-    const name = `${yield* crypto.randomUUIDv7().pipe(initError("Failed to name session"))}${SESSION_FILE_EXTENSION}`;
+    const name = `${yield* random.uuidV7()}${SESSION_FILE_EXTENSION}`;
     return { name, path: path.join(sessionsDir, name) } satisfies SessionFile;
   }
   if (activeSession.endsWith(LEGACY_SESSION_FILE_EXTENSION)) {
@@ -167,10 +167,10 @@ const openHarness = Effect.fnUntraced(function* (input: {
           models: piContext.modelRuntime,
           registry: input.registry,
           settings: { steeringMode: "all", followUpMode: "all" },
-          onReport: (error) =>
+          onReport: (error, info) =>
             runFork(
-              Effect.logWarning("pi-durable extension failure", error).pipe(
-                Effect.annotateLogs({ channelId: input.channelId }),
+              Effect.logWarning("pi-durable report", error).pipe(
+                Effect.annotateLogs({ channelId: input.channelId, report: info }),
               ),
             ),
         },

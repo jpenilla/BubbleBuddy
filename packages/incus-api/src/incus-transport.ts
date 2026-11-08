@@ -5,7 +5,7 @@ import * as Http from "node:http";
 import * as Https from "node:https";
 import * as net from "node:net";
 
-import { NodeHttpClient, NodeSocket } from "@effect/platform-node";
+import { NodeHttpClient, NodeWS } from "@effect/platform-node";
 import { Context, type Duration, Effect, Layer } from "effect";
 import { identity } from "effect/Function";
 import * as HttpClient from "effect/http/HttpClient";
@@ -131,11 +131,11 @@ const webSocketBaseUrl = (endpoint: ResolvedEndpoint) =>
 
 const createWebSocket = (endpoint: ResolvedEndpoint, url: string): globalThis.WebSocket => {
   if (endpoint.type === "unix") {
-    return new NodeSocket.NodeWS.WebSocket(url, undefined, {
+    return new NodeWS.WebSocket(url, undefined, {
       createConnection: () => net.createConnection({ path: endpoint.socketPath }),
     }) as unknown as globalThis.WebSocket;
   }
-  return new NodeSocket.NodeWS.WebSocket(url, undefined, {
+  return new NodeWS.WebSocket(url, undefined, {
     ca: endpoint.tls?.caCert,
     cert: endpoint.tls?.clientCert,
     key: endpoint.tls?.clientKey,

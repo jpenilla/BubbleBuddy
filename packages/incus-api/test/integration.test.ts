@@ -1,6 +1,7 @@
 import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
-import { Crypto, Deferred, Effect, Exit, Fiber, Layer, Schema, type Scope, Stream } from "effect";
+import { Deferred, Effect, Exit, Fiber, Layer, Schema, type Scope, Stream } from "effect";
+import { SecureRandom } from "effect/crypto";
 
 import { GuestPath, IncusApi, IncusClient, IncusContainer } from "../src/index.ts";
 
@@ -100,8 +101,8 @@ const withContainer = <A, E>(
   Effect.gen(function* () {
     const incus = yield* IncusClient.Service;
     const guestPath = yield* GuestPath.Service;
-    const crypto = yield* Crypto.Crypto;
-    const id = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const random = yield* SecureRandom.SecureRandom;
+    const id = yield* random.uuidV4();
     const containers = incus.project("default").containers;
     const name = `incus-api-integration-${id.slice(0, 8)}`;
     const scenarioExit = yield* Effect.scoped(

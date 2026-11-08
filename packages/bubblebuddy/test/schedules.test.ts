@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { Deferred, Effect, FileSystem, Layer, Stream } from "effect";
@@ -39,7 +40,7 @@ const consumeFirstWakeup = (schedules: Schedules.Interface) =>
     return fired;
   });
 
-it.layer(NodeServices.layer)("schedules", (it) => {
+it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))("schedules", (it) => {
   it.effect("rejects cron that repeats more often than once a minute", () =>
     Effect.gen(function* () {
       const directory = yield* temporaryDirectory;

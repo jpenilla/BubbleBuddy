@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Config, Effect, Layer, References } from "effect";
@@ -38,6 +39,7 @@ const AppLayer = Layer.mergeAll(
   Layer.provide(AppDatabase.layer),
   Layer.provide(DiscordLayer),
   Layer.provide(NodeServices.layer),
+  Layer.provide(NodeCrypto.layer),
   Layer.provide(GuestPath.layer),
 );
 

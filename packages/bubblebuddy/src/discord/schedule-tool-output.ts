@@ -77,10 +77,7 @@ const decodeDetails = Schema.decodeUnknownEffect(ScheduleTools.Details);
 // Start events contain raw arguments, even when tool validation later fails, so bound what we echo back.
 const IDENTIFICATION_LIMIT = 240;
 
-const identification = (
-  label: string,
-  value: string | undefined,
-): TextDisplayBuilder | undefined =>
+const identification = (label: string, value: string | undefined): TextDisplayBuilder | undefined =>
   value === undefined || value === ""
     ? undefined
     : detail(label, inlineCode(truncate(collapseWhitespace(value), IDENTIFICATION_LIMIT)));

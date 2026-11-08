@@ -2,7 +2,6 @@ import {
   Clock,
   Context,
   Cron,
-  Crypto,
   DateTime,
   Duration,
   Effect,
@@ -14,6 +13,7 @@ import {
   Schema,
   Stream,
 } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { SqlClient } from "effect/sql";
 
 export const AfterTiming = Schema.Struct({
@@ -351,7 +351,7 @@ const recurrenceColumns = (recurrence: Recurrence): RecurrenceColumns =>
 
 const createSchedules = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const changes = yield* Queue.make<void>({ capacity: 1, strategy: "sliding" });
   const notifyChange = Queue.offer(changes, undefined);
 
@@ -365,7 +365,7 @@ const createSchedules = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const { nextRunAt, recurrence } = yield* resolveTiming(decoded.timing, now);
 
-    const id = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const id = yield* random.uuidV4();
     const wakeup = Wakeup.make({
       id,
       channelId,
