@@ -26,7 +26,7 @@ import { GuestPath, IncusClient } from "incus-api";
 
 import { AppHome } from "../config/env.ts";
 import { FileConfig, type McpServerConfigEntry } from "../config/file.ts";
-import { type OutputPump } from "../discord/output-pump.ts";
+import { ChannelFeed } from "../discord/feed/channel-feed.ts";
 import { DiscordToolContext } from "../discord/tool-context.ts";
 import { makeDiscordTools } from "../discord/tools.ts";
 import { tryDiscordJsPromise } from "../discord/utils.ts";
@@ -40,7 +40,6 @@ import { channelHostSessionsDir, createChannelMountedWorkspace } from "../shared
 import { PiContext } from "./context.ts";
 import { tryDurablePromise } from "./durable.ts";
 import { createIncusTools } from "./incus-tools.ts";
-import { type SessionEvent, watchSessionEvents } from "./session-events.ts";
 import {
   importLegacySession,
   LEGACY_SESSION_FILE_EXTENSION,
@@ -67,8 +66,7 @@ export interface PiSession {
 export interface CreatePiSessionInput {
   readonly channel: GuildTextBasedChannel;
   readonly activeSession?: string;
-  readonly pump: OutputPump.Interface;
-  readonly handleSessionEvent: (event: SessionEvent) => Effect.Effect<void>;
+  readonly showThinking: Effect.Effect<boolean>;
   /** Keeps the channel session open. */
   readonly retainChannelSession: Effect.Effect<void, never, Scope.Scope>;
 }
@@ -167,10 +165,10 @@ const openHarness = Effect.fnUntraced(function* (input: {
           models: piContext.modelRuntime,
           registry: input.registry,
           settings: { steeringMode: "all", followUpMode: "all" },
-          onReport: (error, info) =>
+          onReport: ({ error, ...report }) =>
             runFork(
               Effect.logWarning("pi-durable report", error).pipe(
-                Effect.annotateLogs({ channelId: input.channelId, report: info }),
+                Effect.annotateLogs({ channelId: input.channelId, report }),
               ),
             ),
         },
@@ -258,11 +256,16 @@ export const createPiSession = (
         }),
     });
 
+    const feed = yield* ChannelFeed.make({
+      channel: input.channel,
+      showThinking: input.showThinking,
+      sessionName: sessionFile.name,
+    });
     const toolContextLayer = Layer.succeed(
       DiscordToolContext,
       DiscordToolContext.of({
         channel: input.channel,
-        executeOrdered: input.pump.executeOrdered,
+        executeOrdered: feed.executeOrdered,
       }),
     );
 
@@ -329,9 +332,9 @@ export const createPiSession = (
       ),
     ).pipe(initError("Failed to configure conversation"));
 
-    yield* watchSessionEvents(harness, root.id, input.handleSessionEvent).pipe(
-      initError("Failed to watch session events"),
-    );
+    yield* feed
+      .show({ harness, conversation: root })
+      .pipe(initError("Failed to show the conversation in the channel"));
 
     // A run starts its background compaction in the same commit as other run work, so once the conversation is idle,
     // every background task the run started is live.

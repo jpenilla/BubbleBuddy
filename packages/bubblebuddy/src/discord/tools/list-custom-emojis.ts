@@ -1,6 +1,6 @@
+import { obj } from "@earendil-works/pi-schema";
 import { formatEmoji } from "discord.js";
 import { Effect } from "effect";
-import { Type } from "typebox";
 
 import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { listUsableCustomEmojis } from "../assets.ts";
@@ -9,7 +9,7 @@ import { DiscordToolContext } from "../tool-context.ts";
 export const listCustomEmojisTool = defineEffectTool({
   name: "discord_list_custom_emojis",
   description: "List custom emojis usable here.",
-  parameters: Type.Object({}),
+  parameters: obj({}),
   replay: "safe",
   execute: () =>
     Effect.gen(function* () {

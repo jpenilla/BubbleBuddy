@@ -12,7 +12,7 @@ import {
 import { Effect, Layer, Redacted } from "effect";
 
 import { EnvConfig, type EnvConfigShape } from "../src/config/env.ts";
-import { OutputPump } from "../src/discord/output-pump.ts";
+import { Posting } from "../src/discord/posting.ts";
 
 const defaultEnvConfig: EnvConfigShape = {
   appHome: "/tmp/bb-test",
@@ -112,14 +112,12 @@ export const createTestMessageSnapshot = (
 export const toolCall = { callId: "tool-call" } as ToolExecutionApi;
 
 /** Runs a tool's Discord action in place, for tools whose actions do not post. */
-export const executeWithoutPosting: OutputPump.ExecuteOrdered = (operation) =>
+export const executeWithoutPosting: Posting.ExecuteOrdered = (operation) =>
   Effect.provideService(
     operation,
-    OutputPump.Posting,
-    OutputPump.Posting.of({
+    Posting.Service,
+    Posting.Service.of({
       send: () => Effect.die(new Error("Unexpected post")),
       sendChunked: () => Effect.die(new Error("Unexpected post")),
-      edit: () => Effect.die(new Error("Unexpected edit")),
-      isLatest: () => false,
     }),
   );

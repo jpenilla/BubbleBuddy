@@ -1,7 +1,7 @@
+import { arr, obj, str } from "@earendil-works/pi-schema";
 import { type Message } from "discord.js";
 import { Effect } from "effect";
 import { GuestPath } from "incus-api";
-import { Type } from "typebox";
 
 import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { DISCORD_ASSETS_SEGMENT } from "../../shared/constants.ts";
@@ -57,9 +57,9 @@ export const saveMessageAssetsTool = defineEffectTool({
   name: "discord_save_message_assets",
   description:
     "Save message attachments, embed media, and component media into the container workspace using the asset keys shown in the message. Asset keys and media metadata do not show the media itself; save an asset and open the saved file in the workspace to inspect it.",
-  parameters: Type.Object({
-    messageId: Type.String({ description: "Message ID" }),
-    assets: Type.Array(Type.String({ pattern: "^a[1-9][0-9]*$" }), {
+  parameters: obj({
+    messageId: str({ description: "Message ID" }),
+    assets: arr(str({ pattern: "^a[1-9][0-9]*$" }), {
       minItems: 1,
       uniqueItems: true,
     }),

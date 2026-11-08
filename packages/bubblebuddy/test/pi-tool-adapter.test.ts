@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { num, obj } from "@earendil-works/pi-schema";
 import { Effect } from "effect";
-import { Type } from "typebox";
 import { describe, expect, test } from "vitest";
 
 import { DiscordJsError } from "../src/discord/utils.ts";
@@ -13,7 +13,7 @@ describe("Effect tool adapter", () => {
       defineEffectTool({
         name: "test_effect_tool",
         description: "Tests the Effect tool adapter.",
-        parameters: Type.Object({ count: Type.Number() }),
+        parameters: obj({ count: num() }),
         execute: (input) =>
           Effect.succeed({
             content: [
@@ -35,7 +35,7 @@ describe("Effect tool adapter", () => {
   });
 
   test("preserves typed tool errors and normalizes defects", async () => {
-    const parameters = Type.Object({});
+    const parameters = obj({});
     const expectedFailure = await Effect.runPromise(
       defineEffectTool({
         name: "expected_failure",

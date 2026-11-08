@@ -1,6 +1,6 @@
+import { arr, obj, opt, str } from "@earendil-works/pi-schema";
 import { Constants, StickerFormatType, parseEmoji } from "discord.js";
 import { Effect } from "effect";
-import { Type } from "typebox";
 
 import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { DISCORD_ASSETS_SEGMENT } from "../../shared/constants.ts";
@@ -73,10 +73,10 @@ const saveStickerAsset = Effect.fn("saveStickerAsset")(function* (
 export const saveAssetsTool = defineEffectTool({
   name: "discord_save_assets",
   description: "Save custom emojis and stickers into the container workspace.",
-  parameters: Type.Object({
-    customEmojis: Type.Optional(
-      Type.Array(
-        Type.String({
+  parameters: obj({
+    customEmojis: opt(
+      arr(
+        str({
           description: "Exact syntax such as <:wave:123> or <a:dance:456>",
           pattern: "<a?:\\w{2,32}:\\d{17,20}>",
         }),
@@ -86,9 +86,7 @@ export const saveAssetsTool = defineEffectTool({
         },
       ),
     ),
-    stickers: Type.Optional(
-      Type.Array(Type.String({ description: "Sticker ID" }), { minItems: 1, uniqueItems: true }),
-    ),
+    stickers: opt(arr(str({ description: "Sticker ID" }), { minItems: 1, uniqueItems: true })),
   }),
   replay: "safe",
   execute: (params) =>
