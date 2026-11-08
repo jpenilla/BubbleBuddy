@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 
 import { type ToolResultMessage } from "@earendil-works/pi-ai";
+import { type ToolExecutionResult } from "@earendil-works/pi-durable";
 import { type CallToolResult, type ContentBlock, type Tool } from "@modelcontextprotocol/client";
 import { Effect, Match } from "effect";
 import { Type } from "typebox";
@@ -120,10 +121,10 @@ const createPiTool = Effect.fn("McpPiTools.createPiTool")(function* (
         { toolDefinition: tool },
       );
       return {
-        content: resultContent(result, source),
+        output: resultContent(result, source),
         // MCP reports failures as results; keep their content.
         isError: result.isError === true,
-      };
+      } satisfies ToolExecutionResult;
     }),
   });
 });
