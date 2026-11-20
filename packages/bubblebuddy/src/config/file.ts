@@ -43,6 +43,23 @@ export type McpServerConfigEntry = Schema.Schema.Type<typeof McpServerConfigEntr
 const McpServersConfigSchema = Schema.Record(Schema.String, McpServerConfigEntrySchema);
 const PositiveFiniteNumberSchema = Schema.Finite.check(Schema.isGreaterThan(0));
 const ThinkingLevelSchema = Schema.Literals(THINKING_LEVELS);
+const PositiveIntSchema = Schema.Int.check(Schema.isGreaterThan(0));
+const NonNegativeIntSchema = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+
+const CompactionPolicyConfigSchema = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  reserveTokens: Schema.optionalKey(PositiveIntSchema),
+  keepRecentTokens: Schema.optionalKey(PositiveIntSchema),
+  backgroundTokens: Schema.optionalKey(NonNegativeIntSchema),
+});
+
+/** pi-durable compaction settings; unset fields keep pi-durable's defaults. */
+const CompactionConfigSchema = Schema.Struct({
+  ...CompactionPolicyConfigSchema.fields,
+  modelOverrides: Schema.optionalKey(Schema.Record(Schema.String, CompactionPolicyConfigSchema)),
+});
+
+export type CompactionConfig = typeof CompactionConfigSchema.Type;
 
 export const ConfigFileSchema = Schema.Struct({
   botProfileFile: Schema.NonEmptyString.pipe(
@@ -58,6 +75,7 @@ export const ConfigFileSchema = Schema.Struct({
     Schema.withDecodingDefaultKey(Effect.succeed(30 * 60 * 1000)),
   ),
   mcpServers: McpServersConfigSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
+  compaction: Schema.optionalKey(CompactionConfigSchema),
 });
 
 export type FileConfigShape = typeof ConfigFileSchema.Type;

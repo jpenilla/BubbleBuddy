@@ -149,6 +149,7 @@ const openHarness = Effect.fnUntraced(function* (input: {
   readonly registry: Registry;
 }) {
   const piContext = yield* PiContext;
+  const config = yield* FileConfig;
   const runFork = Effect.runForkWith(yield* Effect.context());
 
   // Closing the harness also closes its storage, which tolerates closing twice.
@@ -166,7 +167,11 @@ const openHarness = Effect.fnUntraced(function* (input: {
         {
           models: piContext.modelRuntime,
           registry: input.registry,
-          settings: { steeringMode: "all", followUpMode: "all" },
+          settings: {
+            steeringMode: "all",
+            followUpMode: "all",
+            ...(config.compaction === undefined ? {} : { compaction: config.compaction }),
+          },
           onReport: (error, info) =>
             runFork(
               Effect.logWarning("pi-durable report", error).pipe(
