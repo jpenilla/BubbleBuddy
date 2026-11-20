@@ -1,4 +1,6 @@
 import { type ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { type Api, type Model } from "@earendil-works/pi-ai";
+import { DEFAULT_COMPACTION_POLICY } from "@earendil-works/pi-durable";
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
 
 import { normalizeLineEndings } from "../shared/text.ts";
@@ -43,6 +45,44 @@ export type McpServerConfigEntry = Schema.Schema.Type<typeof McpServerConfigEntr
 const McpServersConfigSchema = Schema.Record(Schema.String, McpServerConfigEntrySchema);
 const PositiveFiniteNumberSchema = Schema.Finite.check(Schema.isGreaterThan(0));
 const ThinkingLevelSchema = Schema.Literals(THINKING_LEVELS);
+const PositiveIntSchema = Schema.Int.check(Schema.isGreaterThan(0));
+const NonNegativeIntSchema = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+
+const CompactionPolicyConfigSchema = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  reserveTokens: Schema.optionalKey(PositiveIntSchema),
+  keepRecentTokens: Schema.optionalKey(PositiveIntSchema),
+  backgroundTokens: Schema.optionalKey(NonNegativeIntSchema),
+});
+
+/** pi-durable compaction settings; unset fields keep pi-durable's defaults. */
+const CompactionConfigSchema = Schema.Struct({
+  ...CompactionPolicyConfigSchema.fields,
+  modelOverrides: Schema.optionalKey(Schema.Record(Schema.String, CompactionPolicyConfigSchema)),
+});
+
+type CompactionConfig = typeof CompactionConfigSchema.Type;
+
+/**
+ * Fails when the configured compaction policy for the model would compact every turn: the context kept after a
+ * compaction must fit below the point where the next one starts.
+ */
+export const checkCompactionConfig = Effect.fnUntraced(function* (
+  compaction: CompactionConfig | undefined,
+  model: Model<Api>,
+) {
+  // Only check settings the user wrote, against a known window; pi-durable skips threshold compaction without one.
+  if (compaction === undefined || model.contextWindow <= 0) return;
+  const modelKey = `${model.provider}/${model.id}`;
+  const { modelOverrides, ...harnessWide } = compaction;
+  const policy = { ...DEFAULT_COMPACTION_POLICY, ...harnessWide, ...modelOverrides?.[modelKey] };
+  const startsAt = model.contextWindow - policy.reserveTokens - policy.backgroundTokens;
+  if (policy.enabled && policy.keepRecentTokens >= startsAt) {
+    return yield* new ConfigError({
+      message: `Invalid compaction settings: compaction for ${modelKey} starts at ${startsAt} tokens (contextWindow ${model.contextWindow} - reserveTokens ${policy.reserveTokens} - backgroundTokens ${policy.backgroundTokens}), which must be above keepRecentTokens (${policy.keepRecentTokens}).`,
+    });
+  }
+});
 
 export const ConfigFileSchema = Schema.Struct({
   botProfileFile: Schema.NonEmptyString.pipe(
@@ -58,6 +98,7 @@ export const ConfigFileSchema = Schema.Struct({
     Schema.withDecodingDefaultKey(Effect.succeed(30 * 60 * 1000)),
   ),
   mcpServers: McpServersConfigSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
+  compaction: Schema.optionalKey(CompactionConfigSchema),
 });
 
 export type FileConfigShape = typeof ConfigFileSchema.Type;

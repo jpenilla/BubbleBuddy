@@ -90,6 +90,33 @@ The `$BUBBLEBUDDY_HOME/bubblebuddy.json` configuration file will be generated on
 | `thinkingLevel`          | Thinking level passed to Pi. Valid values are `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, and `"max"`. Some models only accept a subset or do not support thinking. | `"minimal"`            |
 | `channelIdleTimeoutMs`   | How long idle channel sessions stay loaded before eviction.                                                                                                                             | `1800000` (30 minutes) |
 | `mcpServers`             | MCP server definitions made available to Pi sessions.                                                                                                                                   | `{}`                   |
+| `compaction`             | Automatic context compaction settings. See [Compaction settings](#compaction-settings).                                                                                                 | pi-durable defaults    |
+
+### Compaction settings
+
+`compaction` is optional, and so is every field in it. Unset fields keep pi-durable's defaults.
+
+| Key                | Description                                                                                                                                                             | Default |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `enabled`          | Enables automatic compaction. `/compact` works either way.                                                                                                              | `true`  |
+| `reserveTokens`    | Room kept free for the answer. Once the context exceeds `contextWindow - reserveTokens`, the next request waits for a compaction. The summary is capped at 80% of this. | `16384` |
+| `keepRecentTokens` | Roughly how much recent context a compaction keeps verbatim.                                                                                                            | `20000` |
+| `backgroundTokens` | How far below that threshold a background compaction starts. `0` disables it.                                                                                           | `32768` |
+| `modelOverrides`   | Per-model settings keyed by `"provider/modelId"`, matching `modelProvider` and `modelId` exactly.                                                                       | `{}`    |
+
+With the defaults, a 1M-token model only starts compacting at about 95% of its window. This override for a 1,000,000-token model starts at 400k and blocks at 440k:
+
+```json
+{
+  "compaction": {
+    "modelOverrides": {
+      "provider/model-1m": { "reserveTokens": 560000, "backgroundTokens": 40000, "keepRecentTokens": 40000 }
+    }
+  }
+}
+```
+
+When `compaction` is set, BubbleBuddy refuses to start if `keepRecentTokens` isn't below where compaction starts for the configured model (`contextWindow - reserveTokens - backgroundTokens`), since it would then compact every turn.
 
 ### MCP server definitions
 

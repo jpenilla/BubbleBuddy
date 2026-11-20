@@ -2,7 +2,7 @@ import { type Api, type Model } from "@earendil-works/pi-ai";
 import { getAgentDir, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { Context, Effect, Layer, Path } from "effect";
 
-import { FileConfig } from "../config/file.ts";
+import { checkCompactionConfig, FileConfig } from "../config/file.ts";
 
 const createPiContext = Effect.gen(function* () {
   const config = yield* FileConfig;
@@ -22,6 +22,8 @@ const createPiContext = Effect.gen(function* () {
       `Unknown PI_MODEL "${config.modelId}" for provider "${config.modelProvider}".${suffix}`,
     );
   }
+
+  yield* checkCompactionConfig(config.compaction, model);
 
   yield* Effect.logInfo("Using model").pipe(
     Effect.annotateLogs({ modelProvider: model.provider, modelId: model.id }),
