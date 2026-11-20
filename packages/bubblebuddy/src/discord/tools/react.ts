@@ -1,6 +1,6 @@
+import { arr, bool, obj, str } from "@earendil-works/pi-schema";
 import { parseEmoji } from "discord.js";
 import { Effect, Result } from "effect";
-import { Type } from "typebox";
 
 import { AgentToolError, defineEffectTool } from "../../pi/effect-tool.ts";
 import { listUsableCustomEmojis } from "../assets.ts";
@@ -10,9 +10,9 @@ import { tryDiscordJsPromise } from "../utils.ts";
 export const reactTool = defineEffectTool({
   name: "discord_react",
   description: "React to a message in the current channel.",
-  parameters: Type.Object({
-    emojis: Type.Array(
-      Type.String({
+  parameters: obj({
+    emojis: arr(
+      str({
         description: "Unicode emoji or custom emoji in exact <:name:id> or <a:name:id> syntax",
       }),
       {
@@ -20,8 +20,8 @@ export const reactTool = defineEffectTool({
         uniqueItems: true,
       },
     ),
-    messageId: Type.String({ description: "Message ID" }),
-    terminate: Type.Boolean({
+    messageId: str({ description: "Message ID" }),
+    terminate: bool({
       description: "End the turn after these reactions succeed.",
     }),
   }),

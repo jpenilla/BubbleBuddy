@@ -11,9 +11,7 @@ import {
   Tracer,
 } from "effect";
 
-import { OutputPump } from "../discord/output-pump.ts";
 import { createRunErrorEmbed } from "../discord/run-status-embed.ts";
-import { SessionOutput } from "../discord/session-output.ts";
 import { sendMessage } from "../discord/utils.ts";
 import { PiContext } from "../pi/context.ts";
 import { DurableError, tryDurablePromise } from "../pi/durable.ts";
@@ -123,8 +121,7 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
       );
 
     const closeSession = Effect.gen(function* () {
-      // @effect-diagnostics-next-line effectSucceedWithVoid:off
-      yield* ScopedRef.set(piRef, Effect.succeed(undefined));
+      yield* ScopedRef.set(piRef, Effect.undefined);
       yield* repository.clearActiveSession(input.channelId).pipe(mapToChannelSessionError);
       yield* Ref.set(activeSessionRef, undefined);
     }).pipe(Effect.withSpan("ChannelSession.closeSession", { attributes }));
@@ -139,17 +136,10 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
       yield* ScopedRef.set(
         piRef,
         Effect.gen(function* () {
-          const pump = yield* OutputPump.create(channel);
-          const handleSessionEvent = yield* SessionOutput.create({
-            channel,
-            pump,
-            showThinking: settings.getShowThinking,
-          });
           const pi = yield* createPiSession({
             channel,
             activeSession,
-            pump,
-            handleSessionEvent,
+            showThinking: settings.getShowThinking,
             retainChannelSession: input.retain,
           });
           if (pi.sessionName !== activeSession) {
@@ -231,16 +221,17 @@ export const createChannelSession = (input: CreateChannelSessionInput) =>
     const activate = Effect.fn("ChannelSession.activate", { attributes })(
       function* (activation: ActivateChannelSessionInput) {
         const pi = yield* openSession(activation.channel);
-        yield* tryDurablePromise((context) =>
+        const submission = yield* tryDurablePromise((context) =>
           pi.conversation.submit(
             { type: "input", content: activation.prompt, whenBusy: "steer" },
             context,
           ),
         ).pipe(mapToChannelSessionError);
+        yield* Effect.annotateCurrentSpan({ submissionId: submission.id });
         yield* pi.retainUntilIdle;
       },
       (effect) => lock.withPermit(effect),
-      // Reported straight to the channel: the session, and with it the output pump, may have failed to open.
+      // Reported straight to the channel: the session, and with it the channel feed, may have failed to open.
       (effect, activation) =>
         effect.pipe(
           Effect.tapError((error) =>

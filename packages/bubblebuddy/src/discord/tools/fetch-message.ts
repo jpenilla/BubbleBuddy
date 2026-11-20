@@ -1,5 +1,5 @@
+import { obj, str } from "@earendil-works/pi-schema";
 import { Effect } from "effect";
-import { Type } from "typebox";
 
 import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { formatMessageForPrompt } from "../prompt-formatting.ts";
@@ -9,8 +9,8 @@ import { tryDiscordJsPromise } from "../utils.ts";
 export const fetchMessageTool = defineEffectTool({
   name: "discord_fetch_message",
   description: "Fetch a message in the current Discord channel.",
-  parameters: Type.Object({
-    messageId: Type.String({ description: "Message ID" }),
+  parameters: obj({
+    messageId: str({ description: "Message ID" }),
   }),
   replay: "safe",
   execute: (params) =>

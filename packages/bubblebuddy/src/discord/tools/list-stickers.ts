@@ -1,5 +1,5 @@
+import { obj } from "@earendil-works/pi-schema";
 import { Effect } from "effect";
-import { Type } from "typebox";
 
 import { defineEffectTool } from "../../pi/effect-tool.ts";
 import { listUsableStickers } from "../assets.ts";
@@ -8,7 +8,7 @@ import { DiscordToolContext } from "../tool-context.ts";
 export const listStickersTool = defineEffectTool({
   name: "discord_list_stickers",
   description: "List stickers usable here.",
-  parameters: Type.Object({}),
+  parameters: obj({}),
   replay: "safe",
   execute: () =>
     Effect.gen(function* () {
