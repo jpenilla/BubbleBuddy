@@ -5,7 +5,10 @@ import { GuestPath } from "incus-api";
 
 import { SessionContainer } from "../../session/session-container.ts";
 
-export class AssetSaveError extends Schema.TaggedError<AssetSaveError>()("AssetSaveError", {
+export class AssetSaveError extends Schema.TaggedError<
+  AssetSaveError,
+  { readonly brand: unique symbol }
+>()("AssetSaveError", {
   message: Schema.String,
 }) {}
 

@@ -91,11 +91,14 @@ export interface Options<R = never> {
   >;
 }
 
-export class McpError extends Schema.TaggedError<McpError>()("McpError", {
-  operation: Schema.String,
-  message: Schema.String,
-  cause: Schema.Defect(),
-}) {}
+export class McpError extends Schema.TaggedError<McpError, { readonly brand: unique symbol }>()(
+  "McpError",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {}
 
 export interface Subscription {
   readonly honoredFilter: SubscriptionFilter;

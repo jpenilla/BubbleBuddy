@@ -10,7 +10,10 @@ import {
 import { Cause, Effect, Exit, Schema } from "effect";
 import { type Static, type TSchema } from "typebox";
 
-export class AgentToolError extends Schema.TaggedError<AgentToolError>()("AgentToolError", {
+export class AgentToolError extends Schema.TaggedError<
+  AgentToolError,
+  { readonly brand: unique symbol }
+>()("AgentToolError", {
   message: Schema.String,
   cause: Schema.optional(Schema.Defect()),
 }) {}

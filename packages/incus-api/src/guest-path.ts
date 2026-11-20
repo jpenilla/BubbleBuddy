@@ -1,9 +1,12 @@
 import { Brand, Context, Effect, Layer, Path, Schema } from "effect";
 
-export class PathError extends Schema.TaggedError<PathError>()("GuestPath.PathError", {
-  path: Schema.String,
-  message: Schema.String,
-}) {}
+export class PathError extends Schema.TaggedError<PathError, { readonly brand: unique symbol }>()(
+  "GuestPath.PathError",
+  {
+    path: Schema.String,
+    message: Schema.String,
+  },
+) {}
 
 /**
  * Lexically normalized absolute guest path; preserves trailing slashes.

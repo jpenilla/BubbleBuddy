@@ -73,13 +73,13 @@ export interface CreatePiSessionInput {
   readonly retainChannelSession: Effect.Effect<void, never, Scope.Scope>;
 }
 
-export class PiSessionInitError extends Schema.TaggedError<PiSessionInitError>()(
-  "PiSessionInitError",
-  {
-    message: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {}
+export class PiSessionInitError extends Schema.TaggedError<
+  PiSessionInitError,
+  { readonly brand: unique symbol }
+>()("PiSessionInitError", {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect()),
+}) {}
 
 export type PiSessionServices =
   | SecureRandom.SecureRandom

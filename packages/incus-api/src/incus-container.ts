@@ -3,41 +3,41 @@ import { type Duration, type Effect, Schema, type Scope, type Stream } from "eff
 import { type GuestPath } from "./guest-path.ts";
 import { type IncusApi } from "./incus-api.ts";
 
-export class MetadataError extends Schema.TaggedError<MetadataError>()(
-  "IncusContainer.MetadataError",
-  {
-    operation: Schema.String,
-    message: Schema.String,
-    metadata: Schema.Unknown,
-  },
-) {}
+export class MetadataError extends Schema.TaggedError<
+  MetadataError,
+  { readonly brand: unique symbol }
+>()("IncusContainer.MetadataError", {
+  operation: Schema.String,
+  message: Schema.String,
+  metadata: Schema.Unknown,
+}) {}
 
-export class ExecCallbackError extends Schema.TaggedError<ExecCallbackError>()(
-  "IncusContainer.ExecCallbackError",
-  {
-    cause: Schema.Defect(),
-  },
-) {}
+export class ExecCallbackError extends Schema.TaggedError<
+  ExecCallbackError,
+  { readonly brand: unique symbol }
+>()("IncusContainer.ExecCallbackError", {
+  cause: Schema.Defect(),
+}) {}
 
-export class ExecInvalidOptionsError extends Schema.TaggedError<ExecInvalidOptionsError>()(
-  "IncusContainer.ExecInvalidOptionsError",
-  { message: Schema.String },
-) {}
+export class ExecInvalidOptionsError extends Schema.TaggedError<
+  ExecInvalidOptionsError,
+  { readonly brand: unique symbol }
+>()("IncusContainer.ExecInvalidOptionsError", { message: Schema.String }) {}
 
-export class ExecTransportError extends Schema.TaggedError<ExecTransportError>()(
-  "IncusContainer.ExecTransportError",
-  {
-    message: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {}
+export class ExecTransportError extends Schema.TaggedError<
+  ExecTransportError,
+  { readonly brand: unique symbol }
+>()("IncusContainer.ExecTransportError", {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect()),
+}) {}
 
-export class ExecTimeoutError extends Schema.TaggedError<ExecTimeoutError>()(
-  "IncusContainer.ExecTimeoutError",
-  {
-    timeoutSeconds: Schema.Finite,
-  },
-) {}
+export class ExecTimeoutError extends Schema.TaggedError<
+  ExecTimeoutError,
+  { readonly brand: unique symbol }
+>()("IncusContainer.ExecTimeoutError", {
+  timeoutSeconds: Schema.Finite,
+}) {}
 
 export type FileError = IncusApi.ApiError | MetadataError;
 export type ExecError =

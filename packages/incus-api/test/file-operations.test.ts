@@ -13,7 +13,7 @@ class StreamValue extends Context.Service<
   { readonly chunks: ReadonlyArray<Uint8Array> }
 >()("incus-api-test/StreamValue") {}
 
-class SourceFailure extends Schema.TaggedError<SourceFailure>()(
+class SourceFailure extends Schema.TaggedError<SourceFailure, { readonly brand: unique symbol }>()(
   "incus-api-test/SourceFailure",
   {},
 ) {}

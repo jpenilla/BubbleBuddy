@@ -19,7 +19,10 @@ export const EMBED_COLOR = {
   neutral: 0x5865f2,
 } as const;
 
-export class DiscordJsError extends Schema.TaggedError<DiscordJsError>()("DiscordJsError", {
+export class DiscordJsError extends Schema.TaggedError<
+  DiscordJsError,
+  { readonly brand: unique symbol }
+>()("DiscordJsError", {
   message: Schema.String,
   cause: Schema.Defect(),
 }) {}
