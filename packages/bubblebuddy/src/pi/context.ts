@@ -25,14 +25,9 @@ const createPiContext = Effect.gen(function* () {
     );
   }
 
-  const compaction = checkCompactionConfig(config.compaction, model);
-  for (const warning of compaction.warnings) {
-    yield* Effect.logWarning(warning);
-  }
-  if (compaction.errors.length > 0) {
-    return yield* new ConfigError({
-      message: `Invalid compaction settings in bubblebuddy.json:\n${compaction.errors.join("\n")}`,
-    });
+  const compactionError = checkCompactionConfig(config.compaction, model);
+  if (compactionError !== undefined) {
+    return yield* new ConfigError({ message: `Invalid compaction settings: ${compactionError}` });
   }
 
   yield* Effect.logInfo("Using model").pipe(

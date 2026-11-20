@@ -2,53 +2,23 @@ import { DEFAULT_COMPACTION_POLICY } from "@earendil-works/pi-durable";
 
 import { type CompactionConfig } from "./file.ts";
 
-export interface CompactionModel {
-  readonly provider: string;
-  readonly id: string;
-  readonly contextWindow: number;
-}
-
-export interface CompactionCheck {
-  /** Settings that would make compaction run constantly or never; startup fails on these. */
-  readonly errors: ReadonlyArray<string>;
-  readonly warnings: ReadonlyArray<string>;
-}
-
 /**
- * Checks the effective compaction policy for `model` against its context window, merging defaults, harness-wide
- * settings, and the model's override field by field as pi-durable does.
+ * Returns an error when the effective compaction policy for the model would compact every turn: the context
+ * kept after a compaction must fit below the point where the next one starts.
  */
 export const checkCompactionConfig = (
   compaction: CompactionConfig | undefined,
-  model: CompactionModel,
-): CompactionCheck => {
-  const modelKey = `${model.provider}/${model.id}`;
-  const { modelOverrides = {}, ...harnessWide } = compaction ?? {};
-  const override = modelOverrides[modelKey];
-  const policy = { ...DEFAULT_COMPACTION_POLICY, ...harnessWide, ...override };
-
-  const warnings = Object.keys(modelOverrides)
-    .filter((key) => key !== modelKey)
-    .map(
-      (key) =>
-        `compaction.modelOverrides["${key}"] does not match the configured model "${modelKey}" and is ignored.`,
-    );
-
-  const errors: string[] = [];
-  if (policy.enabled) {
-    const { contextWindow } = model;
-    const blockingAt = contextWindow - policy.reserveTokens;
-    const backgroundAt = blockingAt - policy.backgroundTokens;
-    if (blockingAt <= 0) {
-      errors.push(
-        `compaction.reserveTokens (${policy.reserveTokens}) must be below the context window of ${modelKey} (${contextWindow}).`,
-      );
-    } else if (policy.keepRecentTokens >= backgroundAt) {
-      // The kept context alone would already be over the threshold, so every turn would compact again.
-      errors.push(
-        `compaction.keepRecentTokens (${policy.keepRecentTokens}) must be below the point where compaction starts for ${modelKey} (${backgroundAt} = contextWindow ${contextWindow} - reserveTokens ${policy.reserveTokens} - backgroundTokens ${policy.backgroundTokens}).`,
-      );
-    }
+  model: { readonly provider: string; readonly id: string; readonly contextWindow: number },
+): string | undefined => {
+  const { modelOverrides, ...harnessWide } = compaction ?? {};
+  const policy = {
+    ...DEFAULT_COMPACTION_POLICY,
+    ...harnessWide,
+    ...modelOverrides?.[`${model.provider}/${model.id}`],
+  };
+  const startsAt = model.contextWindow - policy.reserveTokens - policy.backgroundTokens;
+  if (policy.enabled && policy.keepRecentTokens >= startsAt) {
+    return `Compaction for ${model.provider}/${model.id} starts at ${startsAt} tokens (contextWindow ${model.contextWindow} - reserveTokens ${policy.reserveTokens} - backgroundTokens ${policy.backgroundTokens}), which must be above keepRecentTokens (${policy.keepRecentTokens}).`;
   }
-  return { errors, warnings };
+  return undefined;
 };
