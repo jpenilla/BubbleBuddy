@@ -94,27 +94,29 @@ The `$BUBBLEBUDDY_HOME/bubblebuddy.json` configuration file will be generated on
 
 ### Compaction settings
 
-`compaction` is optional. Every field is optional; unset fields keep pi-durable's defaults.
+`compaction` is optional, and so is every field in it. Unset fields keep pi-durable's defaults. Unknown keys are rejected, and changes take effect after a restart.
 
-| Key                | Description                                                                                                                  | Default |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `enabled`          | Enables automatic compaction. `/compact` always works.                                                                       | `true`  |
-| `reserveTokens`    | Room kept free for the answer. The next request waits for a compaction once context exceeds `contextWindow - reserveTokens`. | `16384` |
-| `keepRecentTokens` | Roughly how much recent context a compaction keeps verbatim.                                                                 | `20000` |
-| `backgroundTokens` | How far below the blocking threshold a background compaction starts. `0` disables background compaction.                     | `32768` |
-| `modelOverrides`   | Per-model settings keyed by exact `"provider/modelId"`. Each field set replaces the one above for that model.                | `{}`    |
+| Key                | Description                                                                                                                                                                                                                                   | Default |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `enabled`          | Enables automatic compaction. `/compact` works either way.                                                                                                                                                                                    | `true`  |
+| `reserveTokens`    | Room kept free for the answer. Once the context exceeds `contextWindow - reserveTokens`, the next request waits for a compaction. Also caps the summary length, at 80% of this value (limited by the model's maximum output). Minimum `4096`. | `16384` |
+| `keepRecentTokens` | Roughly how much recent context a compaction keeps verbatim.                                                                                                                                                                                  | `20000` |
+| `backgroundTokens` | How far below the blocking threshold a background compaction starts, while the conversation keeps going. `0` disables background compaction.                                                                                                  | `32768` |
+| `modelOverrides`   | Per-model settings keyed by `"provider/modelId"`, which must match `modelProvider` and `modelId` exactly. Each field set replaces the one above for that model.                                                                               | `{}`    |
 
-The defaults let a 1M-token model grow to about 95% of its window before compacting. To compact a large-window model earlier, raise `reserveTokens` for it:
+With the defaults, a 1M-token model starts compacting in the background at about 95% of its window and blocks at about 98%. To compact a large-window model earlier, raise `reserveTokens` in its override. For example, for a 1,000,000-token model, this starts a background compaction at 400k tokens and blocks at 440k:
 
 ```json
 {
   "compaction": {
     "modelOverrides": {
-      "provider/model-1m": { "reserveTokens": 600000, "backgroundTokens": 40000, "keepRecentTokens": 40000 }
+      "provider/model-1m": { "reserveTokens": 560000, "backgroundTokens": 40000, "keepRecentTokens": 40000 }
     }
   }
 }
 ```
+
+At startup, BubbleBuddy checks the settings against the configured model's context window. It refuses to start if `reserveTokens` is not below the window, or if `keepRecentTokens` is not below the point where compaction starts (`contextWindow - reserveTokens - backgroundTokens`), since compaction would then run every turn or never. It logs a warning for `modelOverrides` keys that don't match the configured model.
 
 ### MCP server definitions
 

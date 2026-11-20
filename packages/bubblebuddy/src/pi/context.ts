@@ -2,6 +2,8 @@ import { type Api, type Model } from "@earendil-works/pi-ai";
 import { getAgentDir, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { Context, Effect, Layer, Path } from "effect";
 
+import { checkCompactionConfig } from "../config/compaction.ts";
+import { ConfigError } from "../config/error.ts";
 import { FileConfig } from "../config/file.ts";
 
 const createPiContext = Effect.gen(function* () {
@@ -21,6 +23,16 @@ const createPiContext = Effect.gen(function* () {
     throw new Error(
       `Unknown PI_MODEL "${config.modelId}" for provider "${config.modelProvider}".${suffix}`,
     );
+  }
+
+  const compaction = checkCompactionConfig(config.compaction, model);
+  for (const warning of compaction.warnings) {
+    yield* Effect.logWarning(warning);
+  }
+  if (compaction.errors.length > 0) {
+    return yield* new ConfigError({
+      message: `Invalid compaction settings in bubblebuddy.json:\n${compaction.errors.join("\n")}`,
+    });
   }
 
   yield* Effect.logInfo("Using model").pipe(

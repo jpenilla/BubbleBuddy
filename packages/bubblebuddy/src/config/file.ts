@@ -46,17 +46,50 @@ const ThinkingLevelSchema = Schema.Literals(THINKING_LEVELS);
 const PositiveIntSchema = Schema.Int.check(Schema.isGreaterThan(0));
 const NonNegativeIntSchema = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
-const CompactionPolicyConfigSchema = Schema.Struct({
+/** pi-durable caps a summary at 80% of `reserveTokens`; below this a summary is too short to be useful. */
+const MIN_RESERVE_TOKENS = 4096;
+
+/** Rejects unknown keys, so a misspelled setting fails instead of silently keeping the default. */
+const strictStruct = <const Fields extends Schema.Struct.Fields>(fields: Fields) => {
+  const known = new Set(Object.keys(fields));
+  return Schema.Record(Schema.String, Schema.Unknown)
+    .check(
+      Schema.makeFilter(
+        (input) => {
+          const unknown = Object.keys(input).filter((key) => !known.has(key));
+          return unknown.length === 0 || `Unknown setting(s): ${unknown.join(", ")}`;
+        },
+        { expected: `only ${[...known].join(", ")}` },
+      ),
+    )
+    .pipe(Schema.decodeTo(Schema.Struct(fields)));
+};
+
+const compactionPolicyFields = {
   enabled: Schema.optionalKey(Schema.Boolean),
-  reserveTokens: Schema.optionalKey(PositiveIntSchema),
+  reserveTokens: Schema.optionalKey(
+    Schema.Int.check(Schema.isGreaterThanOrEqualTo(MIN_RESERVE_TOKENS)),
+  ),
   keepRecentTokens: Schema.optionalKey(PositiveIntSchema),
   backgroundTokens: Schema.optionalKey(NonNegativeIntSchema),
-});
+};
+
+/** pi-durable looks overrides up by exact `"provider/modelId"`. */
+const MODEL_KEY_PATTERN = /^[^/]+\/.+$/;
+const ModelOverridesSchema = Schema.Record(
+  Schema.String,
+  strictStruct(compactionPolicyFields),
+).check(
+  Schema.makeFilter(
+    (overrides) => Object.keys(overrides).every((key) => MODEL_KEY_PATTERN.test(key)),
+    { expected: 'keys of the form "provider/modelId"' },
+  ),
+);
 
 /** pi-durable compaction settings; unset fields keep pi-durable's defaults. */
-const CompactionConfigSchema = Schema.Struct({
-  ...CompactionPolicyConfigSchema.fields,
-  modelOverrides: Schema.optionalKey(Schema.Record(Schema.String, CompactionPolicyConfigSchema)),
+const CompactionConfigSchema = strictStruct({
+  ...compactionPolicyFields,
+  modelOverrides: Schema.optionalKey(ModelOverridesSchema),
 });
 
 export type CompactionConfig = typeof CompactionConfigSchema.Type;
