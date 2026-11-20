@@ -45,6 +45,9 @@ describe("compaction config", () => {
         model,
       );
       yield* checkCompactionConfig({ enabled: false, reserveTokens: 1_000_000 }, model);
+      // Without a compaction block, or without a known window, nothing is checked.
+      yield* checkCompactionConfig(undefined, { ...model, contextWindow: 32_000 });
+      yield* checkCompactionConfig({ reserveTokens: 1_000_000 }, { ...model, contextWindow: 0 });
     }),
   );
 

@@ -116,7 +116,7 @@ With the defaults, a 1M-token model only starts compacting at about 95% of its w
 }
 ```
 
-BubbleBuddy refuses to start if `keepRecentTokens` isn't below where compaction starts (`contextWindow - reserveTokens - backgroundTokens`), since it would then compact every turn.
+When `compaction` is set, BubbleBuddy refuses to start if `keepRecentTokens` isn't below where compaction starts for the configured model (`contextWindow - reserveTokens - backgroundTokens`), since it would then compact every turn.
 
 ### MCP server definitions
 

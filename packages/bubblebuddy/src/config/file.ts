@@ -64,15 +64,17 @@ const CompactionConfigSchema = Schema.Struct({
 type CompactionConfig = typeof CompactionConfigSchema.Type;
 
 /**
- * Fails when the effective compaction policy for the model would compact every turn: the context kept after a
+ * Fails when the configured compaction policy for the model would compact every turn: the context kept after a
  * compaction must fit below the point where the next one starts.
  */
 export const checkCompactionConfig = Effect.fnUntraced(function* (
   compaction: CompactionConfig | undefined,
   model: Model<Api>,
 ) {
+  // Only check settings the user wrote, against a known window; pi-durable skips threshold compaction without one.
+  if (compaction === undefined || model.contextWindow <= 0) return;
   const modelKey = `${model.provider}/${model.id}`;
-  const { modelOverrides, ...harnessWide } = compaction ?? {};
+  const { modelOverrides, ...harnessWide } = compaction;
   const policy = { ...DEFAULT_COMPACTION_POLICY, ...harnessWide, ...modelOverrides?.[modelKey] };
   const startsAt = model.contextWindow - policy.reserveTokens - policy.backgroundTokens;
   if (policy.enabled && policy.keepRecentTokens >= startsAt) {
