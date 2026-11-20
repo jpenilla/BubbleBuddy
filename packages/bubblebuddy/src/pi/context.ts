@@ -2,9 +2,8 @@ import { type Api, type Model } from "@earendil-works/pi-ai";
 import { getAgentDir, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { Context, Effect, Layer, Path } from "effect";
 
-import { checkCompactionConfig } from "../config/compaction.ts";
 import { ConfigError } from "../config/error.ts";
-import { FileConfig } from "../config/file.ts";
+import { checkCompactionConfig, FileConfig } from "../config/file.ts";
 
 const createPiContext = Effect.gen(function* () {
   const config = yield* FileConfig;

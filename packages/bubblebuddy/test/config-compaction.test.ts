@@ -1,8 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Schema } from "effect";
 
-import { checkCompactionConfig } from "../src/config/compaction.ts";
-import { ConfigFileSchema } from "../src/config/file.ts";
+import { checkCompactionConfig, ConfigFileSchema } from "../src/config/file.ts";
 
 const decodeCompaction = (compaction: unknown) =>
   Schema.decodeUnknownSync(ConfigFileSchema)({ compaction }).compaction;
