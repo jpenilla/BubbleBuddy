@@ -116,16 +116,18 @@ const confirmExecTermination = Effect.fn("IncusExecSession.confirmExecTerminatio
 
   // Closing the control socket asks Incus to kill the command. This only confirms that
   // the operation ended; it does not independently verify descendant termination.
-  yield* api.operations
-    .wait(operation.id, { project, failureMode: "return" })
-    // The finalizer stays uninterruptible and joins a fresh child: the timeout can interrupt
-    // the child's wait, but the caller's already-pending interruption cannot.
-    .pipe(
-      Effect.timeout(terminationWaitTimeout),
-      Effect.forkChild,
-      Effect.flatMap(Fiber.join),
-      Effect.asVoid,
-    );
+  yield* (
+    api.operations
+      .wait(operation.id, { project, failureMode: "return" })
+      // The finalizer stays uninterruptible and joins a fresh child: the timeout can interrupt
+      // the child's wait, but the caller's already-pending interruption cannot.
+      .pipe(
+        Effect.timeout(terminationWaitTimeout),
+        Effect.forkChild,
+        Effect.flatMap(Fiber.join),
+        Effect.asVoid,
+      )
+  );
 });
 
 export const exec = Effect.fnUntraced(

@@ -401,9 +401,7 @@ const loadMcpServerTools = Effect.fnUntraced(
     }).pipe(
       Scope.provide(serverScope),
       Effect.timeout("10 seconds"),
-      Effect.onExit((exit) =>
-        Exit.isFailure(exit) ? Scope.close(serverScope, exit) : Effect.void,
-      ),
+      Effect.onError((cause) => Scope.close(serverScope, Exit.failCause(cause))),
       Effect.catch((cause) =>
         Effect.logWarning("MCP tool loading failed; skipping server", cause).pipe(
           Effect.annotateLogs({ mcpServerName: name }),
