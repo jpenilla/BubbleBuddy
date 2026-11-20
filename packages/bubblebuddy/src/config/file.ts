@@ -67,21 +67,20 @@ type CompactionConfig = typeof CompactionConfigSchema.Type;
  * Fails when the effective compaction policy for the model would compact every turn: the context kept after a
  * compaction must fit below the point where the next one starts.
  */
-export const checkCompactionConfig = (
+export const checkCompactionConfig = Effect.fnUntraced(function* (
   compaction: CompactionConfig | undefined,
   model: Model<Api>,
-) =>
-  Effect.gen(function* () {
-    const modelKey = `${model.provider}/${model.id}`;
-    const { modelOverrides, ...harnessWide } = compaction ?? {};
-    const policy = { ...DEFAULT_COMPACTION_POLICY, ...harnessWide, ...modelOverrides?.[modelKey] };
-    const startsAt = model.contextWindow - policy.reserveTokens - policy.backgroundTokens;
-    if (policy.enabled && policy.keepRecentTokens >= startsAt) {
-      return yield* new ConfigError({
-        message: `Invalid compaction settings: compaction for ${modelKey} starts at ${startsAt} tokens (contextWindow ${model.contextWindow} - reserveTokens ${policy.reserveTokens} - backgroundTokens ${policy.backgroundTokens}), which must be above keepRecentTokens (${policy.keepRecentTokens}).`,
-      });
-    }
-  });
+) {
+  const modelKey = `${model.provider}/${model.id}`;
+  const { modelOverrides, ...harnessWide } = compaction ?? {};
+  const policy = { ...DEFAULT_COMPACTION_POLICY, ...harnessWide, ...modelOverrides?.[modelKey] };
+  const startsAt = model.contextWindow - policy.reserveTokens - policy.backgroundTokens;
+  if (policy.enabled && policy.keepRecentTokens >= startsAt) {
+    return yield* new ConfigError({
+      message: `Invalid compaction settings: compaction for ${modelKey} starts at ${startsAt} tokens (contextWindow ${model.contextWindow} - reserveTokens ${policy.reserveTokens} - backgroundTokens ${policy.backgroundTokens}), which must be above keepRecentTokens (${policy.keepRecentTokens}).`,
+    });
+  }
+});
 
 export const ConfigFileSchema = Schema.Struct({
   botProfileFile: Schema.NonEmptyString.pipe(
