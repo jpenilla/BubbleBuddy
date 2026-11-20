@@ -1,12 +1,17 @@
+import { type Api, type Model } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "@effect/vitest";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { checkCompactionConfig, ConfigFileSchema } from "../src/config/file.ts";
 
 const decodeCompaction = (compaction: unknown) =>
   Schema.decodeUnknownSync(ConfigFileSchema)({ compaction }).compaction;
 
-const model = { provider: "opencode-go", id: "glm-5.3", contextWindow: 1_000_000 };
+const model = {
+  provider: "opencode-go",
+  id: "glm-5.3",
+  contextWindow: 1_000_000,
+} as Model<Api>;
 
 describe("compaction config", () => {
   it("decodes settings and model overrides", () => {
@@ -24,28 +29,38 @@ describe("compaction config", () => {
     },
   );
 
-  it("accepts the defaults and an override that compacts around 400k", () => {
-    expect(checkCompactionConfig(undefined, model)).toBeUndefined();
-    const overrides = {
-      "opencode-go/glm-5.3": {
-        reserveTokens: 560000,
-        backgroundTokens: 40000,
-        keepRecentTokens: 40000,
-      },
-    };
-    expect(checkCompactionConfig({ modelOverrides: overrides }, model)).toBeUndefined();
-  });
+  it.effect("accepts the defaults and an override that compacts around 400k", () =>
+    Effect.gen(function* () {
+      yield* checkCompactionConfig(undefined, model);
+      yield* checkCompactionConfig(
+        {
+          modelOverrides: {
+            "opencode-go/glm-5.3": {
+              reserveTokens: 560000,
+              backgroundTokens: 40000,
+              keepRecentTokens: 40000,
+            },
+          },
+        },
+        model,
+      );
+      yield* checkCompactionConfig({ enabled: false, reserveTokens: 1_000_000 }, model);
+    }),
+  );
 
-  it("rejects settings that would compact every turn", () => {
-    expect(checkCompactionConfig({ reserveTokens: 1_000_000 }, model)).toContain("starts at");
-    expect(
-      checkCompactionConfig(
+  it.effect("rejects settings that would compact every turn", () =>
+    Effect.gen(function* () {
+      const tooMuchReserved = yield* checkCompactionConfig(
+        { reserveTokens: 1_000_000 },
+        model,
+      ).pipe(Effect.flip);
+      expect(tooMuchReserved.message).toContain("starts at");
+
+      const keepsTooMuch = yield* checkCompactionConfig(
         { modelOverrides: { "opencode-go/glm-5.3": { keepRecentTokens: 960_000 } } },
         model,
-      ),
-    ).toContain("keepRecentTokens (960000)");
-    expect(
-      checkCompactionConfig({ enabled: false, reserveTokens: 1_000_000 }, model),
-    ).toBeUndefined();
-  });
+      ).pipe(Effect.flip);
+      expect(keepsTooMuch.message).toContain("keepRecentTokens (960000)");
+    }),
+  );
 });
