@@ -8,11 +8,14 @@ import {
   type ReplyMode,
 } from "./state.ts";
 
-export class Error extends Schema.TaggedError<Error>()("ChannelStateRepository.Error", {
-  channelId: Schema.String,
-  operation: Schema.Literals(["load", "save"]),
-  cause: Schema.Defect(),
-}) {}
+export class Error extends Schema.TaggedError<Error, { readonly brand: unique symbol }>()(
+  "ChannelStateRepository.Error",
+  {
+    channelId: Schema.String,
+    operation: Schema.Literals(["load", "save"]),
+    cause: Schema.Defect(),
+  },
+) {}
 
 const createChannelStateRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

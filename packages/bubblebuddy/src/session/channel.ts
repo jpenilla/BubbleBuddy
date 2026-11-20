@@ -46,13 +46,13 @@ export type AbortResult = "aborted" | "idle";
 export type CompactResult = "requested" | "no-session";
 export type DiscardResult = "discarded" | "rejected-busy";
 
-export class ChannelSessionError extends Schema.TaggedError<ChannelSessionError>()(
-  "ChannelSessionError",
-  {
-    channelId: Schema.String,
-    cause: Schema.Defect(),
-  },
-) {}
+export class ChannelSessionError extends Schema.TaggedError<
+  ChannelSessionError,
+  { readonly brand: unique symbol }
+>()("ChannelSessionError", {
+  channelId: Schema.String,
+  cause: Schema.Defect(),
+}) {}
 
 export interface ChannelSession {
   readonly abort: (

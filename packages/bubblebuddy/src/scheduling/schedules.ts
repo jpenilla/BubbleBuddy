@@ -127,17 +127,20 @@ const Row = Schema.Struct({
   interval_anchor_at: Schema.NullOr(Schema.Finite),
 });
 
-export class ValidationError extends Schema.TaggedError<ValidationError>()(
-  "Schedules.ValidationError",
+export class ValidationError extends Schema.TaggedError<
+  ValidationError,
+  { readonly brand: unique symbol }
+>()("Schedules.ValidationError", {
+  message: Schema.String,
+}) {}
+export class StoreError extends Schema.TaggedError<StoreError, { readonly brand: unique symbol }>()(
+  "Schedules.StoreError",
   {
     message: Schema.String,
+    operation: Schema.String,
+    cause: Schema.Defect(),
   },
 ) {}
-export class StoreError extends Schema.TaggedError<StoreError>()("Schedules.StoreError", {
-  message: Schema.String,
-  operation: Schema.String,
-  cause: Schema.Defect(),
-}) {}
 
 const invalid = (message: string) => new ValidationError({ message });
 

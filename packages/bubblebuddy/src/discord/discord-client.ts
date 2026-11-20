@@ -1,10 +1,13 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { Cause, Context, Deferred, Effect, FiberSet, Layer, Redacted, Schema } from "effect";
 
-export class LoginError extends Schema.TaggedError<LoginError>()("DiscordClient.LoginError", {
-  message: Schema.String,
-  cause: Schema.Defect(),
-}) {}
+export class LoginError extends Schema.TaggedError<LoginError, { readonly brand: unique symbol }>()(
+  "DiscordClient.LoginError",
+  {
+    message: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {}
 
 export class Service extends Context.Service<Service, Client<true>>()(
   "bubblebuddy/discord/DiscordClient",

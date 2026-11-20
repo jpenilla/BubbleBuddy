@@ -1,6 +1,9 @@
 import { Effect, Schema } from "effect";
 
-export class McpNameError extends Schema.TaggedError<McpNameError>()("McpNameError", {
+export class McpNameError extends Schema.TaggedError<
+  McpNameError,
+  { readonly brand: unique symbol }
+>()("McpNameError", {
   message: Schema.String,
 }) {}
 

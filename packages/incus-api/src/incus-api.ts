@@ -66,30 +66,33 @@ const InstanceExecRequest = Schema.Struct({
 
 export interface InstanceExecRequest extends Schema.Schema.Type<typeof InstanceExecRequest> {}
 
-export class StatusCodeError extends Schema.TaggedError<StatusCodeError>()(
-  "IncusApi.StatusCodeError",
-  {
-    method: Schema.String,
-    path: Schema.String,
-    status: Schema.Finite,
-    body: Schema.String,
-  },
-) {
+export class StatusCodeError extends Schema.TaggedError<
+  StatusCodeError,
+  { readonly brand: unique symbol }
+>()("IncusApi.StatusCodeError", {
+  method: Schema.String,
+  path: Schema.String,
+  status: Schema.Finite,
+  body: Schema.String,
+}) {
   override get message(): string {
     return `Incus ${this.method} ${this.path} failed with HTTP ${this.status}.`;
   }
 }
 
-export class OperationError extends Schema.TaggedError<OperationError>()(
-  "IncusApi.OperationError",
-  {
-    operation: Schema.String,
-    message: Schema.String,
-    metadata: Schema.Unknown,
-  },
-) {}
+export class OperationError extends Schema.TaggedError<
+  OperationError,
+  { readonly brand: unique symbol }
+>()("IncusApi.OperationError", {
+  operation: Schema.String,
+  message: Schema.String,
+  metadata: Schema.Unknown,
+}) {}
 
-export class TimeoutError extends Schema.TaggedError<TimeoutError>()("IncusApi.TimeoutError", {
+export class TimeoutError extends Schema.TaggedError<
+  TimeoutError,
+  { readonly brand: unique symbol }
+>()("IncusApi.TimeoutError", {
   method: Schema.String,
   path: Schema.String,
   requestedTimeoutSeconds: Schema.Finite,

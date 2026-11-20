@@ -13,13 +13,13 @@ import { Effect, FileSystem, Schema } from "effect";
 
 import { tryDurablePromise } from "./durable.ts";
 
-export class LegacySessionReadError extends Schema.TaggedError<LegacySessionReadError>()(
-  "LegacySessionReadError",
-  {
-    file: Schema.String,
-    cause: Schema.Defect(),
-  },
-) {}
+export class LegacySessionReadError extends Schema.TaggedError<
+  LegacySessionReadError,
+  { readonly brand: unique symbol }
+>()("LegacySessionReadError", {
+  file: Schema.String,
+  cause: Schema.Defect(),
+}) {}
 
 export const LEGACY_SESSION_FILE_EXTENSION = ".jsonl";
 
