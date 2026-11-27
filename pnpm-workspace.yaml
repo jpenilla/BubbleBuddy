@@ -28,7 +28,7 @@ catalog:
   vitest: ^5.1.1
   "@modelcontextprotocol/client": ^2.4.0
   discord.js: ^14.28.1
-  oxlint-tsgolint: 7.0.2007
+  oxlint-tsgolint: 7.0.2009
 
 allowBuilds:
   '@google/genai': true
